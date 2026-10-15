@@ -15,12 +15,20 @@ from capitalcite.ingest.client import (
     EdgarUnavailableError,
     UnknownTickerError,
 )
+from capitalcite.ingest.documents import IndexItem, choose_main_document, is_main_10k_html
 from capitalcite.ingest.models import Filing
 from capitalcite.ingest.parse import ParseError, parse_forms, parse_tickers, parse_years
 from capitalcite.ingest.rate_limit import RateLimiter
 from capitalcite.ingest.service import run_ingest
 from capitalcite.ingest.store import FilingStore
-from tests.edgar_replay import PRIMARY_HTML, USER_AGENT, RecordingTransport, noop_sleep
+from tests.edgar_replay import (
+    FIXTURES,
+    PRIMARY_HTML,
+    USER_AGENT,
+    RecordingTransport,
+    noop_sleep,
+    replay_handler,
+)
 
 runner = CliRunner()
 
@@ -31,9 +39,9 @@ EXPECTED_10K = {
     ("BAC", "2023-12-31", "0000070858-24-000122", "bac-20231231.htm"),
     ("BAC", "2024-12-31", "0000070858-25-000139", "bac-20241231.htm"),
     ("BAC", "2025-12-31", "0000070858-26-000157", "bac-20251231.htm"),
-    ("WFC", "2023-12-31", "0000072971-24-000064", "wfc-20231231.htm"),
-    ("WFC", "2024-12-31", "0000072971-25-000066", "wfc-20241231.htm"),
-    ("WFC", "2025-12-31", "0000072971-26-000133", "wfc-20251231_d2.htm"),
+    ("WFC", "2023-12-31", "0000072971-24-000064", "wfc-20231231_d2.htm"),
+    ("WFC", "2024-12-31", "0000072971-25-000066", "wfc-20241231_d2.htm"),
+    ("WFC", "2025-12-31", "0000072971-26-000133", "wfc-20251231.htm"),
     ("C", "2023-12-31", "0000831001-24-000033", "c-20231231.htm"),
     ("C", "2024-12-31", "0000831001-25-000067", "c-20241231.htm"),
     ("C", "2025-12-31", "0000831001-26-000011", "c-20251231.htm"),
@@ -105,7 +113,91 @@ async def test_ingest_expected_10k_filings(tmp_path: Path) -> None:
 
     assert not any("submissions-099.json" in url for url in transport.urls)
     assert any(url.endswith("/files/company_tickers.json") for url in transport.urls)
+    assert any(url.endswith("/000007297126000133/index.json") for url in transport.urls)
     assert all(ua == USER_AGENT for ua in transport.user_agents)
+
+
+def test_choose_main_document_skips_exhibits_and_renders() -> None:
+    fy25 = [
+        IndexItem("wfc-20251231_d2_htm.xml", 14_352_651),
+        IndexItem("wfc-20251231.htm", 11_595_621),
+        IndexItem("R41.htm", 1_151_222),
+        IndexItem("wfc-1231x2025xex10a.htm", 392_548),
+        IndexItem("wfc-20251231_d2.htm", 359_609),
+    ]
+    fy23 = [
+        IndexItem("wfc-20231231_htm.xml", 15_778_345),
+        IndexItem("wfc-20231231_d2.htm", 11_684_627),
+        IndexItem("wfc-20231231.htm", 1_844_351),
+        IndexItem("R43.htm", 1_289_299),
+        IndexItem("wfc-1231x2023xex10b.htm", 691_462),
+    ]
+    fy24 = [
+        IndexItem("wfc-20241231_d2.htm", 10_903_343),
+        IndexItem("wfc-20241231.htm", 1_552_078),
+        IndexItem("R45.htm", 1_226_316),
+        IndexItem("wfc-1231x2024xex10a.htm", 385_480),
+    ]
+    assert choose_main_document("wfc-20251231_d2.htm", fy25) == "wfc-20251231.htm"
+    assert choose_main_document("wfc-20231231.htm", fy23) == "wfc-20231231_d2.htm"
+    assert choose_main_document("wfc-20241231.htm", fy24) == "wfc-20241231_d2.htm"
+    assert not is_main_10k_html("R1.htm")
+    assert not is_main_10k_html("d280360dex10f.htm")
+    assert is_main_10k_html("wfc-20251231.htm")
+
+
+@pytest.mark.asyncio
+async def test_ingest_replaces_wfc_shell_primary_with_real_10k(tmp_path: Path) -> None:
+    shell = (FIXTURES / "docs" / "wfc-shell.html").read_bytes()
+    report = (FIXTURES / "docs" / "wfc-10k.html").read_bytes()
+
+    class WfcTransport(RecordingTransport):
+        def _handler(self, request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            if (
+                path.endswith("/wfc-20251231.htm")
+                or path.endswith("/wfc-20241231_d2.htm")
+                or path.endswith("/wfc-20231231_d2.htm")
+            ):
+                return httpx.Response(
+                    200,
+                    content=report,
+                    headers={"Content-Type": "text/html; charset=utf-8"},
+                )
+            if (
+                path.endswith("/wfc-20251231_d2.htm")
+                or path.endswith("/wfc-20241231.htm")
+                or path.endswith("/wfc-20231231.htm")
+            ):
+                return httpx.Response(
+                    200,
+                    content=shell,
+                    headers={"Content-Type": "text/html; charset=utf-8"},
+                )
+            return replay_handler(request)
+
+    transport = WfcTransport()
+    store = FilingStore(tmp_path)
+    async with _client(transport) as client:
+        summary = await run_ingest(
+            client=client,
+            store=store,
+            tickers=("WFC",),
+            forms=("10-K",),
+            years=YEARS,
+        )
+
+    stored = {(m.period, m.primary_document, m.bytes) for m in summary.downloaded}
+    assert stored == {
+        ("2023-12-31", "wfc-20231231_d2.htm", len(report)),
+        ("2024-12-31", "wfc-20241231_d2.htm", len(report)),
+        ("2025-12-31", "wfc-20251231.htm", len(report)),
+    }
+    for meta in summary.downloaded:
+        body = store.document_path(meta).read_bytes()
+        assert b"CET1 ratio was 10.61%" in body
+        assert b"cover and exhibit list" not in body
+        assert meta.url.endswith(meta.primary_document)
 
 
 @pytest.mark.asyncio
@@ -131,8 +223,12 @@ async def test_ingest_is_idempotent(tmp_path: Path) -> None:
     assert first.downloaded_count == 12
     assert second.downloaded_count == 0
     assert second.skipped_count == 12
-    archive_gets = [u for u in transport.urls if "/Archives/edgar/data/" in u]
-    assert len(archive_gets) == 12
+    archive_docs = [
+        url
+        for url in transport.urls
+        if "/Archives/edgar/data/" in url and not url.endswith("/index.json")
+    ]
+    assert len(archive_docs) == 12
 
 
 @pytest.mark.asyncio

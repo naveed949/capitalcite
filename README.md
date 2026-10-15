@@ -67,7 +67,7 @@ flowchart LR
 
 ## Evaluation
 
-Golden set: **TBD** questions (target: about 100). It's built from hand-written questions over bank filings, plus a filtered subset of FinanceBench and FinQA for calibration. See `evals/golden/README.md` for how each item was made and checked.
+Golden set: **112** questions (v1). Handwritten items over the twelve ingested 10-Ks carry `start`/`end` spans in parsed `document.md` so later recall@k can join `Chunk.start`/`Chunk.end`. FinanceBench and FinQA tails are answer-scoring only (excluded from recall@k). See `evals/golden/README.md` and [docs/decisions/0004-golden-set.md](docs/decisions/0004-golden-set.md).
 
 ### Retrieval (per configuration)
 
@@ -130,6 +130,7 @@ uv run capitalcite eval --suite golden   # writes evals/results/<sha>.json
 
 Ingest design: [docs/decisions/0002-edgar-ingester.md](docs/decisions/0002-edgar-ingester.md).
 Parse and chunk design: [docs/decisions/0003-parse-and-chunk.md](docs/decisions/0003-parse-and-chunk.md).
+Golden set: [docs/decisions/0004-golden-set.md](docs/decisions/0004-golden-set.md).
 
 Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langfuse Cloud.
 

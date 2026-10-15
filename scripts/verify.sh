@@ -34,6 +34,11 @@ write() {
   printf '%s\n' "$*" >"${ART}/${file}"
 }
 
+# Typer/Rich may insert SGR codes between the dashes in "--against-raw".
+plain() {
+  sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' "$1"
+}
+
 cleanup() {
   local rc=$?
   if [[ -n "${UVICORN_PID}" ]]; then
@@ -75,6 +80,8 @@ log "verify: launching uvicorn on 127.0.0.1:${PORT}"
 export SEC_USER_AGENT="${SEC_USER_AGENT:-capitalcite-verify you@example.com}"
 export APP_ENV="${APP_ENV:-verify}"
 export LOG_LEVEL="${LOG_LEVEL:-WARNING}"
+# Typer/Rich splits "--against-raw" with SGR codes; grep needs the literal flag.
+export NO_COLOR="${NO_COLOR:-1}"
 
 uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
   >"${ART}/uvicorn.log" 2>&1 &
@@ -166,6 +173,48 @@ if [[ "${ACTUAL_VERSION}" != "${EXPECTED_VERSION}" ]]; then
 fi
 log "verify: capitalcite version ${ACTUAL_VERSION}"
 
+log "verify: capitalcite golden validate --help"
+set +e
+uv run capitalcite golden validate --help >"${ART}/golden.help.out" 2>"${ART}/golden.help.err"
+golden_help_rc=$?
+set -e
+write golden.help.exit "${golden_help_rc}"
+if [[ "${golden_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite golden validate --help failed"
+  cat "${ART}/golden.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/golden.help.out" | grep -q -- "--path" \
+  || ! plain "${ART}/golden.help.out" | grep -q -- "--against-raw"; then
+  log "verify: golden validate --help missing --path or --against-raw"
+  cat "${ART}/golden.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite golden validate --help ok"
+
+log "verify: uv run capitalcite golden validate --path evals/golden"
+set +e
+uv run capitalcite golden validate --path evals/golden \
+  >"${ART}/golden.out" 2>"${ART}/golden.err"
+golden_rc=$?
+set -e
+write golden.exit "${golden_rc}"
+if [[ "${golden_rc}" -ne 0 ]]; then
+  log "verify: capitalcite golden validate failed"
+  cat "${ART}/golden.out" >&2 || true
+  cat "${ART}/golden.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "items=" "${ART}/golden.out" \
+  || ! grep -q "unanswerable_or_trick_pct=" "${ART}/golden.out" \
+  || ! grep -q "numeric_pct=" "${ART}/golden.out"; then
+  log "verify: golden validate stdout missing mix counts"
+  cat "${ART}/golden.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite golden validate ok"
+cat "${ART}/golden.out"
+
 log "verify: capitalcite ingest --help"
 set +e
 uv run capitalcite ingest --help >"${ART}/ingest.help.out" 2>"${ART}/ingest.help.err"
@@ -177,9 +226,9 @@ if [[ "${ingest_help_rc}" -ne 0 ]]; then
   cat "${ART}/ingest.help.err" >&2 || true
   exit 1
 fi
-if ! grep -q -- "--tickers" "${ART}/ingest.help.out" \
-  || ! grep -q -- "--forms" "${ART}/ingest.help.out" \
-  || ! grep -q -- "--years" "${ART}/ingest.help.out"; then
+if ! plain "${ART}/ingest.help.out" | grep -q -- "--tickers" \
+  || ! plain "${ART}/ingest.help.out" | grep -q -- "--forms" \
+  || ! plain "${ART}/ingest.help.out" | grep -q -- "--years"; then
   log "verify: ingest --help missing required flags"
   cat "${ART}/ingest.help.out" >&2 || true
   exit 1
@@ -239,6 +288,10 @@ for path in sidecars:
     doc = path.with_name(str(meta.get("primary_document", "")))
     if not doc.is_file() or doc.stat().st_size == 0:
         errors.append(f"{path}: missing primary document {doc.name}")
+    if ticker == "WFC" and doc.stat().st_size < 5_000_000:
+        errors.append(f"{path}: WFC primary {doc.name} is {doc.stat().st_size} bytes (shell?)")
+    if ticker == "WFC" and period == "2025-12-31" and doc.name.endswith("_d2.htm"):
+        errors.append(f"{path}: WFC FY2025 still using cover-page {doc.name}")
     seen.add((ticker, period))
 listing.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 missing = sorted(required - seen)
@@ -270,6 +323,47 @@ PY
     exit 1
   fi
   log "verify: ingest rerun skipped=12"
+
+  log "verify: capitalcite chunk --input-dir ${INGEST_DIR} --chunker section"
+  set +e
+  uv run capitalcite chunk --input-dir "${INGEST_DIR}" --output-dir "${INGEST_DIR}" --chunker section \
+    >"${ART}/golden.chunk.out" 2>"${ART}/golden.chunk.err"
+  golden_chunk_rc=$?
+  set -e
+  write golden.chunk.exit "${golden_chunk_rc}"
+  if [[ "${golden_chunk_rc}" -ne 0 ]]; then
+    log "verify: chunk of ingested corpus failed"
+    cat "${ART}/golden.chunk.out" >&2 || true
+    cat "${ART}/golden.chunk.err" >&2 || true
+    exit 1
+  fi
+
+  log "verify: uv run capitalcite golden validate --path evals/golden --against-raw ${INGEST_DIR}"
+  set +e
+  uv run capitalcite golden validate --path evals/golden --against-raw "${INGEST_DIR}" \
+    >"${ART}/golden.against-raw.out" 2>"${ART}/golden.against-raw.err"
+  against_rc=$?
+  set -e
+  write golden.against-raw.exit "${against_rc}"
+  if [[ "${against_rc}" -ne 0 ]]; then
+    log "verify: golden validate --against-raw failed"
+    cat "${ART}/golden.against-raw.out" >&2 || true
+    cat "${ART}/golden.against-raw.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -q "aligned=" "${ART}/golden.against-raw.out" \
+    || ! grep -q "recall=handwritten-only" "${ART}/golden.against-raw.out"; then
+    log "verify: golden --against-raw stdout missing alignment counts"
+    cat "${ART}/golden.against-raw.out" >&2 || true
+    exit 1
+  fi
+  log "verify: golden validate --against-raw ok"
+  cat "${ART}/golden.against-raw.out"
+fi
+
+if [[ -f "${ART}/ingest.unreachable" && ! -f "${ART}/golden.against-raw.exit" ]]; then
+  write golden.against-raw.skipped "live ingest unreachable; --against-raw needs the corpus"
+  log "verify: golden --against-raw UNVERIFIED (no live corpus)"
 fi
 
 log "verify: capitalcite chunk --help"
@@ -283,9 +377,9 @@ if [[ "${chunk_help_rc}" -ne 0 ]]; then
   cat "${ART}/chunk.help.err" >&2 || true
   exit 1
 fi
-if ! grep -q -- "--chunker" "${ART}/chunk.help.out" \
-  || ! grep -q -- "--size" "${ART}/chunk.help.out" \
-  || ! grep -q -- "--overlap" "${ART}/chunk.help.out"; then
+if ! plain "${ART}/chunk.help.out" | grep -q -- "--chunker" \
+  || ! plain "${ART}/chunk.help.out" | grep -q -- "--size" \
+  || ! plain "${ART}/chunk.help.out" | grep -q -- "--overlap"; then
   log "verify: chunk --help missing required flags"
   cat "${ART}/chunk.help.out" >&2 || true
   exit 1
@@ -516,12 +610,19 @@ fi
   echo "health.exit $(cat "${ART}/health.exit")"
   echo "version ${ACTUAL_VERSION}"
   echo "version.exit $(cat "${ART}/version.exit")"
+  echo "golden.help.exit $(cat "${ART}/golden.help.exit")"
+  echo "golden.exit $(cat "${ART}/golden.exit")"
   echo "ingest.help.exit $(cat "${ART}/ingest.help.exit")"
   if [[ -f "${ART}/ingest.unreachable" ]]; then
     echo "ingest unreachable ($(cat "${ART}/ingest.unreachable"))"
   else
     echo "ingest.exit $(cat "${ART}/ingest.exit")"
     echo "ingest.rerun.exit $(cat "${ART}/ingest.rerun.exit")"
+  fi
+  if [[ -f "${ART}/golden.against-raw.exit" ]]; then
+    echo "golden.against-raw.exit $(cat "${ART}/golden.against-raw.exit")"
+  elif [[ -f "${ART}/golden.against-raw.skipped" ]]; then
+    echo "golden-against-raw skipped ($(cat "${ART}/golden.against-raw.skipped"))"
   fi
   echo "chunk.help.exit $(cat "${ART}/chunk.help.exit")"
   echo "chunk.exit $(cat "${ART}/chunk.exit")"
