@@ -1,5 +1,3 @@
-"""Turn stored primary documents into cleaned text."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,12 +23,10 @@ __all__ = [
 
 
 def parse_path(path: Path, source: CitationSource) -> ParsedDocument:
-    """Parse a file. Suffix ``.pdf`` selects the PDF reader, otherwise HTML."""
     return parse_bytes(path.read_bytes(), source, filename=path.name)
 
 
 def parse_bytes(data: bytes, source: CitationSource, *, filename: str = "") -> ParsedDocument:
-    """Parse raw bytes. ``filename`` ending in ``.pdf`` selects the PDF reader."""
     if filename.lower().endswith(".pdf"):
         return pdf_to_document(data, source)
     return html_to_document(data, source)

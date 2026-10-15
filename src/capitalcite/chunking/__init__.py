@@ -1,5 +1,3 @@
-"""Pick a named chunker and attach citation metadata."""
-
 from __future__ import annotations
 
 import logging
@@ -26,7 +24,6 @@ def chunk_document(
     size: int,
     overlap: int,
 ) -> tuple[list[Chunk], ChunkStats]:
-    """Run the named strategy and log count plus mean tokens."""
     try:
         fn = CHUNKERS[chunker]
     except KeyError as exc:

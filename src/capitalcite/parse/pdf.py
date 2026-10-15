@@ -1,5 +1,3 @@
-"""PDF filings to cleaned text. Page numbers are recorded as spans."""
-
 from __future__ import annotations
 
 from io import BytesIO

@@ -1,5 +1,3 @@
-"""Walk an ingest tree, parse, chunk, and write derived files atomically."""
-
 from __future__ import annotations
 
 import logging
@@ -19,8 +17,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ChunkRunSummary:
-    """Totals from one ``capitalcite chunk`` run."""
-
     files: int = 0
     chunks: int = 0
     failed: list[tuple[Path, str]] = field(default_factory=list)
@@ -36,7 +32,6 @@ class ChunkRunSummary:
 
 
 def iter_raw_filings(root: Path) -> Iterator[tuple[FilingMetadata, Path]]:
-    """Yield stored metadata plus the sibling primary document."""
     base = root / "raw" / "edgar"
     if not base.is_dir():
         return
@@ -54,7 +49,6 @@ def run_chunk(
     size: int,
     overlap: int,
 ) -> ChunkRunSummary:
-    """Parse every stored filing under ``input_root`` and write parsed output."""
     summary = ChunkRunSummary()
     for metadata, path in iter_raw_filings(input_root):
         if not path.is_file():

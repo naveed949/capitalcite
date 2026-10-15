@@ -1,5 +1,3 @@
-"""Fixed, recursive, and section-aware splitters."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -13,7 +11,6 @@ _SEPARATORS = ("\n\n", "\n", ". ", " ", "")
 
 
 def chunk_fixed(document: ParsedDocument, *, size: int, overlap: int) -> list[Chunk]:
-    """Sliding windows of ``size`` tokens with ``overlap`` tokens of shared tail."""
     _check_budgets(size, overlap)
     text = document.text
     if not text.strip():
@@ -37,14 +34,12 @@ def chunk_fixed(document: ParsedDocument, *, size: int, overlap: int) -> list[Ch
 
 
 def chunk_recursive(document: ParsedDocument, *, size: int, overlap: int) -> list[Chunk]:
-    """Split on large separators first, then pack pieces up to ``size`` tokens."""
     _check_budgets(size, overlap)
     pieces = _recursive_split(document.text, token_chars(size))
     return _pack(document, pieces, size=size, overlap=overlap, chunker=ChunkerName.RECURSIVE)
 
 
 def chunk_section(document: ParsedDocument, *, size: int, overlap: int) -> list[Chunk]:
-    """One chunk per Item when it fits. Oversized items use the recursive splitter."""
     _check_budgets(size, overlap)
     chunks: list[Chunk] = []
     spans = document.sections
@@ -122,7 +117,6 @@ def _make_chunk(document: ParsedDocument, text: str, offset: int, chunker: Chunk
 
 
 def _avoid_table_cut(text: str, start: int, end: int) -> int:
-    """If ``end`` falls inside a markdown table, snap to the table boundary."""
     table_start = text.rfind("\n\n|", start, end)
     if table_start == -1 and text.startswith("|", start):
         table_start = start

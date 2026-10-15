@@ -1,5 +1,3 @@
-"""10-K Item heading detection on cleaned text."""
-
 from __future__ import annotations
 
 import re
@@ -15,11 +13,6 @@ _PAGE_ONLY = re.compile(r"^[\s.\d]+$")
 
 
 def detect_sections(text: str) -> tuple[Span, ...]:
-    """Split ``text`` on Item headings. TOC lines with leader dots are ignored.
-
-    Text before the first real Item is one ``body`` span so every offset
-    belongs to a section.
-    """
     starts: list[tuple[int, str]] = []
     for match in _ITEM_LINE.finditer(text):
         line_rest = (match.group(3) or "").strip()
@@ -44,7 +37,6 @@ def detect_sections(text: str) -> tuple[Span, ...]:
 
 
 def section_at(sections: tuple[Span, ...], offset: int) -> str:
-    """Return the section name covering ``offset``, or ``body``."""
     for span in sections:
         if span.contains(offset):
             return span.name
@@ -54,7 +46,6 @@ def section_at(sections: tuple[Span, ...], offset: int) -> str:
 
 
 def page_at(pages: tuple[Span, ...], offset: int) -> int | None:
-    """Return the 1-based page covering ``offset``, if pages were recorded."""
     for span in pages:
         if span.contains(offset):
             return int(span.name)

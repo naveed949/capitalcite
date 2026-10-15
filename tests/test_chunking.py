@@ -212,7 +212,6 @@ def test_pdf_records_page_and_offset() -> None:
 
 
 def _pdf_with_text(text: str) -> bytes:
-    """Minimal one-page PDF whose extracted text includes ``text``."""
     escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
     content = f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode("latin-1", "replace")
     objects = [

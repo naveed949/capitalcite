@@ -1,5 +1,3 @@
-"""HTML filings to cleaned text. Tables become markdown."""
-
 from __future__ import annotations
 
 import re
@@ -14,7 +12,6 @@ _BLANK = re.compile(r"\n{3,}")
 
 
 def html_to_document(data: bytes, source: CitationSource) -> ParsedDocument:
-    """Parse HTML bytes into cleaned text with tables as markdown."""
     soup = BeautifulSoup(data, "html.parser")
     for tag in soup.find_all(["script", "style", "noscript"]):
         tag.decompose()
@@ -41,7 +38,6 @@ def html_to_document(data: bytes, source: CitationSource) -> ParsedDocument:
 
 
 def table_to_markdown(table: Tag) -> str:
-    """Render one HTML table as a GitHub-style markdown table."""
     rows: list[list[str]] = []
     for row in table.find_all("tr"):
         if not isinstance(row, Tag):

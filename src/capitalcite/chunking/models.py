@@ -1,5 +1,3 @@
-"""Chunks and the names a caller can pick."""
-
 from __future__ import annotations
 
 from enum import StrEnum
@@ -14,8 +12,6 @@ class ChunkerName(StrEnum):
 
 
 class Chunk(BaseModel):
-    """One retrieval unit with the citation fields issue #3 requires."""
-
     doc_id: str = Field(min_length=1)
     section: str = Field(min_length=1)
     offset: int = Field(ge=0)
@@ -31,8 +27,6 @@ class Chunk(BaseModel):
 
 
 class ChunkStats(BaseModel):
-    """Per-strategy counts logged for a document or a run."""
-
     chunker: ChunkerName
     count: int = Field(ge=0)
     mean_tokens: float = Field(ge=0)
