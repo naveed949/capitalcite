@@ -34,6 +34,11 @@ write() {
   printf '%s\n' "$*" >"${ART}/${file}"
 }
 
+# Typer/Rich may insert SGR codes between the dashes in "--against-raw".
+plain() {
+  sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' "$1"
+}
+
 cleanup() {
   local rc=$?
   if [[ -n "${UVICORN_PID}" ]]; then
@@ -179,8 +184,8 @@ if [[ "${golden_help_rc}" -ne 0 ]]; then
   cat "${ART}/golden.help.err" >&2 || true
   exit 1
 fi
-if ! grep -q -- "--path" "${ART}/golden.help.out" \
-  || ! grep -q -- "--against-raw" "${ART}/golden.help.out"; then
+if ! plain "${ART}/golden.help.out" | grep -q -- "--path" \
+  || ! plain "${ART}/golden.help.out" | grep -q -- "--against-raw"; then
   log "verify: golden validate --help missing --path or --against-raw"
   cat "${ART}/golden.help.out" >&2 || true
   exit 1
@@ -221,9 +226,9 @@ if [[ "${ingest_help_rc}" -ne 0 ]]; then
   cat "${ART}/ingest.help.err" >&2 || true
   exit 1
 fi
-if ! grep -q -- "--tickers" "${ART}/ingest.help.out" \
-  || ! grep -q -- "--forms" "${ART}/ingest.help.out" \
-  || ! grep -q -- "--years" "${ART}/ingest.help.out"; then
+if ! plain "${ART}/ingest.help.out" | grep -q -- "--tickers" \
+  || ! plain "${ART}/ingest.help.out" | grep -q -- "--forms" \
+  || ! plain "${ART}/ingest.help.out" | grep -q -- "--years"; then
   log "verify: ingest --help missing required flags"
   cat "${ART}/ingest.help.out" >&2 || true
   exit 1
@@ -372,9 +377,9 @@ if [[ "${chunk_help_rc}" -ne 0 ]]; then
   cat "${ART}/chunk.help.err" >&2 || true
   exit 1
 fi
-if ! grep -q -- "--chunker" "${ART}/chunk.help.out" \
-  || ! grep -q -- "--size" "${ART}/chunk.help.out" \
-  || ! grep -q -- "--overlap" "${ART}/chunk.help.out"; then
+if ! plain "${ART}/chunk.help.out" | grep -q -- "--chunker" \
+  || ! plain "${ART}/chunk.help.out" | grep -q -- "--size" \
+  || ! plain "${ART}/chunk.help.out" | grep -q -- "--overlap"; then
   log "verify: chunk --help missing required flags"
   cat "${ART}/chunk.help.out" >&2 || true
   exit 1
