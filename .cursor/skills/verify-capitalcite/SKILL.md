@@ -13,6 +13,10 @@ This skill is for the next agent, mid-task, who has never seen the app. It drive
 
 Two instances can run side by side: pick a free loopback port per run and a unique `artifacts/verify/<timestamp>/` directory. Do not attach to an already-running uvicorn you did not start. Do not `docker compose down` a stack you did not start.
 
+## Feature PRs
+
+Every feature PR adds an ADR under `docs/decisions/` and one new row in [`docs/DECISIONS.md`](../../../docs/DECISIONS.md). Land the record and the index row in the same change.
+
 ## Launch
 
 From the repo root, with no `.env` required (the helper injects a test `SEC_USER_AGENT`):
@@ -85,6 +89,16 @@ Read the feature map before driving: [features/README.md](features/README.md). D
 
 Do **not** treat `TestClient(app).get("/health")` or `CliRunner().invoke(...)` as a drive. Those are in-process tests.
 
+## Status
+
+Report each driven feature as `passed`, `failed`, or `UNVERIFIED`.
+
+- `passed` only when this run executed the user path and the proof files match the expected result.
+- `failed` when the path ran and the result is wrong.
+- `UNVERIFIED` when the path cannot run here. Azure deploy with no credentials, live EDGAR 403, Docker missing, and Qdrant not listening are all `UNVERIFIED`. Record the attempted command and the missing precondition.
+
+Never report `UNVERIFIED` as `passed`. `scripts/verify.sh` may exit 0 when only optional steps were skipped. Copy those skips into the report as `UNVERIFIED`. Files named `*.skipped` or `verified-unreachable` mean `UNVERIFIED`.
+
 ## Evidence
 
 Location: `artifacts/verify/<UTC-timestamp>/` at the repo root (gitignored). Cleanup must not delete this directory.
@@ -135,7 +149,7 @@ If a run fails mid-way, run cleanup anyway (the trap should fire). If you launch
 ./scripts/verify.sh
 ```
 
-No arguments. It prints each step to stdout (paste that into a PR) and mirrors the same facts into `artifacts/verify/<timestamp>/`. Exit 0 means required API + CLI checks passed; optional Docker/Qdrant steps are skipped without failing when Docker is absent or Qdrant is not listening.
+No arguments. It prints each step to stdout (paste that into a PR) and mirrors the same facts into `artifacts/verify/<timestamp>/`. Exit 0 means required API and CLI checks passed. Optional Docker or Qdrant steps that did not run are `UNVERIFIED`, not passed. The script still exits 0 in that case.
 
 Do not reverse-engineer the script: the Drive table and the feature files list the exact commands it wraps.
 
@@ -146,7 +160,7 @@ When a later issue adds a user-facing endpoint or command, extend verification i
 1. Add a feature file under [features/](features/) with the four H2s (`Sub-features`, `How to get to it (user POV)`, `Driving it with curl` or `Driving it with the capitalcite CLI`, `Gotchas`).
 2. Link it from [features/README.md](features/README.md).
 3. Add a step to `scripts/verify.sh` that invokes the new handle, writes `<name>.body` / `<name>.out` and `<name>.exit` into the same timestamped artifacts dir, and fails the script on a bad status/body.
-4. If the new path needs Qdrant, an index, or a golden file, say so as a **precondition** in that feature's Gotchas. Do not weaken the journey so it passes on an empty store — report `verified-unreachable` with the missing precondition instead.
+4. If the new path needs Qdrant, an index, or a golden file, say so as a **precondition** in that feature's Gotchas. Do not weaken the journey so it passes on an empty store. Report `UNVERIFIED` and write a `verified-unreachable` artifact with the missing precondition.
 5. Run `./scripts/verify.sh` and keep the new artifact files.
 6. Periodic honesty pass: `/maintain-verification-skill`.
 
@@ -159,6 +173,8 @@ Expected later handles (do not add empty stubs now):
 | #6 evals | `capitalcite eval --suite golden` |
 | #7 answers | `POST /ask` |
 | #10 audit | `capitalcite audit verify` |
+
+When #6 lands, grow this skill in that same PR so `./scripts/verify.sh` runs the retrieval eval. That means `capitalcite eval --suite golden` and the recall@k / MRR matrix the issue commits. Until that run exists, retrieval quality is `UNVERIFIED`.
 
 ## Offer the maintenance loop
 
