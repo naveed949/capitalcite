@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from capitalcite.ingest.client import (
     EdgarUnavailableError,
     UnknownTickerError,
 )
+from capitalcite.ingest.models import Filing
 from capitalcite.ingest.parse import ParseError, parse_forms, parse_tickers, parse_years
 from capitalcite.ingest.rate_limit import RateLimiter
 from capitalcite.ingest.service import run_ingest
@@ -333,3 +335,34 @@ async def test_live_http_transport_is_blocked() -> None:
     async with httpx.AsyncClient() as client:
         with pytest.raises(RuntimeError, match="live network is forbidden"):
             await client.get("https://www.sec.gov/files/company_tickers.json")
+
+
+def _sample_filing() -> Filing:
+    return Filing(
+        ticker="JPM",
+        cik="0000019617",
+        form="10-K",
+        period="2024-12-31",
+        filing_date="2025-02-14",
+        accession="0000019617-25-000270",
+        primary_document="jpm-20241231.htm",
+        url=("https://www.sec.gov/Archives/edgar/data/19617/000001961725000270/jpm-20241231.htm"),
+    )
+
+
+def test_store_write_is_atomic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = FilingStore(tmp_path)
+    filing = _sample_filing()
+    store.write(filing, b"first-body")
+    assert store.document_path(filing).read_bytes() == b"first-body"
+
+    def crash_replace(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+        raise OSError("simulated crash before rename")
+
+    monkeypatch.setattr(os, "replace", crash_replace)
+    with pytest.raises(OSError, match="simulated crash"):
+        store.write(filing, b"second-body-must-not-land")
+
+    assert store.document_path(filing).read_bytes() == b"first-body"
+    leftovers = list(store.filing_dir(filing).glob(".*.tmp"))
+    assert leftovers == []
