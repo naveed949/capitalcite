@@ -272,6 +272,102 @@ PY
   log "verify: ingest rerun skipped=12"
 fi
 
+log "verify: capitalcite chunk --help"
+set +e
+uv run capitalcite chunk --help >"${ART}/chunk.help.out" 2>"${ART}/chunk.help.err"
+chunk_help_rc=$?
+set -e
+write chunk.help.exit "${chunk_help_rc}"
+if [[ "${chunk_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite chunk --help failed"
+  cat "${ART}/chunk.help.err" >&2 || true
+  exit 1
+fi
+if ! grep -q -- "--chunker" "${ART}/chunk.help.out" \
+  || ! grep -q -- "--size" "${ART}/chunk.help.out" \
+  || ! grep -q -- "--overlap" "${ART}/chunk.help.out"; then
+  log "verify: chunk --help missing required flags"
+  cat "${ART}/chunk.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite chunk --help ok"
+
+CHUNK_IN="${ROOT}/tests/fixtures/chunking/corpus"
+CHUNK_OUT="${ART}/chunk"
+mkdir -p "${CHUNK_OUT}"
+CHUNK_CMD=(uv run capitalcite chunk --input-dir "${CHUNK_IN}" --output-dir "${CHUNK_OUT}" --chunker section)
+printf '%s\n' "${CHUNK_CMD[*]}" >"${ART}/chunk.cmd"
+log "verify: ${CHUNK_CMD[*]}"
+set +e
+"${CHUNK_CMD[@]}" >"${ART}/chunk.out" 2>"${ART}/chunk.err"
+chunk_rc=$?
+set -e
+write chunk.exit "${chunk_rc}"
+if [[ "${chunk_rc}" -ne 0 ]]; then
+  log "verify: capitalcite chunk failed with exit ${chunk_rc}"
+  cat "${ART}/chunk.out" >&2 || true
+  cat "${ART}/chunk.err" >&2 || true
+  exit 1
+fi
+uv run python - "${CHUNK_OUT}" "${ART}/chunk.files.txt" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+listing = Path(sys.argv[2])
+chunks_path = next(root.glob("parsed/edgar/**/chunks.jsonl"), None)
+stats_path = next(root.glob("parsed/edgar/**/stats.json"), None)
+errors: list[str] = []
+if chunks_path is None:
+    errors.append("missing chunks.jsonl")
+    listing.write_text("", encoding="utf-8")
+    sys.stderr.write("verify: chunk checks failed:\n  " + "\n  ".join(errors) + "\n")
+    sys.exit(1)
+rows = [
+    json.loads(line)
+    for line in chunks_path.read_text(encoding="utf-8").splitlines()
+    if line
+]
+lines = []
+required = ("doc_id", "section", "offset", "source_url")
+sections = set()
+item7_has_table = False
+for row in rows:
+    missing = [key for key in required if key not in row]
+    if missing:
+        errors.append(f"chunk missing {missing}: {row!r}")
+        continue
+    lines.append(f"{row['doc_id']} {row['section']} {row['offset']} {row['source_url']}")
+    sections.add(str(row["section"]))
+    if row["section"] == "Item 7" and "CET1 ratio" in str(row["text"]) and "15.1%" in str(row["text"]):
+        item7_has_table = True
+    if "sec.gov/Archives/edgar/data/" not in str(row["source_url"]):
+        errors.append(f"source_url={row['source_url']!r}")
+listing.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+if "Item 7" not in sections:
+    errors.append(f"missing Item 7 in {sorted(sections)}")
+if "Item 8" not in sections:
+    errors.append(f"missing Item 8 in {sorted(sections)}")
+if not item7_has_table:
+    errors.append("Item 7 chunk does not contain CET1 markdown table")
+if stats_path is None:
+    errors.append("missing stats.json")
+else:
+    stats = json.loads(stats_path.read_text(encoding="utf-8"))
+    if stats.get("chunker") != "section":
+        errors.append(f"stats.chunker={stats.get('chunker')!r}")
+    if not isinstance(stats.get("count"), int) or stats["count"] < 1:
+        errors.append(f"stats.count={stats.get('count')!r}")
+    if not isinstance(stats.get("mean_tokens"), (int, float)) or stats["mean_tokens"] <= 0:
+        errors.append(f"stats.mean_tokens={stats.get('mean_tokens')!r}")
+if errors:
+    sys.stderr.write("verify: chunk checks failed:\n  " + "\n  ".join(errors) + "\n")
+    sys.exit(1)
+print(f"chunk rows {len(rows)}")
+PY
+log "verify: chunk wrote cited rows with Item 7 table and Item 8"
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   log "verify: docker compose config"
   set +e
@@ -352,6 +448,8 @@ fi
     echo "ingest.exit $(cat "${ART}/ingest.exit")"
     echo "ingest.rerun.exit $(cat "${ART}/ingest.rerun.exit")"
   fi
+  echo "chunk.help.exit $(cat "${ART}/chunk.help.exit")"
+  echo "chunk.exit $(cat "${ART}/chunk.exit")"
   if [[ -f "${ART}/compose.config.exit" ]]; then
     echo "compose.config.exit $(cat "${ART}/compose.config.exit")"
   else
