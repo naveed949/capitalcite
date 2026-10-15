@@ -13,3 +13,12 @@ data/raw/edgar/{ticker}/{form}/{period}/{accession}/
 
 `period` is the filing's `reportDate` (fiscal period end). Reruns skip a folder
 when both the document and `metadata.json` are already present.
+
+`capitalcite chunk` reads that tree and writes derived files:
+
+```
+data/parsed/edgar/{ticker}/{form}/{period}/{accession}/
+  document.md     # cleaned text, tables as markdown
+  chunks.jsonl    # one chunk per line, with citation fields
+  stats.json      # count and mean tokens for the selected chunker
+```
