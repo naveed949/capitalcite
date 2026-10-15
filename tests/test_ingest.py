@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import httpx
@@ -291,11 +292,17 @@ def test_cli_ingest_downloads_expected_filings(
 
 
 def test_cli_ingest_help() -> None:
-    result = runner.invoke(app, ["ingest", "--help"])
+    result = runner.invoke(
+        app,
+        ["ingest", "--help"],
+        color=False,
+        env={"COLUMNS": "120", "TERM": "dumb", "NO_COLOR": "1"},
+    )
     assert result.exit_code == 0
-    assert "--tickers" in result.stdout
-    assert "--forms" in result.stdout
-    assert "--years" in result.stdout
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+    assert "--tickers" in text
+    assert "--forms" in text
+    assert "--years" in text
 
 
 def test_cli_unknown_ticker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

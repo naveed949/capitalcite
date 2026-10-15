@@ -10,6 +10,11 @@ import pytest
 os.environ.setdefault("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
+# Rich/Typer help wrapping follows COLUMNS. CI/non-TTY widths truncate
+# "--tickers" to "--ticke…". Pin a wide dumb terminal for all tests.
+os.environ["COLUMNS"] = "120"
+os.environ["TERM"] = "dumb"
+os.environ["NO_COLOR"] = "1"
 
 
 @pytest.fixture(autouse=True)
