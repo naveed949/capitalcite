@@ -43,6 +43,44 @@ def show_version() -> None:
     typer.echo(version("capitalcite"))
 
 
+golden_app = typer.Typer(
+    help="Validate the committed golden Q&A set. No network.",
+    no_args_is_help=True,
+)
+app.add_typer(golden_app, name="golden")
+
+
+@golden_app.command("validate")
+def golden_validate(
+    path: Path = typer.Option(
+        Path("evals/golden"),
+        "--path",
+        help="Directory with v1.jsonl and passages/.",
+    ),
+) -> None:
+    """Check schema, mix targets, and that every quote is in a stored passage."""
+    from capitalcite.golden.store import ValidationError, validate_golden_set
+
+    try:
+        stats = validate_golden_set(path)
+    except ValidationError as exc:
+        typer.echo(f"error: golden validation failed\n{exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(
+        "golden "
+        f"items={stats.items} "
+        f"answerable={stats.answerable} "
+        f"unanswerable_or_trick={stats.unanswerable_or_trick} "
+        f"unanswerable_or_trick_pct={stats.unanswerable_or_trick_pct:.3f} "
+        f"numeric={stats.numeric} "
+        f"numeric_pct={stats.numeric_pct:.3f} "
+        f"handwritten={stats.handwritten} "
+        f"financebench={stats.financebench} "
+        f"finqa={stats.finqa}"
+    )
+
+
 @app.command("ingest")
 def ingest_cmd(
     tickers: str = typer.Option(

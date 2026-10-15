@@ -67,7 +67,7 @@ flowchart LR
 
 ## Evaluation
 
-Golden set: **TBD** questions (target: about 100). It's built from hand-written questions over bank filings, plus a filtered subset of FinanceBench and FinQA for calibration. See `evals/golden/README.md` for how each item was made and checked.
+Golden set: **108** questions (v1). It's built from hand-written questions over bank filings, plus a filtered subset of FinanceBench and FinQA for calibration. See `evals/golden/README.md` for how each item was made and checked.
 
 ### Retrieval (per configuration)
 
