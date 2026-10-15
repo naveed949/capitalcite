@@ -1,0 +1,38 @@
+# Secrets and local env (never commit)
+.env
+.env.local
+*.pem
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+.cache/
+
+# uv
+uv-cache/
+
+# Local data produced by later ingest/index steps
+/data/**
+!/data/README.md
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
