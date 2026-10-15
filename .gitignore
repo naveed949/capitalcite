@@ -30,6 +30,9 @@ uv-cache/
 /data/**
 !/data/README.md
 
+# Verification evidence (scripts/verify.sh writes timestamped runs here)
+/artifacts/
+
 # Editors / OS
 .idea/
 .vscode/

@@ -1,0 +1,163 @@
+---
+name: verify-capitalcite
+description: "Drive capitalcite's FastAPI HTTP API (primary) and `capitalcite` CLI (secondary) the way a user does: launch uvicorn on a free port, curl /health, run `capitalcite version`, optionally check docker compose and Qdrant. Use when proving a change works, after editing API/CLI/compose, or before merging."
+---
+
+# Verify capitalcite
+
+This skill is for the next agent, mid-task, who has never seen the app. It drives the **real** process, not pytest's `TestClient`. Unit tests live in `tests/`; they are not proof.
+
+**Primary surface:** HTTP API — FastAPI, `uv run uvicorn capitalcite.api:app`.
+**Secondary surface:** `capitalcite` CLI (`uv run capitalcite`).
+**Not a surface yet:** there is no web UI. Do not open a browser.
+
+Two instances can run side by side: pick a free loopback port per run and a unique `artifacts/verify/<timestamp>/` directory. Do not attach to an already-running uvicorn you did not start. Do not `docker compose down` a stack you did not start.
+
+## Launch
+
+From the repo root, with no `.env` required (the helper injects a test `SEC_USER_AGENT`):
+
+```bash
+./scripts/verify.sh
+```
+
+That is the default verification launch. It:
+
+1. Runs `uv sync --frozen` so the editable install matches `uv.lock`.
+2. Binds uvicorn to `127.0.0.1` on a free port with `SEC_USER_AGENT='capitalcite-verify you@example.com'`.
+3. Waits until `GET /health` returns 200 (usable process — `/health` is process-local and does not talk to Qdrant or Langfuse).
+4. Drives the mapped features below, writes evidence, then tears down **only** the uvicorn it started.
+
+Ready means: `GET /health` JSON is `{"status":"ok","service":"capitalcite","version":"<installed>"}`. A listening socket alone is not enough — Settings validation can still crash the worker on the first request if `SEC_USER_AGENT` lacks an `@`.
+
+Manual equivalent if you must launch without the helper (still isolate on a free port):
+
+```bash
+uv sync --frozen
+SEC_USER_AGENT='capitalcite-verify you@example.com' \
+  uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "$PORT"
+```
+
+Ready: a log line containing `Uvicorn running on http://127.0.0.1:` plus a 200 from `/health`.
+
+**Teardown:** kill the PID `scripts/verify.sh` recorded (the process it started and its children). Never `pkill uvicorn` / `pkill -f capitalcite`. Proof artifacts stay on disk.
+
+Docker Compose (Qdrant + Langfuse) is **not** required to launch the API. `/health` must pass with compose down. Start compose only when verifying the optional local-stack feature.
+
+## Doctor
+
+Run this first whenever anything looks off. It answers "is this instance worth driving?"
+
+Against an instance **this run started** on `$PORT` with pid `$UVICORN_PID`:
+
+```bash
+curl -sf "http://127.0.0.1:${PORT}/health"
+uv run capitalcite version
+# port must belong to the pid we started, not some other process
+```
+
+Pass when:
+
+- `/health` is HTTP 200 and JSON `status` is `ok`, `service` is `capitalcite`, and `version` is a non-empty string.
+- `uv run capitalcite version` exits 0 and prints `importlib.metadata.version("capitalcite")` (today `0.1.0`; do not hardcode it).
+- The listener on `$PORT` is the uvicorn this run launched.
+
+Fail (do not drive) when: curl hangs or non-200, JSON missing those keys, version command fails, or another process owns the port. `scripts/verify.sh` already performs this doctor pass after launch; re-run the same curls if a later step behaves strangely.
+
+`docker compose config` succeeding is **not** a doctor for the API process. A 200 from Qdrant `/healthz` is **not** a doctor for uvicorn.
+
+## Drive
+
+Harness: `scripts/verify.sh` (HTTP via curl, CLI via `uv run capitalcite`). Prefer the helper; the raw commands below are what it runs and what you use to extend it.
+
+Stable handles (do not invent others):
+
+| Surface | Handle | Proof |
+|---|---|---|
+| HTTP | `GET /health` | 200 + JSON body |
+| CLI | `capitalcite version` | exit 0 + version string |
+| CLI | `capitalcite --help` | exit 0; ingest/index/eval are later issues |
+| Compose (optional) | `docker compose config` | exit 0 |
+| Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
+
+Read the feature map before driving: [features/README.md](features/README.md). Drive from those recipes. A proof that only hits `/health` is incomplete if you claimed to verify the CLI.
+
+Do **not** treat `TestClient(app).get("/health")` or `CliRunner().invoke(...)` as a drive. Those are in-process tests.
+
+## Evidence
+
+Location: `artifacts/verify/<UTC-timestamp>/` at the repo root (gitignored). Cleanup must not delete this directory.
+
+Each run of `scripts/verify.sh` writes at least:
+
+| File | What it proves |
+|---|---|
+| `summary.txt` | Step list, ports, pids, skip reasons |
+| `health.body.json` | Raw `/health` body |
+| `health.exit` | curl exit code |
+| `health.headers` | HTTP status line |
+| `version.out` / `version.exit` | CLI stdout and exit code |
+| `uvicorn.log` | Server stdout/stderr |
+| `uvicorn.pid` | PID that was started (and killed) |
+| `port` | Loopback port used |
+| `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
+| `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |
+
+Proof standards:
+
+- Exercise the real user path: a live uvicorn and the installed `capitalcite` console script.
+- Capture the action and the resulting state: the request (curl) **and** the body, the CLI command **and** stdout/exit.
+- `/health` does not write files or rows. There is no side-effect store to re-read yet. When `/ask`, ingest, or audit-log land, proof must include the stored row/file, not only the HTTP body.
+- No mocks. Do not stub Settings, Qdrant, or EDGAR for a verification run. Optional Qdrant checks talk to a real Qdrant if one is already up; they must not start or mock one.
+- Version proof compares CLI output to `importlib.metadata.version("capitalcite")`, not a hardcoded `0.1.0`.
+
+After cleanup, confirm the timestamped directory still exists and still contains `health.body.json` and `version.out`.
+
+## Cleanup
+
+`scripts/verify.sh` registers an `EXIT` trap that:
+
+- Sends TERM (then KILL if needed) to the uvicorn pid **it started** and that pid's children.
+- Does not kill by process name.
+- Does not run `docker compose down`.
+- Does not delete `artifacts/verify/`.
+
+If a run fails mid-way, run cleanup anyway (the trap should fire). If you launched uvicorn by hand, kill that pid the same way. Stray listeners on ephemeral ports waste the next agent's time.
+
+## Helpers
+
+`scripts/verify.sh` is executable. From repo root:
+
+```bash
+./scripts/verify.sh
+```
+
+No arguments. It prints each step to stdout (paste that into a PR) and mirrors the same facts into `artifacts/verify/<timestamp>/`. Exit 0 means required API + CLI checks passed; optional Docker/Qdrant steps are skipped without failing when Docker is absent or Qdrant is not listening.
+
+Do not reverse-engineer the script: the Drive table and the feature files list the exact commands it wraps.
+
+## Extending this skill (later issues)
+
+When a later issue adds a user-facing endpoint or command, extend verification in the same PR that adds the surface — do not wait for a dedicated "update the skill" issue.
+
+1. Add a feature file under [features/](features/) with the four H2s (`Sub-features`, `How to get to it (user POV)`, `Driving it with curl` or `Driving it with the capitalcite CLI`, `Gotchas`).
+2. Link it from [features/README.md](features/README.md).
+3. Add a step to `scripts/verify.sh` that invokes the new handle, writes `<name>.body` / `<name>.out` and `<name>.exit` into the same timestamped artifacts dir, and fails the script on a bad status/body.
+4. If the new path needs Qdrant, an index, or a golden file, say so as a **precondition** in that feature's Gotchas. Do not weaken the journey so it passes on an empty store — report `verified-unreachable` with the missing precondition instead.
+5. Run `./scripts/verify.sh` and keep the new artifact files.
+6. Periodic honesty pass: `/maintain-verification-skill`.
+
+Expected later handles (do not add empty stubs now):
+
+| Issue | Handle to add |
+|---|---|
+| #2 ingest | `capitalcite ingest --tickers ...` |
+| #3 chunking | whatever CLI/config flag selects a chunker |
+| #4 retrieval | `POST /search` |
+| #6 evals | `capitalcite eval --suite golden` |
+| #7 answers | `POST /ask` |
+| #10 audit | `capitalcite audit verify` |
+
+## Offer the maintenance loop
+
+Use `/maintain-verification-skill` when routes, CLI commands, or compose ports change, or after a few issues land. That pass re-reads the map from source and re-drives every feature.

@@ -13,6 +13,6 @@ def test_sec_user_agent_requires_contact_email(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_sec_user_agent_accepts_name_and_email(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SEC_USER_AGENT", "  Naveed Iqbal naveediqbal949@gmail.com  ")
+    monkeypatch.setenv("SEC_USER_AGENT", "  Naveed Iqbal you@example.com  ")
     settings = Settings()
-    assert settings.sec_user_agent == "Naveed Iqbal naveediqbal949@gmail.com"
+    assert settings.sec_user_agent == "Naveed Iqbal you@example.com"
