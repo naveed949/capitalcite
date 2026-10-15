@@ -59,6 +59,20 @@ async def run_ingest(
             len(filings),
         )
         for filing in filings:
+            try:
+                filing = await client.resolve_primary(filing)
+            except (EdgarAccessError, EdgarUnavailableError):
+                raise
+            except Exception as exc:
+                logger.exception(
+                    "failed to resolve primary %s %s %s %s",
+                    filing.ticker,
+                    filing.form,
+                    filing.period,
+                    filing.accession,
+                )
+                summary.failed.append((filing, str(exc)))
+                continue
             if store.exists(filing):
                 logger.info("skip existing %s %s %s", filing.ticker, filing.form, filing.period)
                 summary.skipped.append(filing)

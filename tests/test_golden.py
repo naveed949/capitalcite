@@ -115,3 +115,120 @@ def test_cli_help_lists_golden() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "golden" in result.stdout
+
+
+def test_handwritten_evidence_has_spans_and_benchmarks_do_not() -> None:
+    golden = load_golden_set(DEFAULT_GOLDEN_DIR)
+    handwritten = 0
+    for item in golden.items:
+        if item.source is ItemSource.HANDWRITTEN:
+            handwritten += 1
+            assert item.in_recall
+            for row in item.evidence:
+                assert row.start is not None
+                assert row.end is not None
+                assert row.end > row.start
+        else:
+            assert not item.in_recall
+            for row in item.evidence:
+                assert row.start is None
+                assert row.end is None
+    assert handwritten >= 80
+
+
+def test_against_raw_aligns_fixture_quote() -> None:
+    from capitalcite.golden.raw import validate_against_raw
+    from capitalcite.parse import CitationSource, parse_path
+    from capitalcite.parse.sections import detect_sections, section_at
+
+    raw = Path(
+        "tests/fixtures/chunking/corpus/raw/edgar/JPM/10-K/"
+        "2024-12-31/0000019617-25-000270/jpm-20241231.htm"
+    )
+    parsed = parse_path(
+        raw,
+        CitationSource(
+            doc_id="0000019617-25-000270",
+            source_url="https://www.sec.gov/Archives/edgar/data/19617/000001961725000270/jpm-20241231.htm",
+        ),
+    )
+    quote = "CET1 ratio"
+    start = parsed.text.find(quote)
+    assert start >= 0
+    section = section_at(detect_sections(parsed.text), start)
+    item = GoldenItem(
+        id="cc-test-raw",
+        question="What capital ratio appears in the fixture table?",
+        answer="CET1 ratio",
+        evidence=[
+            Evidence(
+                doc_id="0000019617-25-000270",
+                section=section,
+                quote=quote,
+                role=EvidenceRole.ANSWER,
+                start=start,
+                end=start + len(quote),
+            )
+        ],
+        type=QuestionType.EXTRACTIVE,
+        answerable=True,
+    )
+    report = validate_against_raw([item], Path("tests/fixtures/chunking/corpus"))
+    assert report.ok
+    assert report.aligned == 1
+    assert report.skipped_benchmark == 0
+
+
+def test_cli_against_raw_requires_ingest_tree(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "golden",
+            "validate",
+            "--path",
+            "evals/golden",
+            "--against-raw",
+            str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "missing ingest tree" in result.output
+
+
+def test_handwritten_missing_span_fails(tmp_path: Path) -> None:
+    items_path = tmp_path / ITEMS_NAME
+    passage_dir = tmp_path / "passages"
+    passage_dir.mkdir()
+    passage_dir.joinpath("0000019617-25-000270.txt").write_text(
+        "# 0000019617-25-000270\n## Item 7\nCET1 capital was $275.5 billion.\n",
+        encoding="utf-8",
+    )
+    item = GoldenItem(
+        id="cc-test-span",
+        question="What was CET1 capital?",
+        answer="$275.5 billion",
+        evidence=[
+            Evidence(
+                doc_id="0000019617-25-000270",
+                section="Item 7",
+                quote="CET1 capital was $275.5 billion.",
+                role=EvidenceRole.ANSWER,
+            )
+        ],
+        type=QuestionType.NUMERIC,
+        answerable=True,
+    )
+    items_path.write_text(item.model_dump_json() + "\n", encoding="utf-8")
+    try:
+        validate_golden_set(tmp_path)
+    except ValidationError as exc:
+        assert "needs start/end" in str(exc)
+    else:
+        raise AssertionError("expected ValidationError")
+
+
+def test_cli_validate_help_lists_against_raw() -> None:
+    result = runner.invoke(app, ["golden", "validate", "--help"])
+    assert result.exit_code == 0
+    assert "--against-raw" in result.stdout
+    assert "--path" in result.stdout

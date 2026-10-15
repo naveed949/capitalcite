@@ -1,9 +1,5 @@
 # 0000070858-26-000157
-## Item 7
-0.0 percent, effective October 1, 2025. At December 31, 2025, the Corporation’s CET1 capital ratio was 11.4 percent under the Standardized approach. As part of the Federal Reserve’s release of 2026 hypothetical stress test scenarios, the Federal Reserve a
-e Non-GAAP Reconciliations on page 86.
-
-Net income was $30.5 billion, or $3.81 per diluted share, in 2025 compared to $27.0 billion, or $3.19 per diluted share, in 2024. The increase in net income was due to higher net interest income and nonint
- the Standardized approach exceeded its minimum CET1 capital ratio requirement of 10.0 percent.
-
-At December 31, 2025, the Corporation was also required to maintain a minimum supplementary leverage ratio (SLR) of 3.0 percent plus a le
+## Item 1A
+CET1 capital ratio was 11.4 percent under the Standardized approach
+Net income was $30.5 billion, or $3.81 per diluted share, in 2025
+10.0 percent, effective October 1, 2025

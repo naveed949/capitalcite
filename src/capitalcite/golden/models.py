@@ -42,6 +42,16 @@ class Evidence(BaseModel):
     section: str = Field(min_length=1)
     quote: str = Field(min_length=1)
     role: EvidenceRole = EvidenceRole.ANSWER
+    start: int | None = Field(default=None, ge=0)
+    end: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def span_pair(self) -> Evidence:
+        if (self.start is None) != (self.end is None):
+            raise ValueError("start and end must both be set or both omitted")
+        if self.start is not None and self.end is not None and self.end < self.start:
+            raise ValueError("evidence end is before start")
+        return self
 
 
 class GoldenItem(BaseModel):
@@ -78,6 +88,10 @@ class GoldenItem(BaseModel):
     @property
     def is_unanswerable_or_trick(self) -> bool:
         return self.type in {QuestionType.UNANSWERABLE, QuestionType.TRICK}
+
+    @property
+    def in_recall(self) -> bool:
+        return self.source is ItemSource.HANDWRITTEN
 
 
 class GoldenStats(BaseModel):

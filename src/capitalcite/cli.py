@@ -57,12 +57,19 @@ def golden_validate(
         "--path",
         help="Directory with v1.jsonl and passages/.",
     ),
+    against_raw: Path | None = typer.Option(
+        None,
+        "--against-raw",
+        help="Ingest root with raw/edgar. Align handwritten quotes to parsed document.md.",
+    ),
 ) -> None:
     """Check schema, mix targets, and that every quote is in a stored passage."""
-    from capitalcite.golden.store import ValidationError, validate_golden_set
+    from capitalcite.golden.raw import validate_against_raw
+    from capitalcite.golden.store import ValidationError, load_golden_set
 
     try:
-        stats = validate_golden_set(path)
+        golden = load_golden_set(path)
+        stats = golden.validate()
     except ValidationError as exc:
         typer.echo(f"error: golden validation failed\n{exc}", err=True)
         raise typer.Exit(code=1) from exc
@@ -78,6 +85,22 @@ def golden_validate(
         f"handwritten={stats.handwritten} "
         f"financebench={stats.financebench} "
         f"finqa={stats.finqa}"
+    )
+    if against_raw is None:
+        return
+    try:
+        report = validate_against_raw(golden.items, against_raw)
+    except ValidationError as exc:
+        typer.echo(f"error: golden --against-raw failed\n{exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if report.errors:
+        typer.echo("error: golden --against-raw failed\n" + "\n".join(report.errors), err=True)
+        raise typer.Exit(code=1)
+    typer.echo(
+        "golden-against-raw "
+        f"aligned={report.aligned} "
+        f"skipped_benchmark={report.skipped_benchmark} "
+        "recall=handwritten-only"
     )
 
 

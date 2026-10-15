@@ -84,6 +84,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025` | exit 0 + stored metadata.json files (live EDGAR; isolate `--output-dir`) |
 | CLI | `capitalcite chunk --input-dir tests/fixtures/chunking/corpus --chunker section` | exit 0 + `chunks.jsonl` with citation fields (isolate `--output-dir`) |
 | CLI | `capitalcite golden validate` | exit 0 + mix counts; no network |
+| CLI | `capitalcite golden validate --against-raw <data_dir>` | exit 0 + `aligned=` / `recall=handwritten-only` after ingest+chunk |
 | Compose (optional) | `docker compose config` | exit 0 |
 | Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
 
@@ -117,8 +118,9 @@ Each run of `scripts/verify.sh` writes at least:
 | `uvicorn.log` | Server stdout/stderr |
 | `uvicorn.pid` | PID that was started (and killed) |
 | `port` | Loopback port used |
-| `golden.help.out` / `golden.help.exit` | `capitalcite golden validate --help` |
+| `golden.help.out` / `golden.help.exit` | `capitalcite golden validate --help` (must list `--against-raw`) |
 | `golden.out` / `golden.exit` | Offline golden-set validation |
+| `golden.against-raw.out` / `golden.against-raw.exit` **or** `golden.against-raw.skipped` | Quotes aligned to parsed `document.md`, or UNVERIFIED if ingest was unreachable |
 | `ingest.help.out` / `ingest.help.exit` | `capitalcite ingest --help` |
 | `ingest.out` / `ingest.exit` / `ingest.files.txt` **or** `ingest.unreachable` | Live EDGAR ingest proof |
 | `chunk.help.out` / `chunk.help.exit` | `capitalcite chunk --help` |

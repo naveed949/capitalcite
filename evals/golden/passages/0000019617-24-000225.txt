@@ -1,79 +1,16 @@
 # 0000019617-24-000225
-## Item 7
-
-
-Selected capital and other metrics
-
-• CET1 capital was $251 billion, and the Standardized and Advanced CET1 ratios were both 15.0%.
-
-• SLR was 6.1%.
-
-• TBVPS grew 18%, ending 2023 at $86.08.
-
-• As of December 31, 2023, the Firm had eligible end-of-period High Quality Liq
-dvanced CET1 ratios were both 15.0%.
-
-• SLR was 6.1%.
-
-• TBVPS grew 18%, ending 2023 at $86.08.
-
-• As of December 31, 2023, the Firm had eligible end-of-period High Quality Liquid Assets (“HQLA
-os were both 15.0%.
-
-• SLR was 6.1%.
-
-• TBVPS grew 18%, ending 2023 at $86.08.
-
-• As of December 31, 2023, the Firm had eligible end-of-period High Quality Liquid Assets (“HQLA”) of approximately $798 billion and unenc
-23, the Firm had eligible end-of-period High Quality Liquid Assets (“HQLA”) of approximately $798 billion and unencumbered marketable securities with a fair value of approximately $649 billion, resulting in approximately $1.4 trillion of liquidi
-with the First Republic acquisition.
-
-• The provision for credit losses was $9.3 billion, reflecting $6.2 billion of net charge-offs and a net addition to the allowance for credit losses of $3.1 billion. Net charge-offs increase
-ct until September 30, 2024. The Firm’s Standardized CET1 capital ratio requirement, including regulatory buffers, was 11.4% as of December 31, 2023.
-
-Refer to Capital actions on page 99 for information on actions taken by the Firm’s Board of Directors.
-
-
-
-
-
-
-| | 
-SCB”) requirement for the coming year.
-
-The Firm's current SCB requirement is 2.9%, and will remain in effect until September 30, 2024. The Firm’s Standardized CET1 capital ratio requirement, including regulatory buffers, 
-| 17 | % | | 14 | % | | 19 | % | | |
-
-|
-Return on tangible common equity (“ROTCE”) (a)
-| | 21 | | | 18 | | | 23 | | | |
-
-|
-Return on assets (“ROA”)
-| | 1.30 | | | 0.98 | | | 1.30 | | | |
-
-| Overhead ratio | | 55 | | | 59 | | |
-## Item 8
-060 | | | 8,490 | | | 11,228 | | | |
-
-| Net income | | $ | 49,552 | | | $ | 37,676 | | | $ | 48,334 | | | |
-
-| Earnings per share data | | | | | | | | |
-
-| Net income: Basic | | $ | 16.25 | | | $ | 12.10 | | | $ | 15.39 | 
- | $ | 12.10 | | | $ | 15.39 | | | |
-
-| Diluted | | 16.23 | | | 12.09 | | | 15.36 | | | |
-
-| Average shares: Basic | | 2,938.6 | | | 2,965.8 | | | 3,021.5 | | | |
-
-| Diluted | | 2,943.1 | | | 2,970.0 | | | 3,0
- | | | 2,934.2 | | | 2,944.1 | | | |
-
-| Book value per share | | 104.45 | | | 90.29 | | | 88.07 | | | |
-
-|
-Tangible book value per share (“TBVPS”) (a)
-| | 86.08 | | | 73.12 | | | 71.53 | | | |
-
-| Cash dividends 
+## Item 15
+the Standardized and Advanced CET1 ratios were both 15.0%
+CET1 capital
+was $251 billion
+SLR
+ was 6.1%
+ending 2023 at $86.08
+approximately $798 billion
+Net income | | $ | 49,552
+Diluted | | 16.23
+$9.3 billion, reflecting $6.2 billion of net charge-offs
+Book value per share | | 104.45
+was 11.4% as of December 31, 2023
+current SCB requirement is 2.9%
+tangible common equity (“ROTCE”) (a) | | 21

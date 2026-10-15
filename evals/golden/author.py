@@ -1,8 +1,9 @@
-"""Build v1.jsonl and passages/ from excerpts the author read.
+"""Historical excerpt-based generator. Do not re-run over committed v1.
 
-Run from the repo root after the 10-K excerpts and benchmark files exist
-under /tmp/capitalcite-corpus (development only). CI does not run this.
-The committed JSONL and passages are the source of truth.
+v1.jsonl was rebuilt from parsed document.md after ingest started
+resolving Wells Fargo cover-page primaries to the real 10-K HTML.
+CI does not run this file. The committed JSONL and passages are the
+source of truth.
 """
 
 from __future__ import annotations

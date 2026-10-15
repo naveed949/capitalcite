@@ -42,6 +42,16 @@ def replay_handler(request: httpx.Request) -> httpx.Response:
             content=fixture.read_bytes(),
             headers={"Content-Type": "application/json"},
         )
+    if path.startswith("/Archives/edgar/data/") and path.endswith("/index.json"):
+        accession_nodash = path.rstrip("/").split("/")[-2]
+        fixture = FIXTURES / "indexes" / f"{accession_nodash}.json"
+        if not fixture.is_file():
+            return httpx.Response(404, text=f"missing index {accession_nodash}")
+        return httpx.Response(
+            200,
+            content=fixture.read_bytes(),
+            headers={"Content-Type": "application/json"},
+        )
     if path.startswith("/Archives/edgar/data/"):
         return httpx.Response(
             200,

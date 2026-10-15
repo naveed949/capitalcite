@@ -1,8 +1,4 @@
 # 0000070858-24-000122
-## Item 7
-At December 31, 2023, the Corporation’s CET1 capital ratio of 11.8 percent under the Standardized approach exceeded its CET1 capital ratio requirement as well as the new minimum requirement in place as of January 1, 2024.
-
-The Corporation is also required
-e Non-GAAP Reconciliations on page 85.
-
-Net income was $26.5 billion, or $3.08 per diluted share in 2023 compared to $27.5 billion, or $3.19 per diluted share in 2022. The decrease in net income was primarily due to higher noninterest expense a
+## Item 1A
+CET1 capital ratio of 11.8 percent under the Standardized approach
+Net income was $26.5 billion, or $3.08 per diluted share in 2023

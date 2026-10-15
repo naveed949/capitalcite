@@ -11,6 +11,7 @@ from typing import Self
 
 import httpx
 
+from capitalcite.ingest.documents import IndexItem, choose_main_document, parse_filing_index
 from capitalcite.ingest.models import Company, Filing
 from capitalcite.ingest.rate_limit import RateLimiter
 
@@ -62,6 +63,11 @@ def archive_url(cik: str, accession: str, primary_document: str) -> str:
         accession_nodash=accession.replace("-", ""),
         document=document,
     )
+
+
+def filing_index_url(cik: str, accession: str) -> str:
+    """Build the EDGAR archives URL for a filing's index.json."""
+    return archive_url(cik, accession, "index.json")
 
 
 class EdgarClient:
@@ -189,6 +195,42 @@ class EdgarClient:
         """Download the primary document bytes for a filing."""
         response = await self._get(filing.url)
         return response.content
+
+    async def list_filing_documents(self, filing: Filing) -> list[IndexItem]:
+        """Read index.json for one filing. Missing or malformed indexes are empty."""
+        url = filing_index_url(filing.cik, filing.accession)
+        try:
+            payload = await self._get_json(url)
+        except EdgarAccessError:
+            raise
+        except EdgarUnavailableError:
+            raise
+        except EdgarError:
+            logger.info("no filing index for %s %s", filing.ticker, filing.accession)
+            return []
+        return parse_filing_index(payload)
+
+    async def resolve_primary(self, filing: Filing) -> Filing:
+        """Replace a small cover-page primary with the largest main 10-K HTML."""
+        items = await self.list_filing_documents(filing)
+        if not items:
+            return filing
+        chosen = choose_main_document(filing.primary_document, items)
+        if chosen == filing.primary_document:
+            return filing
+        logger.info(
+            "primary %s is a shell; using %s for %s %s",
+            filing.primary_document,
+            chosen,
+            filing.ticker,
+            filing.accession,
+        )
+        return filing.model_copy(
+            update={
+                "primary_document": chosen,
+                "url": archive_url(filing.cik, filing.accession, chosen),
+            }
+        )
 
     def _filings_from_columnar(
         self,

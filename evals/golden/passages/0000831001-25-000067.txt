@@ -1,9 +1,5 @@
 # 0000831001-25-000067
-## Item 7
-mon Equity Tier 1 Capital Ratio
-
-Citi’s Common Equity Tier 1 (CET1) Capital ratio under the Basel III Standardized Approach was 13.6% as of December 31, 2024, relative to a required regulatory CET1 Capital ratio of 12.1% as of such date under the Standardized Approach. Thi
- as of December 31, 2024, relative to a required regulatory CET1 Capital ratio of 12.1% as of such date under the Standardized Approach. This compares to a CET1 Capital ratio of 13.7% as of September 30, 2024 and 13.4% as of De
-fer risk (see “Cost of Credit” below).
-
-Net income increased 37% versus the prior year, driven by the higher revenues, lower expenses and a lower effective tax rate, partially offset by higher cost of credit. Citigroup’s effec
+## body
+CET1 Capital ratio was 13.6% as of December 31, 2024
+12.1% under the Standardized Approach
+37% versus the prior year, driven by the higher revenues

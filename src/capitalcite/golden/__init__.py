@@ -8,6 +8,7 @@ from capitalcite.golden.models import (
     ItemSource,
     QuestionType,
 )
+from capitalcite.golden.raw import validate_against_raw
 from capitalcite.golden.store import (
     DEFAULT_GOLDEN_DIR,
     GoldenSet,
@@ -27,5 +28,6 @@ __all__ = [
     "QuestionType",
     "ValidationError",
     "load_golden_set",
+    "validate_against_raw",
     "validate_golden_set",
 ]

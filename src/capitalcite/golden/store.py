@@ -89,6 +89,11 @@ def ground_items(items: list[GoldenItem], passages: dict[str, str]) -> list[str]
                 errors.append(
                     f"{item.id}: section heading {row.section!r} missing from {row.doc_id}"
                 )
+            if item.source is ItemSource.HANDWRITTEN:
+                if row.start is None or row.end is None:
+                    errors.append(f"{item.id}: handwritten evidence needs start/end ({row.doc_id})")
+            elif row.start is not None or row.end is not None:
+                errors.append(f"{item.id}: benchmark evidence must omit start/end ({row.doc_id})")
     return errors
 
 

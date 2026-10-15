@@ -1,61 +1,15 @@
 # 0000019617-25-000270
-## Item 7
-
-
-Selected capital and other metrics
-
-• CET1 capital was $275.5 billion, and the Standardized and Advanced CET1 ratios were 15.7% and 15.8%, respectively.
-
-• SLR was 6.1%.
-
-• TBVPS grew 13.0%, ending 2024 at $97.30.
-
-• As of December 31, 2024, the Firm had eligible end-of-period
- were 15.7% and 15.8%, respectively.
-
-• SLR was 6.1%.
-
-• TBVPS grew 13.0%, ending 2024 at $97.30.
-
-• As of December 31, 2024, the Firm had eligible end-of-period High Quality Liquid Assets (“HQ
-5.8%, respectively.
-
-• SLR was 6.1%.
-
-• TBVPS grew 13.0%, ending 2024 at $97.30.
-
-• As of December 31, 2024, the Firm had eligible end-of-period High Quality Liquid Assets (“HQLA”) of approximately $834 billion and unenc
-24, the Firm had eligible end-of-period High Quality Liquid Assets (“HQLA”) of approximately $834 billion and unencumbered marketable securities with a fair value of approximately $594 billion, resulting in approximately $1.4 trillion of liquidi
-gnized in the first quarter of 2024.
-
-• The provision for credit losses was $10.7 billion, reflecting $8.6 billion of net charge-offs and a net addition to the allowance for credit losses of $2.0 billion. Net charge-offs increase
-ct until September 30, 2025. The Firm’s Standardized CET1 capital ratio requirement, including regulatory buffers, was 12.3% as of December 31, 2024.
-
-Refer to Capital actions on page 105 for information on actions taken by the Firm’s Board of Directors.
-
-Internal
-SCB”) requirement for the coming year.
-
-The Firm's current SCB requirement is 3.3% and will remain in effect until September 30, 2025. The Firm’s Standardized CET1 capital ratio requirement, including regulatory buffers, w
-## Item 8
-610 | | | 12,060 | | | 8,490 | | | |
-
-| Net income | | $ | 58,471 | | | $ | 49,552 | | | $ | 37,676 | | | |
-
-| Earnings per share data | | | | | | | | |
-
-| Net income: Basic | | $ | 19.79 | | | $ | 16.25 | | | $ | 12.10 | 
- | $ | 16.25 | | | $ | 12.10 | | | |
-
-| Diluted | | 19.75 | | | 16.23 | | | 12.09 | | | |
-
-| Average shares: Basic | | 2,873.9 | | | 2,938.6 | | | 2,965.8 | | | |
-
-| Diluted | | 2,879.0 | | | 2,943.1 | | | 2,9
-7.30 | | | 86.08 | | | 73.12 | | | |
-
-| Cash dividends declared per share | | 4.80 | | | 4.10 | | | 4.00 | | | |
-
-| Selected ratios and metrics | | | | | | | | |
-
-| Return on common equity (“ROE”) | | 18 | % | | 17 | % | |
+## Item 15
+the Standardized and Advanced CET1 ratios were 15.7% and 15.8%
+CET1 capital
+was $275.5 billion
+SLR
+ was 6.1%
+ending 2024 at $97.30
+approximately $834 billion
+Net income | | $ | 58,471
+Diluted | | 19.75
+10.7 billion, reflecting $8.6 billion of net charge-offs
+Cash dividends declared per share | | 4.80
+was 12.3% as of December 31, 2024
+current SCB requirement is 3.3%

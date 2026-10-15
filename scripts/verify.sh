@@ -177,8 +177,9 @@ if [[ "${golden_help_rc}" -ne 0 ]]; then
   cat "${ART}/golden.help.err" >&2 || true
   exit 1
 fi
-if ! grep -q -- "--path" "${ART}/golden.help.out"; then
-  log "verify: golden validate --help missing --path"
+if ! grep -q -- "--path" "${ART}/golden.help.out" \
+  || ! grep -q -- "--against-raw" "${ART}/golden.help.out"; then
+  log "verify: golden validate --help missing --path or --against-raw"
   cat "${ART}/golden.help.out" >&2 || true
   exit 1
 fi
@@ -280,6 +281,10 @@ for path in sidecars:
     doc = path.with_name(str(meta.get("primary_document", "")))
     if not doc.is_file() or doc.stat().st_size == 0:
         errors.append(f"{path}: missing primary document {doc.name}")
+    if ticker == "WFC" and doc.stat().st_size < 5_000_000:
+        errors.append(f"{path}: WFC primary {doc.name} is {doc.stat().st_size} bytes (shell?)")
+    if ticker == "WFC" and period == "2025-12-31" and doc.name.endswith("_d2.htm"):
+        errors.append(f"{path}: WFC FY2025 still using cover-page {doc.name}")
     seen.add((ticker, period))
 listing.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 missing = sorted(required - seen)
@@ -311,6 +316,47 @@ PY
     exit 1
   fi
   log "verify: ingest rerun skipped=12"
+
+  log "verify: capitalcite chunk --input-dir ${INGEST_DIR} --chunker section"
+  set +e
+  uv run capitalcite chunk --input-dir "${INGEST_DIR}" --output-dir "${INGEST_DIR}" --chunker section \
+    >"${ART}/golden.chunk.out" 2>"${ART}/golden.chunk.err"
+  golden_chunk_rc=$?
+  set -e
+  write golden.chunk.exit "${golden_chunk_rc}"
+  if [[ "${golden_chunk_rc}" -ne 0 ]]; then
+    log "verify: chunk of ingested corpus failed"
+    cat "${ART}/golden.chunk.out" >&2 || true
+    cat "${ART}/golden.chunk.err" >&2 || true
+    exit 1
+  fi
+
+  log "verify: uv run capitalcite golden validate --path evals/golden --against-raw ${INGEST_DIR}"
+  set +e
+  uv run capitalcite golden validate --path evals/golden --against-raw "${INGEST_DIR}" \
+    >"${ART}/golden.against-raw.out" 2>"${ART}/golden.against-raw.err"
+  against_rc=$?
+  set -e
+  write golden.against-raw.exit "${against_rc}"
+  if [[ "${against_rc}" -ne 0 ]]; then
+    log "verify: golden validate --against-raw failed"
+    cat "${ART}/golden.against-raw.out" >&2 || true
+    cat "${ART}/golden.against-raw.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -q "aligned=" "${ART}/golden.against-raw.out" \
+    || ! grep -q "recall=handwritten-only" "${ART}/golden.against-raw.out"; then
+    log "verify: golden --against-raw stdout missing alignment counts"
+    cat "${ART}/golden.against-raw.out" >&2 || true
+    exit 1
+  fi
+  log "verify: golden validate --against-raw ok"
+  cat "${ART}/golden.against-raw.out"
+fi
+
+if [[ -f "${ART}/ingest.unreachable" && ! -f "${ART}/golden.against-raw.exit" ]]; then
+  write golden.against-raw.skipped "live ingest unreachable; --against-raw needs the corpus"
+  log "verify: golden --against-raw UNVERIFIED (no live corpus)"
 fi
 
 log "verify: capitalcite chunk --help"
@@ -565,6 +611,11 @@ fi
   else
     echo "ingest.exit $(cat "${ART}/ingest.exit")"
     echo "ingest.rerun.exit $(cat "${ART}/ingest.rerun.exit")"
+  fi
+  if [[ -f "${ART}/golden.against-raw.exit" ]]; then
+    echo "golden.against-raw.exit $(cat "${ART}/golden.against-raw.exit")"
+  elif [[ -f "${ART}/golden.against-raw.skipped" ]]; then
+    echo "golden-against-raw skipped ($(cat "${ART}/golden.against-raw.skipped"))"
   fi
   echo "chunk.help.exit $(cat "${ART}/chunk.help.exit")"
   echo "chunk.exit $(cat "${ART}/chunk.exit")"

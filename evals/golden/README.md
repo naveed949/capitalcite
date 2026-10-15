@@ -9,23 +9,28 @@ retrieval and answers against it. Nothing here is a model output.
 |---|---|
 | `v1.jsonl` | One item per line. Source of truth for questions and gold answers. |
 | `passages/*.txt` | Excerpts the author actually read. Every `evidence.quote` is a substring of the passage for that `doc_id`. |
-| `author.py` | Regenerates the JSONL and passages from local 10-K excerpts. CI does not run it. |
+| `author.py` | Original excerpt-based generator. Do not re-run it over v1: the committed JSONL was rebuilt from parsed `document.md` after the WFC primary-document fix. CI does not run it. |
 
 ## Record shape
 
 Each JSONL row is:
 
-`id, question, answer, evidence[{doc_id, section, quote, role}], type, answerable, source`
+`id, question, answer, evidence[{doc_id, section, quote, role, start, end}], type, answerable, source`
 
 `id`, `question`, `answer`, `evidence`, `type`, and `answerable` are the
-issue #5 contract. `role` and `source` are extras for later evals.
+issue #5 contract. `role`, `source`, and `start`/`end` are extras for
+later evals.
 
 - `doc_id` is the EDGAR accession for handwritten items over the ingested
   JPM / BAC / WFC / C 10-Ks. FinanceBench and FinQA items use the
   benchmark document name (those filings are not in the v1 ingest set).
-- `section` is a 10-K Item (`Item 7`, `Item 8`, `body`) or a benchmark
+- `section` is what the #22 section detector reports at the quote offset
+  (`Item 7`, `Item 8`, `Item 15`, `Item 1A`, `body`), or a benchmark
   page label.
 - `quote` is copied from a passage the author read. It is never invented.
+- `start` / `end` are half-open offsets in that filing's parsed
+  `document.md` (the same coordinates as `Chunk.start` / `Chunk.end`).
+  Handwritten rows have them. FinanceBench and FinQA rows omit them.
 - `role=answer` marks the span the gold answer is taken from.
   `role=relevant` marks a passage a retriever should still return
   (the other year in a comparison, a restated prior-year table).
@@ -34,57 +39,69 @@ issue #5 contract. `role` and `source` are extras for later evals.
 - `answerable` is false for refusals. Those items still have an explicit
   refusal sentence in `answer`.
 - `source` is `handwritten`, `financebench`, or `finqa`.
+- `GoldenItem.in_recall` is true only for handwritten items.
 
-Retrieval metrics (#6) use `evidence` as the relevant-passage set.
-Answer correctness uses `answer`. Do not treat a relevant-only quote as
-the answer span.
+Retrieval metrics (#6) use handwritten `evidence` as the relevant-passage
+set. FinanceBench and FinQA are excluded from recall@k; they exist for
+answer-scoring calibration only. Answer correctness uses `answer` for
+every source. Do not treat a relevant-only quote as the answer span.
 
 ## How items were made
 
-On 2026-10-15 the author ran `capitalcite ingest --tickers JPM,BAC,WFC,C
---forms 10-K --years 2023-2025` and read the extracted text of those
-twelve primary documents, plus SEC `companyfacts` for the four CIKs.
+The author ran `capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K
+--years 2023-2025`. Ingest reads each filing's `index.json` and, when
+SEC's declared `primaryDocument` is a small cover/exhibit shell, stores
+the largest eligible main 10-K `.htm` instead. That is required for
+Wells Fargo: FY2025 declares `wfc-20251231_d2.htm` (~360KB); the real
+report is `wfc-20251231.htm` (~11.6MB) and states Standardized CET1
+10.61%, LCR 119%, and net income 21,338. FY2023/FY2024 invert the names
+(the real files are `*_d2.htm`).
 
-Handwritten questions were written from those passages. Numeric answers
-were checked against the same 10-K table or sentence and, where the
-concept exists in `companyfacts`, against the FY 10-K fact for that
-accession.
-
-Wells Fargo's ingested primary HTML is an iXBRL shell (FY2025 is a cover
-page). Those files do not state CET1 or net income. The set records that
-gap as unanswerable items instead of filling numbers from `companyfacts`
-without a quote.
+Handwritten quotes and spans were taken from the parsed `document.md`
+that `capitalcite chunk` writes for those twelve filings, then checked
+with `capitalcite golden validate --against-raw`. Numeric answers were
+checked against the same sentence or table.
 
 FinanceBench items are a filtered subset of the public
 `financebench_open_source.jsonl` (JPMorgan, American Express, 3M, Boeing).
 FinQA items are a filtered subset of `ibm-research/finqa` train
 (Citi, Goldman, JPM, Morgan Stanley). Evidence text was read from those
-datasets and stored as passages.
+datasets and stored as passages. They are not aligned to the ingested
+corpus and are not in recall@k.
 
 ## Mix (v1)
 
 Validated by `capitalcite golden validate`:
 
-- 108 items
+```
+golden items=112 answerable=94 unanswerable_or_trick=18 unanswerable_or_trick_pct=0.161 numeric=85 numeric_pct=0.759 handwritten=89 financebench=13 finqa=10
+```
+
 - at least 15% unanswerable or trick
 - at least 30% numeric (`numeric` or `comparison`)
 - handwritten majority over the twelve ingested 10-Ks
-- FinanceBench and FinQA calibration tails
+- FinanceBench and FinQA calibration tails (answer-scoring only)
 
 ## Check
 
 ```bash
 uv run capitalcite golden validate
+uv run capitalcite golden validate --against-raw "$DATA_DIR"
 ```
 
-No network. The command fails if a quote is missing from its passage, if
-an id repeats, or if the mix targets are missed.
+The first command is offline. It fails if a quote is missing from its
+passage, if a handwritten row lacks `start`/`end`, if an id repeats, or
+if the mix targets are missed.
+
+The second command needs a local ingest tree. It matches each
+handwritten quote against that filing's parsed `document.md` and checks
+the stored spans. FinanceBench and FinQA are skipped.
 
 ## Leakage and size
 
 About 100 items is large enough to cover four banks, three fiscal years,
-numeric vs extractive vs refusal, and a published-benchmark tail. It is
-small enough that every quote can be re-read.
+numeric vs extractive vs refusal vs multi-hop, and a published-benchmark
+tail. It is small enough that every quote can be re-read.
 
 Questions do not paste the gold number. Comparison items label both
 filings as evidence so a retriever is not scored on one year only.
@@ -93,4 +110,5 @@ risk if a model saw FinanceBench or FinQA in training. They are for
 harness calibration, not for claiming a new SOTA.
 
 Full 10-K HTML is not committed (tens of megabytes, gitignored under
-`data/`). The passages are short excerpts.
+`data/`). The passages are short excerpts. Spans point back into a
+local parsed document.
