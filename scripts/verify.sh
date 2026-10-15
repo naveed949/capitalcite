@@ -166,6 +166,47 @@ if [[ "${ACTUAL_VERSION}" != "${EXPECTED_VERSION}" ]]; then
 fi
 log "verify: capitalcite version ${ACTUAL_VERSION}"
 
+log "verify: capitalcite golden validate --help"
+set +e
+uv run capitalcite golden validate --help >"${ART}/golden.help.out" 2>"${ART}/golden.help.err"
+golden_help_rc=$?
+set -e
+write golden.help.exit "${golden_help_rc}"
+if [[ "${golden_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite golden validate --help failed"
+  cat "${ART}/golden.help.err" >&2 || true
+  exit 1
+fi
+if ! grep -q -- "--path" "${ART}/golden.help.out"; then
+  log "verify: golden validate --help missing --path"
+  cat "${ART}/golden.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite golden validate --help ok"
+
+log "verify: uv run capitalcite golden validate --path evals/golden"
+set +e
+uv run capitalcite golden validate --path evals/golden \
+  >"${ART}/golden.out" 2>"${ART}/golden.err"
+golden_rc=$?
+set -e
+write golden.exit "${golden_rc}"
+if [[ "${golden_rc}" -ne 0 ]]; then
+  log "verify: capitalcite golden validate failed"
+  cat "${ART}/golden.out" >&2 || true
+  cat "${ART}/golden.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "items=" "${ART}/golden.out" \
+  || ! grep -q "unanswerable_or_trick_pct=" "${ART}/golden.out" \
+  || ! grep -q "numeric_pct=" "${ART}/golden.out"; then
+  log "verify: golden validate stdout missing mix counts"
+  cat "${ART}/golden.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite golden validate ok"
+cat "${ART}/golden.out"
+
 log "verify: capitalcite ingest --help"
 set +e
 uv run capitalcite ingest --help >"${ART}/ingest.help.out" 2>"${ART}/ingest.help.err"
@@ -516,6 +557,8 @@ fi
   echo "health.exit $(cat "${ART}/health.exit")"
   echo "version ${ACTUAL_VERSION}"
   echo "version.exit $(cat "${ART}/version.exit")"
+  echo "golden.help.exit $(cat "${ART}/golden.help.exit")"
+  echo "golden.exit $(cat "${ART}/golden.exit")"
   echo "ingest.help.exit $(cat "${ART}/ingest.help.exit")"
   if [[ -f "${ART}/ingest.unreachable" ]]; then
     echo "ingest unreachable ($(cat "${ART}/ingest.unreachable"))"

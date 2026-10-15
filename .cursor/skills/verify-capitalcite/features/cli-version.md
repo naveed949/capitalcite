@@ -30,5 +30,5 @@ Preconditions:
 
 - Invoke via `uv run capitalcite` so the editable install from `uv.lock` is used. A globally installed older `capitalcite` is the wrong binary.
 - `CliRunner().invoke(app, ["version"])` in pytest is not this feature.
-- Index, eval, and audit commands are not shipped yet. A missing `index` subcommand is expected. Drive ingest from [ingest](./ingest.md), not from this file.
+- Index, eval, and audit commands are not shipped yet. A missing `index` subcommand is expected. Drive ingest from [ingest](./ingest.md) and the golden set from [golden](./golden.md).
 - Typer puts a trailing newline on `version` output. Compare stripped strings.
