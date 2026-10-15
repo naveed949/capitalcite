@@ -132,6 +132,8 @@ Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langf
 
 Design choices for this scaffold: [docs/decisions/0001-scaffold.md](docs/decisions/0001-scaffold.md).
 
+The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
+
 ## Data sources
 
 Everything below is public. Each link was checked on 2026-10-16.
@@ -161,6 +163,7 @@ Everything below is public. Each link was checked on 2026-10-16.
 ```
 src/capitalcite/     async FastAPI app, settings, CLI, EDGAR ingest
 tests/               pytest (recorded EDGAR fixtures; no live network)
+docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records
 evals/               golden set and results (issues #5 / #6)
 data/                raw filings from `capitalcite ingest` (gitignored)
