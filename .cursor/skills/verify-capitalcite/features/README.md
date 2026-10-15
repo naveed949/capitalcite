@@ -48,6 +48,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Health check](./health.md) covers `GET /health` on a live uvicorn process.
 - [CLI version](./cli-version.md) covers `capitalcite version` and the `--help` entry point.
 - [EDGAR ingest](./ingest.md) covers `capitalcite ingest --tickers … --forms … --years …`.
+- [Parse and chunk](./chunk.md) covers `capitalcite chunk --chunker section` on the checked-in fixture tree.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
 
 ## Extending the map

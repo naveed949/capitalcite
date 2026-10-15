@@ -82,6 +82,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite version` | exit 0 + version string |
 | CLI | `capitalcite --help` | exit 0; lists `version` and `ingest` |
 | CLI | `capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025` | exit 0 + stored metadata.json files (live EDGAR; isolate `--output-dir`) |
+| CLI | `capitalcite chunk --input-dir tests/fixtures/chunking/corpus --chunker section` | exit 0 + `chunks.jsonl` with citation fields (isolate `--output-dir`) |
 | Compose (optional) | `docker compose config` | exit 0 |
 | Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
 
@@ -117,6 +118,8 @@ Each run of `scripts/verify.sh` writes at least:
 | `port` | Loopback port used |
 | `ingest.help.out` / `ingest.help.exit` | `capitalcite ingest --help` |
 | `ingest.out` / `ingest.exit` / `ingest.files.txt` **or** `ingest.unreachable` | Live EDGAR ingest proof |
+| `chunk.help.out` / `chunk.help.exit` | `capitalcite chunk --help` |
+| `chunk.out` / `chunk.exit` / `chunk.files.txt` | Fixture chunk proof |
 | `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
 | `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |
 
@@ -168,7 +171,7 @@ Expected later handles (do not add empty stubs now):
 
 | Issue | Handle to add |
 |---|---|
-| #3 chunking | whatever CLI/config flag selects a chunker |
+| #3 chunking | `capitalcite chunk --chunker section` (landed) |
 | #4 retrieval | `POST /search` |
 | #6 evals | `capitalcite eval --suite golden` |
 | #7 answers | `POST /ask` |

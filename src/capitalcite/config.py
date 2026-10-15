@@ -9,8 +9,10 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from capitalcite.chunking.models import ChunkerName
 
 
 class Settings(BaseSettings):
@@ -43,6 +45,13 @@ class Settings(BaseSettings):
         description="Root for raw EDGAR filings (gitignored contents).",
     )
 
+    chunker: ChunkerName = Field(
+        default=ChunkerName.SECTION,
+        description="Chunking strategy: fixed, recursive, or section.",
+    )
+    chunk_size: int = Field(default=512, ge=1, description="Target chunk size in tokens.")
+    chunk_overlap: int = Field(default=64, ge=0, description="Overlap in tokens.")
+
     openai_api_key: str | None = None
 
     qdrant_url: str = "http://localhost:6333"
@@ -63,6 +72,12 @@ class Settings(BaseSettings):
                 "e.g. 'Your Name you@example.com'."
             )
         return stripped
+
+    @model_validator(mode="after")
+    def overlap_smaller_than_size(self) -> Settings:
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
+        return self
 
 
 @lru_cache(maxsize=1)

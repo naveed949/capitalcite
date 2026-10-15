@@ -7,6 +7,7 @@ import json
 import re
 from pathlib import Path
 
+from capitalcite.atomic import atomic_write_bytes, atomic_write_text
 from capitalcite.ingest.models import Filing, FilingMetadata
 
 _ACCESSION_RE = re.compile(r"^\d{10}-\d{2}-\d{6}$")
@@ -39,16 +40,15 @@ class FilingStore:
     def write(self, filing: Filing, body: bytes) -> FilingMetadata:
         directory = self.filing_dir(filing)
         directory.mkdir(parents=True, exist_ok=True)
-        document_path = self.document_path(filing)
-        document_path.write_bytes(body)
+        atomic_write_bytes(self.document_path(filing), body)
         metadata = FilingMetadata(
             **filing.model_dump(),
             sha256=hashlib.sha256(body).hexdigest(),
             bytes=len(body),
         )
-        self.metadata_path(filing).write_text(
+        atomic_write_text(
+            self.metadata_path(filing),
             json.dumps(metadata.model_dump(), indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
         )
         return metadata
 
@@ -56,6 +56,22 @@ class FilingStore:
         return FilingMetadata.model_validate_json(
             self.metadata_path(filing).read_text(encoding="utf-8")
         )
+
+    def parsed_dir(self, filing: Filing) -> Path:
+        ticker = _safe_ticker(filing.ticker)
+        form = _safe_form(filing.form)
+        period = _safe_period(filing.period)
+        accession = _safe_accession(filing.accession)
+        return self.root / "parsed" / "edgar" / ticker / form / period / accession
+
+    def document_md_path(self, filing: Filing) -> Path:
+        return self.parsed_dir(filing) / "document.md"
+
+    def chunks_path(self, filing: Filing) -> Path:
+        return self.parsed_dir(filing) / "chunks.jsonl"
+
+    def chunk_stats_path(self, filing: Filing) -> Path:
+        return self.parsed_dir(filing) / "stats.json"
 
 
 def _safe_ticker(ticker: str) -> str:

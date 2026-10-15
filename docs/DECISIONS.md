@@ -14,3 +14,4 @@ This file is an append-only index of every architecture decision record in [`doc
 | --- | --- | --- | --- | --- |
 | 0001 | 2026-10-15 | Project scaffold | Use uv, async FastAPI, Qdrant, and a Langfuse compose stack as the rails. RAG lands later. | [0001-scaffold.md](decisions/0001-scaffold.md) |
 | 0002 | 2026-10-16 | EDGAR ingester | Talk to EDGAR with httpx. Filter on `reportDate`. Fetch extra submissions files. Store sidecar metadata next to each document. | [0002-edgar-ingester.md](decisions/0002-edgar-ingester.md) |
+| 0003 | 2026-10-16 | Parse and three chunkers | Parse HTML/PDF to cleaned text. Keep tables as markdown. Chunk with fixed, recursive, or section-aware Item splits. Each chunk carries `doc_id`, `section`, `page`/`offset`, and `source_url`. | [0003-parse-and-chunk.md](decisions/0003-parse-and-chunk.md) |
