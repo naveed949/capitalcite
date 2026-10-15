@@ -19,7 +19,7 @@ flowchart LR
         A[SEC EDGAR 10-K/10-Q<br/>FFIEC / FDIC / Fed PDFs] --> B[Parser<br/>PDF/HTML → text + tables]
         B --> C[Chunkers<br/>fixed / recursive / section-aware]
         C --> D[Embedders<br/>model A / model B]
-        D --> E[(Qdrant / pgvector<br/>dense index)]
+        D --> E[(Qdrant<br/>dense index)]
         C --> F[(BM25 index)]
     end
 
@@ -106,19 +106,27 @@ Golden set: **TBD** questions (target: about 100). It's built from hand-written 
 
 ## Quickstart
 
-> Commands reflect the intended layout and will be finalized as milestones land.
-
 ```bash
 git clone https://github.com/naveed949/capitalcite && cd capitalcite
-cp .env.example .env          # LLM key, Langfuse keys, SEC_USER_AGENT="Your Name you@example.com"
-docker compose up -d          # qdrant (or postgres+pgvector), langfuse
-uv sync                       # Python 3.12, async stack
+cp .env.example .env          # set SEC_USER_AGENT="Your Name you@example.com"
+docker compose up -d          # Qdrant :6333, Langfuse :3000
+uv sync                       # Python 3.12
+uv run uvicorn capitalcite.api:app --reload
+curl -s localhost:8000/health
+```
+
+`GET /health` is served now. Ingest, index, `/ask`, and eval land in later issues:
+
+```bash
 uv run capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025
 uv run capitalcite index --chunker section --embedder <model>
-uv run uvicorn capitalcite.api:app --reload
 curl -s localhost:8000/ask -d '{"q":"What was JPMorgan’s CET1 ratio at year-end 2025?"}' | jq
 uv run capitalcite eval --suite golden   # writes evals/results/<sha>.json
 ```
+
+Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langfuse Cloud.
+
+Design choices for this scaffold: [docs/decisions/0001-scaffold.md](docs/decisions/0001-scaffold.md).
 
 ## Data sources
 
@@ -143,6 +151,19 @@ Everything below is public. Each link was checked on 2026-10-16.
 | [FinQA](https://huggingface.co/datasets/ibm-research/finqa) · [GitHub](https://github.com/czyssrs/FinQA) | About 8k numerical-reasoning QA pairs over financial reports (CC-BY-4.0) | JSON | Numeric-reasoning eval subset |
 
 **Terms:** U.S. federal government works (SEC, FDIC, FFIEC, Fed, OCC, CFPB) are generally public domain, but SEC requires following its fair-access rules. BIS and bank-published documents keep their own copyright, so this repo links to them and does not redistribute them. Check each dataset's license on its card before redistributing derived data.
+
+## Layout
+
+```
+src/capitalcite/     async FastAPI app, settings, CLI
+tests/               pytest (no live network)
+docs/decisions/      architecture decision records
+evals/               golden set and results (issues #5 / #6)
+data/                raw filings (issue #2; gitignored)
+docker-compose.yml   Qdrant + self-hosted Langfuse
+```
+
+Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR.
 
 ## Roadmap
 
