@@ -75,6 +75,8 @@ log "verify: launching uvicorn on 127.0.0.1:${PORT}"
 export SEC_USER_AGENT="${SEC_USER_AGENT:-capitalcite-verify you@example.com}"
 export APP_ENV="${APP_ENV:-verify}"
 export LOG_LEVEL="${LOG_LEVEL:-WARNING}"
+# Typer/Rich splits "--against-raw" with SGR codes; grep needs the literal flag.
+export NO_COLOR="${NO_COLOR:-1}"
 
 uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
   >"${ART}/uvicorn.log" 2>&1 &
