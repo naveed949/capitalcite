@@ -166,6 +166,112 @@ if [[ "${ACTUAL_VERSION}" != "${EXPECTED_VERSION}" ]]; then
 fi
 log "verify: capitalcite version ${ACTUAL_VERSION}"
 
+log "verify: capitalcite ingest --help"
+set +e
+uv run capitalcite ingest --help >"${ART}/ingest.help.out" 2>"${ART}/ingest.help.err"
+ingest_help_rc=$?
+set -e
+write ingest.help.exit "${ingest_help_rc}"
+if [[ "${ingest_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite ingest --help failed"
+  cat "${ART}/ingest.help.err" >&2 || true
+  exit 1
+fi
+if ! grep -q -- "--tickers" "${ART}/ingest.help.out" \
+  || ! grep -q -- "--forms" "${ART}/ingest.help.out" \
+  || ! grep -q -- "--years" "${ART}/ingest.help.out"; then
+  log "verify: ingest --help missing required flags"
+  cat "${ART}/ingest.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite ingest --help ok"
+
+INGEST_DIR="${ART}/data"
+mkdir -p "${INGEST_DIR}"
+INGEST_CMD=(uv run capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025 --output-dir "${INGEST_DIR}")
+printf '%s\n' "${INGEST_CMD[*]}" >"${ART}/ingest.cmd"
+log "verify: ${INGEST_CMD[*]}"
+set +e
+"${INGEST_CMD[@]}" >"${ART}/ingest.out" 2>"${ART}/ingest.err"
+ingest_rc=$?
+set -e
+write ingest.exit "${ingest_rc}"
+if [[ "${ingest_rc}" -eq 2 ]]; then
+  write ingest.unreachable "live EDGAR unavailable (exit 2). command: ${INGEST_CMD[*]}"
+  log "verify: live EDGAR ingest unreachable (exit 2); not mocked"
+  cat "${ART}/ingest.err" >&2 || true
+elif [[ "${ingest_rc}" -ne 0 ]]; then
+  log "verify: capitalcite ingest failed with exit ${ingest_rc}"
+  cat "${ART}/ingest.out" >&2 || true
+  cat "${ART}/ingest.err" >&2 || true
+  exit 1
+else
+  uv run python - "${INGEST_DIR}" "${ART}/ingest.files.txt" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+listing = Path(sys.argv[2])
+sidecars = sorted(root.glob("raw/edgar/**/metadata.json"))
+required = {
+    (ticker, period)
+    for ticker in ("JPM", "BAC", "WFC", "C")
+    for period in ("2023-12-31", "2024-12-31", "2025-12-31")
+}
+seen: set[tuple[str, str]] = set()
+errors: list[str] = []
+lines: list[str] = []
+for path in sidecars:
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    ticker = str(meta.get("ticker", ""))
+    period = str(meta.get("period", ""))
+    form = str(meta.get("form", ""))
+    accession = str(meta.get("accession", ""))
+    url = str(meta.get("url", ""))
+    lines.append(f"{ticker} {form} {period} {accession} {path}")
+    if form != "10-K":
+        errors.append(f"{path}: form={form!r}")
+    if not accession:
+        errors.append(f"{path}: missing accession")
+    if "sec.gov/Archives/edgar/data/" not in url:
+        errors.append(f"{path}: url={url!r}")
+    doc = path.with_name(str(meta.get("primary_document", "")))
+    if not doc.is_file() or doc.stat().st_size == 0:
+        errors.append(f"{path}: missing primary document {doc.name}")
+    seen.add((ticker, period))
+listing.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+missing = sorted(required - seen)
+if missing:
+    errors.append("missing " + ", ".join(f"{t} {p}" for t, p in missing))
+if len(sidecars) != 12:
+    errors.append(f"expected 12 metadata.json files, found {len(sidecars)}")
+if errors:
+    sys.stderr.write("verify: ingest store checks failed:\n  " + "\n  ".join(errors) + "\n")
+    sys.exit(1)
+print(f"ingest files {len(sidecars)}")
+PY
+  log "verify: ingest stored 12 expected 10-K sidecars"
+
+  log "verify: capitalcite ingest rerun (idempotent)"
+  set +e
+  "${INGEST_CMD[@]}" >"${ART}/ingest.rerun.out" 2>"${ART}/ingest.rerun.err"
+  ingest_rerun_rc=$?
+  set -e
+  write ingest.rerun.exit "${ingest_rerun_rc}"
+  if [[ "${ingest_rerun_rc}" -ne 0 ]]; then
+    log "verify: ingest rerun failed"
+    cat "${ART}/ingest.rerun.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -q "downloaded=0" "${ART}/ingest.rerun.out" || ! grep -q "skipped=12" "${ART}/ingest.rerun.out"; then
+    log "verify: ingest rerun was not idempotent"
+    cat "${ART}/ingest.rerun.out" >&2 || true
+    exit 1
+  fi
+  log "verify: ingest rerun skipped=12"
+fi
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   log "verify: docker compose config"
   set +e
@@ -239,6 +345,13 @@ fi
   echo "health.exit $(cat "${ART}/health.exit")"
   echo "version ${ACTUAL_VERSION}"
   echo "version.exit $(cat "${ART}/version.exit")"
+  echo "ingest.help.exit $(cat "${ART}/ingest.help.exit")"
+  if [[ -f "${ART}/ingest.unreachable" ]]; then
+    echo "ingest unreachable ($(cat "${ART}/ingest.unreachable"))"
+  else
+    echo "ingest.exit $(cat "${ART}/ingest.exit")"
+    echo "ingest.rerun.exit $(cat "${ART}/ingest.rerun.exit")"
+  fi
   if [[ -f "${ART}/compose.config.exit" ]]; then
     echo "compose.config.exit $(cat "${ART}/compose.config.exit")"
   else

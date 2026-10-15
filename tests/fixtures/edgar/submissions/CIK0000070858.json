@@ -1,0 +1,53 @@
+{
+  "cik": "70858",
+  "name": "BANK OF AMERICA CORP /DE/",
+  "tickers": [
+    "BAC"
+  ],
+  "exchanges": [
+    "NYSE"
+  ],
+  "filings": {
+    "recent": {
+      "accessionNumber": [
+        "0000070858-26-000157",
+        "0000070858-26-000394",
+        "0000070858-26-000001"
+      ],
+      "filingDate": [
+        "2026-02-25",
+        "2026-07-31",
+        "2026-01-15"
+      ],
+      "reportDate": [
+        "2025-12-31",
+        "2026-06-30",
+        "2026-01-15"
+      ],
+      "form": [
+        "10-K",
+        "10-Q",
+        "424B2"
+      ],
+      "primaryDocument": [
+        "bac-20251231.htm",
+        "bac-20260630.htm",
+        "bac-424b2.htm"
+      ]
+    },
+    "files": [
+      {
+        "name": "CIK0000070858-submissions-001.json",
+        "filingCount": 3,
+        "filingFrom": "2023-01-01",
+        "filingTo": "2025-10-12"
+      },
+      {
+        "name": "CIK0000070858-submissions-099.json",
+        "filingCount": 1,
+        "filingFrom": "1994-01-01",
+        "filingTo": "1995-12-31"
+      }
+    ]
+  }
+}

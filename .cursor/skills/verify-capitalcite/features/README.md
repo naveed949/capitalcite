@@ -19,7 +19,7 @@ This directory is the maintained source for verifying the user-facing behavior o
 - HTTP: `curl` against `http://127.0.0.1:${PORT}`.
 - CLI: `uv run capitalcite ...` so the editable install is used.
 - Prefer `./scripts/verify.sh` when the recipe is one of the bundled steps; use the raw curl/CLI when extending.
-- Restore nothing: current features do not mutate store state. When ingest/ask land, restore or isolate data dirs after mutations. Do not remove proof artifacts during cleanup.
+- Restore nothing: health and version do not mutate store state. Ingest isolates writes under `artifacts/verify/<timestamp>/data` via `--output-dir` so a developer's `data/` is untouched. Do not remove proof artifacts during cleanup.
 
 ## Proof and skip reporting
 
@@ -46,6 +46,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 - [Health check](./health.md) covers `GET /health` on a live uvicorn process.
 - [CLI version](./cli-version.md) covers `capitalcite version` and the `--help` entry point.
+- [EDGAR ingest](./ingest.md) covers `capitalcite ingest --tickers … --forms … --years …`.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
 
 ## Extending the map

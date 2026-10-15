@@ -76,7 +76,8 @@ Stable handles (do not invent others):
 |---|---|---|
 | HTTP | `GET /health` | 200 + JSON body |
 | CLI | `capitalcite version` | exit 0 + version string |
-| CLI | `capitalcite --help` | exit 0; ingest/index/eval are later issues |
+| CLI | `capitalcite --help` | exit 0; lists `version` and `ingest` |
+| CLI | `capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025` | exit 0 + stored metadata.json files (live EDGAR; isolate `--output-dir`) |
 | Compose (optional) | `docker compose config` | exit 0 |
 | Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
 
@@ -100,6 +101,8 @@ Each run of `scripts/verify.sh` writes at least:
 | `uvicorn.log` | Server stdout/stderr |
 | `uvicorn.pid` | PID that was started (and killed) |
 | `port` | Loopback port used |
+| `ingest.help.out` / `ingest.help.exit` | `capitalcite ingest --help` |
+| `ingest.out` / `ingest.exit` / `ingest.files.txt` **or** `ingest.unreachable` | Live EDGAR ingest proof |
 | `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
 | `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |
 
@@ -107,7 +110,7 @@ Proof standards:
 
 - Exercise the real user path: a live uvicorn and the installed `capitalcite` console script.
 - Capture the action and the resulting state: the request (curl) **and** the body, the CLI command **and** stdout/exit.
-- `/health` does not write files or rows. There is no side-effect store to re-read yet. When `/ask`, ingest, or audit-log land, proof must include the stored row/file, not only the HTTP body.
+- `/health` does not write files or rows. Ingest proof is the stored `metadata.json` plus primary document under `--output-dir`, not only CLI stdout.
 - No mocks. Do not stub Settings, Qdrant, or EDGAR for a verification run. Optional Qdrant checks talk to a real Qdrant if one is already up; they must not start or mock one.
 - Version proof compares CLI output to `importlib.metadata.version("capitalcite")`, not a hardcoded `0.1.0`.
 
@@ -151,7 +154,6 @@ Expected later handles (do not add empty stubs now):
 
 | Issue | Handle to add |
 |---|---|
-| #2 ingest | `capitalcite ingest --tickers ...` |
 | #3 chunking | whatever CLI/config flag selects a chunker |
 | #4 retrieval | `POST /search` |
 | #6 evals | `capitalcite eval --suite golden` |
