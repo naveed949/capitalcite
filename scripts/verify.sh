@@ -195,13 +195,10 @@ if re.search(r"langfuse/langfuse:4\s*$", text, re.M) or re.search(
     r"langfuse/langfuse-worker:4\s*$", text, re.M
 ):
     errors.append("floating :4 tag still present")
-# Long-form compose config uses host_ip + published, not "127.0.0.1:6333:6333".
+# Long-form compose config is host_ip, then optional target, then published.
 for published in ("6333", "6334", "9090"):
     block = re.search(
-        rf"host_ip:\s*127\.0\.0\.1\s*\n\s*published:\s*[\"']?{published}[\"']?",
-        text,
-    ) or re.search(
-        rf"published:\s*[\"']?{published}[\"']?\s*\n\s*host_ip:\s*127\.0\.0\.1",
+        rf"host_ip:\s*127\.0\.0\.1(?:\n[^\n]+){{0,4}}\n\s*published:\s*[\"']?{published}[\"']?",
         text,
     )
     if not block:
