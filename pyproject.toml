@@ -13,6 +13,7 @@ authors = [{ name = "Naveed Iqbal" }]
 keywords = ["rag", "fastapi", "sec", "edgar", "banking"]
 dependencies = [
     "fastapi[standard]>=0.115,<1",
+    "httpx>=0.27,<1",
     "pydantic-settings>=2.6,<3",
     "typer>=0.15,<1",
 ]
@@ -53,6 +54,10 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["capitalcite"]
+
+[tool.ruff.lint.per-file-ignores]
+# Typer/FastAPI declare options as default factories; B008 is the framework pattern.
+"src/capitalcite/cli.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"

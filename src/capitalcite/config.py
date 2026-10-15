@@ -7,6 +7,7 @@ are ignored so one file can feed both Docker and the app.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +36,11 @@ class Settings(BaseSettings):
             "Declared User-Agent for SEC EDGAR. Must include a contact email. "
             "See https://www.sec.gov/os/accessing-edgar-data"
         ),
+    )
+
+    data_dir: Path = Field(
+        default=Path("data"),
+        description="Root for raw EDGAR filings (gitignored contents).",
     )
 
     openai_api_key: str | None = None

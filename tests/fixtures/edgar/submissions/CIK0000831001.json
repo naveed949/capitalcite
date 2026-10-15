@@ -1,0 +1,53 @@
+{
+  "cik": "831001",
+  "name": "CITIGROUP INC",
+  "tickers": [
+    "C"
+  ],
+  "exchanges": [
+    "NYSE"
+  ],
+  "filings": {
+    "recent": {
+      "accessionNumber": [
+        "0000831001-26-000011",
+        "0000831001-26-000045",
+        "0000831001-26-000001"
+      ],
+      "filingDate": [
+        "2026-02-20",
+        "2026-08-06",
+        "2026-01-15"
+      ],
+      "reportDate": [
+        "2025-12-31",
+        "2026-06-30",
+        "2026-01-15"
+      ],
+      "form": [
+        "10-K",
+        "10-Q",
+        "424B2"
+      ],
+      "primaryDocument": [
+        "c-20251231.htm",
+        "c-20260630.htm",
+        "c-424b2.htm"
+      ]
+    },
+    "files": [
+      {
+        "name": "CIK0000831001-submissions-001.json",
+        "filingCount": 3,
+        "filingFrom": "2023-01-01",
+        "filingTo": "2025-10-12"
+      },
+      {
+        "name": "CIK0000831001-submissions-099.json",
+        "filingCount": 1,
+        "filingFrom": "1994-01-01",
+        "filingTo": "1995-12-31"
+      }
+    ]
+  }
+}

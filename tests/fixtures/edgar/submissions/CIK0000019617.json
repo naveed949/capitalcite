@@ -1,0 +1,53 @@
+{
+  "cik": "19617",
+  "name": "JPMORGAN CHASE & CO",
+  "tickers": [
+    "JPM"
+  ],
+  "exchanges": [
+    "NYSE"
+  ],
+  "filings": {
+    "recent": {
+      "accessionNumber": [
+        "0001628280-26-008131",
+        "0001628280-26-054343",
+        "0000019617-26-000001"
+      ],
+      "filingDate": [
+        "2026-02-13",
+        "2026-08-06",
+        "2026-01-15"
+      ],
+      "reportDate": [
+        "2025-12-31",
+        "2026-06-30",
+        "2026-01-15"
+      ],
+      "form": [
+        "10-K",
+        "10-Q",
+        "424B2"
+      ],
+      "primaryDocument": [
+        "jpm-20251231.htm",
+        "jpm-20260630.htm",
+        "jpm-424b2.htm"
+      ]
+    },
+    "files": [
+      {
+        "name": "CIK0000019617-submissions-001.json",
+        "filingCount": 3,
+        "filingFrom": "2023-01-01",
+        "filingTo": "2025-10-12"
+      },
+      {
+        "name": "CIK0000019617-submissions-099.json",
+        "filingCount": 1,
+        "filingFrom": "1994-01-01",
+        "filingTo": "1995-12-31"
+      }
+    ]
+  }
+}
