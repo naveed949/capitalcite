@@ -305,6 +305,8 @@ def test_oversized_item7_table_stays_valid_markdown(chunker: ChunkerName) -> Non
         assert len(item7) >= 2
         assert any(_markdown_tables(chunk.text) for chunk in item7)
         assert any(chunk.header_prefix for chunk in item7)
+        assert len({chunk.start for chunk in item7}) == len(item7)
+        assert all(chunk.token_count <= 512 for chunk in item7)
     for chunk in table_chunks:
         tables = _markdown_tables(chunk.text)
         assert tables

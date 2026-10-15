@@ -301,6 +301,9 @@ def _pack(
             continue
         if buf and (unit.end - buf[0].start) > window:
             flush()
+            if buf and (unit.end - buf[0].start) > window:
+                buf = [unit]
+                continue
         if not buf:
             buf = [unit]
         else:
@@ -319,6 +322,8 @@ def _overlap_tail(buf: list[_Unit], overlap_chars: int) -> list[_Unit]:
     kept: list[_Unit] = []
     for unit in reversed(buf):
         if unit.header_prefix:
+            break
+        if unit.end - unit.start > overlap_chars:
             break
         kept.insert(0, unit)
         if last_end - unit.start >= overlap_chars:
