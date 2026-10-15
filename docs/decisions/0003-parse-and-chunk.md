@@ -19,13 +19,24 @@ Each chunk carries:
   already lives on the ingest sidecar.
 - `section`. The 10-K Item at the start of the chunk (`Item 7`, `Item 8`),
   or `body` for front matter.
-- `offset`. Start character in the cleaned document text. HTML has no
-  reliable printed page, so offset is the locator every strategy can fill.
+- `start` and `end`. Half-open character range in the cleaned document
+  text. `document.text[start:end]` is the original span. A citation is
+  checkable when that slice exists: the stored `text` is either exactly
+  that slice, or a documented `header_prefix` (a repeated markdown table
+  header plus separator) prepended to it. Without a stored span, a later
+  retriever cannot prove a quote came from the filing rather than from a
+  join or a strip.
+- `offset`. Character index of the first non-whitespace character in that
+  original span. HTML has no reliable printed page, so offset is the
+  highlight cursor every strategy can fill. It is not a substitute for
+  `start`/`end`; packing used to join units with `"\\n\\n"` and strip
+  leading whitespace without moving offset, so `text` was not a document
+  slice and offset did not name the first visible character.
 - `page`. 1-based PDF page when the source is a PDF. Absent for HTML.
 - `source_url`. The archive URL from `metadata.json`.
 
 Ticker, form, period, and accession ride along so #4 can filter without
-joining back to the sidecar. They are not substitutes for the four required
+joining back to the sidecar. They are not substitutes for the citation
 fields.
 
 ## Why not one fixed window
@@ -46,9 +57,18 @@ not know what an Item is.
 
 Section-aware splitting cuts on Item headings first. An Item that fits in
 the budget becomes one chunk. An Item that does not is then split with the
-recursive splitter, and every piece keeps that Item name. Tables that were
-turned into markdown are treated as units. A window that would land inside
-a markdown table snaps to the table edge.
+recursive splitter, and every piece keeps that Item name.
+
+Markdown table blocks are atomic. Consecutive lines that start with `|`
+are one table, including the header and separator. Recursive splitting
+does not cut on `\\n` inside that block. A table that fits in the window
+stays one unit. A table that exceeds the window is split on row
+boundaries. Every piece after the first repeats the header row and the
+separator so the piece is still a valid markdown table: header, separator,
+data rows, and no blank lines between rows. `start`/`end` name the
+original rows in that piece. `header_prefix` holds the prepended header
+and separator. The first piece has an empty prefix because those lines
+already sit in the span.
 
 Default size is 512 tokens and overlap is 64. Those numbers match the
 README's `fixed-512` row so later evals compare the same budget. 512 is
@@ -57,7 +77,9 @@ dense retriever is not asked to embed a whole MD&A. Overlap of about
 one-eighth of the window is a common starting point. It is a knob, not a
 finding. Issue #6 will say which pair wins on the golden set.
 
-A token here is four characters, rounded up. Issue #4 picks the embedding
+A token here is four characters, rounded up. `mean_tokens` in `stats.json`
+is the mean of that heuristic over the chunks. It is an approximate budget
+figure, not an embedding-model token count. Issue #4 picks the embedding
 model. Counting with `cl100k_base` now would publish mean-token stats
 against the wrong vocabulary.
 
@@ -71,9 +93,10 @@ table integrity a type invariant. Callers then have to walk the tree.
 
 A cleaned markdown string plus section and page spans hides the HTML walk.
 Chunkers and the later retriever see text. Tables still become markdown
-inside the parser, and the splitter refuses to cut inside a table fence.
-That is the shape we shipped. The block walk is an implementation detail
-of `html_to_document`.
+inside the parser. The splitter keeps each markdown table block intact, or
+repeats the header when a table is larger than the window. That is the
+shape we shipped. The block walk is an implementation detail of
+`html_to_document`.
 
 HTML is parsed with BeautifulSoup's `html.parser`. We do not add
 LangChain, unstructured, or LlamaIndex. Those libraries would own the
@@ -91,7 +114,8 @@ registry is `CHUNKERS` keyed by `ChunkerName`. Adding a fourth strategy is
 one function plus one enum member.
 
 Stats (count, mean tokens) are logged per document and per run, and written
-to `stats.json` next to `chunks.jsonl`.
+to `stats.json` next to `chunks.jsonl`. Mean tokens uses the four-character
+heuristic, so treat the number as approximate until #4.
 
 ## Atomic writes
 

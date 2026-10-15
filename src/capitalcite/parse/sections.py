@@ -5,11 +5,13 @@ import re
 from capitalcite.parse.models import Span
 
 _ITEM_LINE = re.compile(
-    r"^(Item)\s+(\d{1,2}[A-Z]?)\b(?:\s*[.\-:\u2013\u2014]\s*(.*))?$",
+    r"^(?:Part\s+[IVXLC0-9]+(?:\s*[.\-:\u2013\u2014]\s*)?)?(Item)\s+"
+    r"(\d{1,2}[A-Z]?)\b(?:\s*[.\-:\u2013\u2014]\s*(.*))?$",
     re.IGNORECASE | re.MULTILINE,
 )
 _TOC_TAIL = re.compile(r"[.\u2026]{2,}\s*\d+\s*$")
 _PAGE_ONLY = re.compile(r"^[\s.\d]+$")
+_XREF = re.compile(r"^see\s+pages?\s+\d", re.IGNORECASE)
 
 
 def detect_sections(text: str) -> tuple[Span, ...]:
@@ -58,5 +60,7 @@ def _is_toc_line(rest: str) -> bool:
     if not rest:
         return False
     if _TOC_TAIL.search(rest):
+        return True
+    if _XREF.match(rest):
         return True
     return bool(_PAGE_ONLY.match(rest))

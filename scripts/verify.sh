@@ -311,62 +311,137 @@ if [[ "${chunk_rc}" -ne 0 ]]; then
 fi
 uv run python - "${CHUNK_OUT}" "${ART}/chunk.files.txt" <<'PY'
 import json
+import re
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
 listing = Path(sys.argv[2])
-chunks_path = next(root.glob("parsed/edgar/**/chunks.jsonl"), None)
-stats_path = next(root.glob("parsed/edgar/**/stats.json"), None)
+chunk_paths = sorted(root.glob("parsed/edgar/**/chunks.jsonl"))
 errors: list[str] = []
-if chunks_path is None:
-    errors.append("missing chunks.jsonl")
+if not chunk_paths:
     listing.write_text("", encoding="utf-8")
-    sys.stderr.write("verify: chunk checks failed:\n  " + "\n  ".join(errors) + "\n")
+    sys.stderr.write("verify: chunk checks failed:\n  missing chunks.jsonl\n")
     sys.exit(1)
-rows = [
-    json.loads(line)
-    for line in chunks_path.read_text(encoding="utf-8").splitlines()
-    if line
-]
-lines = []
-required = ("doc_id", "section", "offset", "source_url")
-sections = set()
-item7_has_table = False
-for row in rows:
-    missing = [key for key in required if key not in row]
-    if missing:
-        errors.append(f"chunk missing {missing}: {row!r}")
+
+table_row = re.compile(r"^\|.+\|$")
+table_sep = re.compile(r"^\|\s*:?-{3,}:?(?:\s*\|\s*:?-{3,}:?)*\s*\|$")
+required = ("doc_id", "section", "start", "end", "offset", "source_url", "text")
+lines: list[str] = []
+short_ok = False
+long_table_ok = False
+total_rows = 0
+
+
+def markdown_tables(text: str) -> list[str]:
+    tables: list[str] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if table_row.match(line.strip()):
+            current.append(line.strip())
+        elif current:
+            tables.append("\n".join(current))
+            current = []
+    if current:
+        tables.append("\n".join(current))
+    return tables
+
+
+def valid_table(block: str) -> bool:
+    rows = block.splitlines()
+    if len(rows) < 3:
+        return False
+    if table_sep.match(rows[0]) or not table_row.match(rows[0]):
+        return False
+    if not table_sep.match(rows[1]):
+        return False
+    return all(table_row.match(row) and row.strip() for row in rows)
+
+
+for chunks_path in chunk_paths:
+    rows = [
+        json.loads(line)
+        for line in chunks_path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    total_rows += len(rows)
+    document_path = chunks_path.with_name("document.md")
+    stats_path = chunks_path.with_name("stats.json")
+    if not document_path.is_file():
+        errors.append(f"{chunks_path}: missing document.md")
         continue
-    lines.append(f"{row['doc_id']} {row['section']} {row['offset']} {row['source_url']}")
-    sections.add(str(row["section"]))
-    if row["section"] == "Item 7" and "CET1 ratio" in str(row["text"]) and "15.1%" in str(row["text"]):
-        item7_has_table = True
-    if "sec.gov/Archives/edgar/data/" not in str(row["source_url"]):
-        errors.append(f"source_url={row['source_url']!r}")
+    document = document_path.read_text(encoding="utf-8")
+    sections: set[str] = set()
+    accession = chunks_path.parent.name
+    item7_tables = 0
+    for row in rows:
+        missing = [key for key in required if key not in row]
+        if missing:
+            errors.append(f"{chunks_path}: chunk missing {missing}")
+            continue
+        start = int(row["start"])
+        end = int(row["end"])
+        offset = int(row["offset"])
+        prefix = str(row.get("header_prefix") or "")
+        original = document[start:end]
+        expected = f"{prefix}{original}" if prefix else original
+        if str(row["text"]) != expected:
+            errors.append(f"{chunks_path}: text is not document[{start}:{end}]")
+        if original.strip():
+            leading = len(original) - len(original.lstrip())
+            if offset != start + leading:
+                errors.append(f"{chunks_path}: offset {offset} is not first non-whitespace")
+        elif offset != start:
+            errors.append(f"{chunks_path}: empty span offset {offset} != start {start}")
+        lines.append(f"{row['doc_id']} {row['section']} {row['offset']} {row['source_url']}")
+        sections.add(str(row["section"]))
+        if "sec.gov/Archives/edgar/data/" not in str(row["source_url"]):
+            errors.append(f"source_url={row['source_url']!r}")
+        for table in markdown_tables(str(row["text"])):
+            if not valid_table(table):
+                errors.append(f"{chunks_path}: invalid markdown table in {row['section']}")
+            if row["section"] == "Item 7":
+                item7_tables += 1
+        if (
+            row["section"] == "Item 7"
+            and "CET1 ratio" in str(row["text"])
+            and "15.1%" in str(row["text"])
+        ):
+            short_ok = True
+    if "Item 7" not in sections:
+        errors.append(f"{chunks_path}: missing Item 7 in {sorted(sections)}")
+    if "Item 8" not in sections:
+        errors.append(f"{chunks_path}: missing Item 8 in {sorted(sections)}")
+    if accession == "0000019617-25-000271":
+        if item7_tables < 2:
+            errors.append(f"{chunks_path}: long table was not split into valid Item 7 pieces")
+        if not any("Capital metric 80" in str(row["text"]) for row in rows):
+            errors.append(f"{chunks_path}: missing Capital metric 80")
+        long_table_ok = item7_tables >= 2
+    if not stats_path.is_file():
+        errors.append(f"{chunks_path}: missing stats.json")
+    else:
+        stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        if stats.get("chunker") != "section":
+            errors.append(f"{stats_path}: chunker={stats.get('chunker')!r}")
+        if not isinstance(stats.get("count"), int) or stats["count"] < 1:
+            errors.append(f"{stats_path}: count={stats.get('count')!r}")
+        if not isinstance(stats.get("mean_tokens"), (int, float)) or stats["mean_tokens"] <= 0:
+            errors.append(f"{stats_path}: mean_tokens={stats.get('mean_tokens')!r}")
+
 listing.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
-if "Item 7" not in sections:
-    errors.append(f"missing Item 7 in {sorted(sections)}")
-if "Item 8" not in sections:
-    errors.append(f"missing Item 8 in {sorted(sections)}")
-if not item7_has_table:
+if len(chunk_paths) < 2:
+    errors.append(f"expected 2 chunks.jsonl files, found {len(chunk_paths)}")
+if not short_ok:
     errors.append("Item 7 chunk does not contain CET1 markdown table")
-if stats_path is None:
-    errors.append("missing stats.json")
-else:
-    stats = json.loads(stats_path.read_text(encoding="utf-8"))
-    if stats.get("chunker") != "section":
-        errors.append(f"stats.chunker={stats.get('chunker')!r}")
-    if not isinstance(stats.get("count"), int) or stats["count"] < 1:
-        errors.append(f"stats.count={stats.get('count')!r}")
-    if not isinstance(stats.get("mean_tokens"), (int, float)) or stats["mean_tokens"] <= 0:
-        errors.append(f"stats.mean_tokens={stats.get('mean_tokens')!r}")
+if not long_table_ok:
+    errors.append("long-table fixture did not yield valid split Item 7 tables")
 if errors:
     sys.stderr.write("verify: chunk checks failed:\n  " + "\n  ".join(errors) + "\n")
     sys.exit(1)
-print(f"chunk rows {len(rows)}")
+print(f"chunk files {len(chunk_paths)} rows {total_rows}")
 PY
-log "verify: chunk wrote cited rows with Item 7 table and Item 8"
+log "verify: chunk wrote cited rows with Item 7 table, Item 8, and a split long table"
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   log "verify: docker compose config"

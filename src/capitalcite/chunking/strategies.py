@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.chunking.tokens import count_tokens, token_chars
@@ -8,77 +10,56 @@ from capitalcite.parse.models import ParsedDocument
 from capitalcite.parse.sections import page_at, section_at
 
 _SEPARATORS = ("\n\n", "\n", ". ", " ", "")
+_TABLE_SEP = re.compile(r"^:?-{3,}:?$")
+
+
+@dataclass(frozen=True)
+class _Unit:
+    start: int
+    end: int
+    header_prefix: str = ""
 
 
 def chunk_fixed(document: ParsedDocument, *, size: int, overlap: int) -> list[Chunk]:
     _check_budgets(size, overlap)
-    text = document.text
-    if not text.strip():
+    if not document.text.strip():
         return []
     window = token_chars(size)
-    stride = token_chars(size - overlap)
-    chunks: list[Chunk] = []
-    start = 0
-    while start < len(text):
-        end = min(start + window, len(text))
-        end = _avoid_table_cut(text, start, end)
-        piece = text[start:end].strip()
-        if piece:
-            chunks.append(_make_chunk(document, piece, start, ChunkerName.FIXED))
-        if end >= len(text):
-            break
-        start = max(start + stride, end - token_chars(overlap))
-        if start >= end:
-            start = end
-    return chunks
+    overlap_chars = token_chars(overlap)
+    units = _collect(document.text, 0, len(document.text), window, overlap_chars, "fixed")
+    return _chunks_from_units(document, units, ChunkerName.FIXED)
 
 
 def chunk_recursive(document: ParsedDocument, *, size: int, overlap: int) -> list[Chunk]:
     _check_budgets(size, overlap)
-    pieces = _recursive_split(document.text, token_chars(size))
-    return _pack(document, pieces, size=size, overlap=overlap, chunker=ChunkerName.RECURSIVE)
+    if not document.text.strip():
+        return []
+    window = token_chars(size)
+    overlap_chars = token_chars(overlap)
+    units = _collect(document.text, 0, len(document.text), window, overlap_chars, "recursive")
+    return _pack(document, units, size=size, overlap=overlap, chunker=ChunkerName.RECURSIVE)
 
 
 def chunk_section(document: ParsedDocument, *, size: int, overlap: int) -> list[Chunk]:
     _check_budgets(size, overlap)
-    chunks: list[Chunk] = []
     spans = document.sections
     if not spans:
         return chunk_recursive(document, size=size, overlap=overlap)
+    window = token_chars(size)
+    overlap_chars = token_chars(overlap)
+    chunks: list[Chunk] = []
     for span in spans:
         piece = document.text[span.start : span.end]
         if not piece.strip():
             continue
         if count_tokens(piece) <= size:
-            chunks.append(_make_chunk(document, piece.strip(), span.start, ChunkerName.SECTION))
+            chunk = _make_chunk(document, span.start, span.end, ChunkerName.SECTION)
+            if chunk is not None:
+                chunks.append(chunk)
             continue
-        nested = ParsedDocument(
-            source=document.source,
-            text=piece,
-            media_type=document.media_type,
-            sections=(),
-            pages=tuple(
-                p.model_copy(
-                    update={
-                        "start": max(0, p.start - span.start),
-                        "end": max(0, p.end - span.start),
-                    }
-                )
-                for p in document.pages
-            ),
-            tables=document.tables,
-        )
-        for child in chunk_recursive(nested, size=size, overlap=overlap):
-            chunks.append(
-                child.model_copy(
-                    update={
-                        "chunker": ChunkerName.SECTION,
-                        "section": span.name,
-                        "offset": span.start + child.offset,
-                        "page": page_at(document.pages, span.start + child.offset),
-                    }
-                )
-            )
+        units = _collect(document.text, span.start, span.end, window, overlap_chars, "recursive")
+        packed = _pack(document, units, size=size, overlap=overlap, chunker=ChunkerName.SECTION)
+        chunks.extend(packed)
     return chunks
 
 
@@ -98,16 +79,31 @@ def _check_budgets(size: int, overlap: int) -> None:
         raise ValueError("chunk overlap must be smaller than chunk size")
 
 
-def _make_chunk(document: ParsedDocument, text: str, offset: int, chunker: ChunkerName) -> Chunk:
+def _make_chunk(
+    document: ParsedDocument,
+    start: int,
+    end: int,
+    chunker: ChunkerName,
+    header_prefix: str = "",
+) -> Chunk | None:
+    original = document.text[start:end]
+    text = f"{header_prefix}{original}" if header_prefix else original
+    if not text.strip():
+        return None
+    leading = len(original) - len(original.lstrip()) if original.strip() else 0
+    offset = start + leading
     source = document.source
     return Chunk(
         doc_id=source.doc_id,
         section=section_at(document.sections, offset),
+        start=start,
+        end=end,
         offset=offset,
         source_url=source.source_url,
         text=text,
         token_count=count_tokens(text),
         chunker=chunker,
+        header_prefix=header_prefix,
         page=page_at(document.pages, offset),
         ticker=source.ticker,
         form=source.form,
@@ -116,105 +112,215 @@ def _make_chunk(document: ParsedDocument, text: str, offset: int, chunker: Chunk
     )
 
 
-def _avoid_table_cut(text: str, start: int, end: int) -> int:
-    table_start = text.rfind("\n\n|", start, end)
-    if table_start == -1 and text.startswith("|", start):
-        table_start = start
-    if table_start == -1:
-        return end
-    table_end = text.find("\n\n", table_start + 2)
-    if table_end == -1:
-        table_end = len(text)
-    if start < table_start < end < table_end:
-        return table_start
-    if table_start <= start < table_end and end < table_end:
-        return table_end
-    return end
+def _collect(
+    text: str,
+    lo: int,
+    hi: int,
+    max_chars: int,
+    overlap_chars: int,
+    mode: str,
+) -> list[_Unit]:
+    units: list[_Unit] = []
+    for start, end, kind in _partition(text, lo, hi):
+        if kind == "table":
+            units.extend(_table_units(text, start, end, max_chars))
+        elif mode == "fixed":
+            units.extend(_window_units(start, end, max_chars, overlap_chars))
+        else:
+            units.extend(_recursive_units(text, start, end, max_chars, 0))
+    return units
 
 
-def _recursive_split(text: str, max_chars: int) -> list[tuple[int, str]]:
-    stripped = text
-    if not stripped:
+def _partition(text: str, lo: int, hi: int) -> list[tuple[int, int, str]]:
+    blocks: list[tuple[int, int, str]] = []
+    pos = lo
+    while pos < hi:
+        line_end = _line_end(text, pos, hi)
+        if _is_table_line(text[pos:line_end]):
+            end = line_end
+            while end < hi:
+                nxt = _line_end(text, end, hi)
+                if not _is_table_line(text[end:nxt]):
+                    break
+                end = nxt
+            blocks.append((pos, end, "table"))
+            pos = end
+            continue
+        end = line_end
+        while end < hi:
+            nxt = _line_end(text, end, hi)
+            if _is_table_line(text[end:nxt]):
+                break
+            end = nxt
+        blocks.append((pos, end, "prose"))
+        pos = end
+    return blocks
+
+
+def _line_end(text: str, start: int, hi: int) -> int:
+    newline = text.find("\n", start, hi)
+    if newline == -1:
+        return hi
+    return newline + 1
+
+
+def _is_table_line(line: str) -> bool:
+    stripped = line.strip()
+    return stripped.startswith("|") and stripped.count("|") >= 2
+
+
+def _is_sep_line(line: str) -> bool:
+    stripped = line.strip().strip("|")
+    cells = [cell.strip() for cell in stripped.split("|")]
+    return bool(cells) and all(_TABLE_SEP.fullmatch(cell) is not None for cell in cells)
+
+
+def _table_units(text: str, lo: int, hi: int, max_chars: int) -> list[_Unit]:
+    if hi - lo <= max_chars:
+        return [_Unit(lo, hi)]
+    rows: list[tuple[int, int]] = []
+    pos = lo
+    while pos < hi:
+        end = _line_end(text, pos, hi)
+        rows.append((pos, end))
+        pos = end
+    if len(rows) < 3 or not _is_sep_line(text[rows[1][0] : rows[1][1]]):
+        return [_Unit(lo, hi)]
+    header_prefix = text[rows[0][0] : rows[1][1]]
+    units: list[_Unit] = []
+    piece_start = rows[0][0]
+    piece_end = rows[1][1]
+    prefixed = False
+    for row in rows[2:]:
+        if prefixed:
+            tentative = len(header_prefix) + (row[1] - piece_start)
+        else:
+            tentative = row[1] - piece_start
+        has_rows = piece_end > (rows[1][1] if not prefixed else piece_start)
+        if has_rows and tentative > max_chars:
+            units.append(_Unit(piece_start, piece_end, header_prefix if prefixed else ""))
+            piece_start = row[0]
+            piece_end = row[1]
+            prefixed = True
+        else:
+            piece_end = row[1]
+    if piece_end > piece_start:
+        units.append(_Unit(piece_start, piece_end, header_prefix if prefixed else ""))
+    return units
+
+
+def _window_units(lo: int, hi: int, max_chars: int, overlap_chars: int) -> list[_Unit]:
+    if hi <= lo:
         return []
-    if len(stripped) <= max_chars:
-        return [(0, stripped)]
-    return _split_from(stripped, 0, max_chars, 0)
+    if hi - lo <= max_chars:
+        return [_Unit(lo, hi)]
+    stride = max(1, max_chars - overlap_chars)
+    units: list[_Unit] = []
+    start = lo
+    while start < hi:
+        end = min(start + max_chars, hi)
+        units.append(_Unit(start, end))
+        if end >= hi:
+            break
+        start += stride
+    return units
 
 
-def _split_from(text: str, origin: int, max_chars: int, sep_index: int) -> list[tuple[int, str]]:
-    if len(text) <= max_chars or sep_index >= len(_SEPARATORS):
-        return [(origin, text)] if text.strip() else []
+def _recursive_units(text: str, lo: int, hi: int, max_chars: int, sep_index: int) -> list[_Unit]:
+    if hi <= lo:
+        return []
+    if hi - lo <= max_chars or sep_index >= len(_SEPARATORS):
+        if hi - lo <= max_chars:
+            return [_Unit(lo, hi)]
+        return _window_units(lo, hi, max_chars, 0)
     sep = _SEPARATORS[sep_index]
     if sep == "":
-        pieces: list[tuple[int, str]] = []
-        for index in range(0, len(text), max_chars):
-            piece = text[index : index + max_chars]
-            if piece.strip():
-                pieces.append((origin + index, piece))
-        return pieces
-    parts = text.split(sep)
-    if len(parts) == 1:
-        return _split_from(text, origin, max_chars, sep_index + 1)
-    out: list[tuple[int, str]] = []
-    cursor = origin
+        return _window_units(lo, hi, max_chars, 0)
+    region = text[lo:hi]
+    if sep not in region:
+        return _recursive_units(text, lo, hi, max_chars, sep_index + 1)
+    units: list[_Unit] = []
+    cursor = lo
+    parts = region.split(sep)
     for index, part in enumerate(parts):
+        part_start = cursor
+        part_end = cursor + len(part)
         if part:
-            if len(part) > max_chars:
-                out.extend(_split_from(part, cursor, max_chars, sep_index + 1))
+            if part_end - part_start > max_chars:
+                units.extend(_recursive_units(text, part_start, part_end, max_chars, sep_index + 1))
             else:
-                out.append((cursor, part))
-        cursor += len(part)
+                units.append(_Unit(part_start, part_end))
+        cursor = part_end
         if index < len(parts) - 1:
             cursor += len(sep)
-    return out
+    return units
+
+
+def _chunks_from_units(
+    document: ParsedDocument, units: list[_Unit], chunker: ChunkerName
+) -> list[Chunk]:
+    chunks: list[Chunk] = []
+    for unit in units:
+        chunk = _make_chunk(document, unit.start, unit.end, chunker, unit.header_prefix)
+        if chunk is not None:
+            chunks.append(chunk)
+    return chunks
 
 
 def _pack(
     document: ParsedDocument,
-    pieces: list[tuple[int, str]],
+    units: list[_Unit],
     *,
     size: int,
     overlap: int,
     chunker: ChunkerName,
 ) -> list[Chunk]:
-    if not pieces:
+    if not units:
         return []
     window = token_chars(size)
     chunks: list[Chunk] = []
-    buf: list[tuple[int, str]] = []
-    buf_len = 0
-    for offset, piece in pieces:
-        piece_len = len(piece)
-        extra = (2 if buf else 0) + piece_len
-        if buf and buf_len + extra > window:
-            text = "\n\n".join(part for _, part in buf).strip()
-            if text:
-                chunks.append(_make_chunk(document, text, buf[0][0], chunker))
-            overlap_chars = token_chars(overlap) if overlap else 0
-            buf, buf_len = _overlap_tail(buf, overlap_chars)
+    buf: list[_Unit] = []
+
+    def flush() -> None:
+        nonlocal buf
         if not buf:
-            buf = [(offset, piece)]
-            buf_len = piece_len
+            return
+        chunk = _make_chunk(document, buf[0].start, buf[-1].end, chunker)
+        if chunk is not None:
+            chunks.append(chunk)
+        overlap_chars = token_chars(overlap) if overlap else 0
+        buf = _overlap_tail(buf, overlap_chars)
+
+    for unit in units:
+        if unit.header_prefix:
+            flush()
+            buf = []
+            chunk = _make_chunk(document, unit.start, unit.end, chunker, unit.header_prefix)
+            if chunk is not None:
+                chunks.append(chunk)
+            continue
+        if buf and (unit.end - buf[0].start) > window:
+            flush()
+        if not buf:
+            buf = [unit]
         else:
-            buf.append((offset, piece))
-            buf_len += extra
+            buf.append(unit)
     if buf:
-        text = "\n\n".join(part for _, part in buf).strip()
-        if text:
-            chunks.append(_make_chunk(document, text, buf[0][0], chunker))
+        chunk = _make_chunk(document, buf[0].start, buf[-1].end, chunker)
+        if chunk is not None:
+            chunks.append(chunk)
     return chunks
 
 
-def _overlap_tail(
-    buf: list[tuple[int, str]], overlap_chars: int
-) -> tuple[list[tuple[int, str]], int]:
+def _overlap_tail(buf: list[_Unit], overlap_chars: int) -> list[_Unit]:
     if overlap_chars <= 0 or not buf:
-        return [], 0
-    kept: list[tuple[int, str]] = []
-    total = 0
-    for offset, piece in reversed(buf):
-        kept.insert(0, (offset, piece))
-        total += len(piece)
-        if total >= overlap_chars:
+        return []
+    last_end = buf[-1].end
+    kept: list[_Unit] = []
+    for unit in reversed(buf):
+        if unit.header_prefix:
             break
-    return kept, total
+        kept.insert(0, unit)
+        if last_end - unit.start >= overlap_chars:
+            break
+    return kept

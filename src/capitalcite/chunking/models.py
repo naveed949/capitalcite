@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ChunkerName(StrEnum):
@@ -14,16 +14,27 @@ class ChunkerName(StrEnum):
 class Chunk(BaseModel):
     doc_id: str = Field(min_length=1)
     section: str = Field(min_length=1)
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
     offset: int = Field(ge=0)
     source_url: str = Field(min_length=1)
     text: str = Field(min_length=1)
     token_count: int = Field(ge=0)
     chunker: ChunkerName
+    header_prefix: str = ""
     page: int | None = Field(default=None, ge=1)
     ticker: str = ""
     form: str = ""
     period: str = ""
     accession: str = ""
+
+    @model_validator(mode="after")
+    def span_order(self) -> Chunk:
+        if self.end < self.start:
+            raise ValueError("chunk end is before start")
+        if self.offset < self.start or self.offset > self.end:
+            raise ValueError("chunk offset is outside start/end")
+        return self
 
 
 class ChunkStats(BaseModel):
