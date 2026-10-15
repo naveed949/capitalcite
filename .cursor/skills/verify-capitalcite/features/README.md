@@ -26,9 +26,10 @@ This directory is the maintained source for verifying the user-facing behavior o
 - Capture the user action and the resulting state, not only the final body.
 - HTTP proof includes status code and response body.
 - CLI proof includes the command, stdout, stderr, and exit code.
-- Optional compose/Qdrant steps that cannot run (no Docker, nothing on 6333) are recorded as skipped with the reason. Do not report them as verified.
+- Optional compose or Qdrant steps that cannot run (no Docker, nothing on 6333) are `UNVERIFIED`. Record the skip reason. Never report them as passed.
+- Azure deploy, live EDGAR 403, and any other path that needs credentials or a network you do not have is `UNVERIFIED`, never passed.
 - Record the feature ID with every artifact.
-- Report an unreachable path with the attempted command and the unmet precondition.
+- Report an unreachable path with the attempted command and the unmet precondition, status `UNVERIFIED`.
 - Do not report a skipped entry point as verified through a different path (pytest is not a substitute for curl).
 
 ## Feature entry contract
