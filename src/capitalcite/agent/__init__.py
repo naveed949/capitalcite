@@ -2,7 +2,7 @@
 
 from capitalcite.agent.graph import run_agent
 from capitalcite.agent.models import AgentModel, FakeAgentModel, build_agent_model
-from capitalcite.agent.tools import ToolRegistry, default_registry
+from capitalcite.agent.tools import ToolExecutor, ToolRegistry, default_registry
 from capitalcite.agent.types import (
     TOOL_NAMES,
     AgentResult,
@@ -24,6 +24,7 @@ __all__ = [
     "PlanStep",
     "PlannerDecision",
     "ToolCall",
+    "ToolExecutor",
     "ToolRegistry",
     "TraceStep",
     "build_agent_model",

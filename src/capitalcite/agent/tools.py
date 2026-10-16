@@ -1,4 +1,4 @@
-"""Tool registry. Unknown names are denied. Issue #9 wraps execute later."""
+"""Tool registry. Unknown names are denied. The gate wraps execute."""
 
 from __future__ import annotations
 
@@ -12,6 +12,10 @@ from capitalcite.agent.types import TOOL_NAMES, ToolResult
 from capitalcite.retrieval.types import Hit, SearchFilters, parse_filters
 
 ToolFn = Callable[[Mapping[str, object]], Awaitable[ToolResult]]
+
+
+class ToolExecutor(Protocol):
+    async def execute(self, name: str, args: Mapping[str, object]) -> ToolResult: ...
 
 
 class Tool(Protocol):

@@ -96,6 +96,13 @@ class Settings(BaseSettings):
         ge=1,
         description="Agent graph stops when the estimated token use reaches this.",
     )
+    gate_policy: Path | None = Field(
+        default=None,
+        description=(
+            "JSON allow-list for agent tool calls. Empty uses the shipped policy. "
+            "A missing or invalid file denies every tool."
+        ),
+    )
     search_k: int = Field(default=8, ge=1, le=50, description="Default number of hits for search.")
     rrf_k: int = Field(
         default=60,
@@ -123,9 +130,9 @@ class Settings(BaseSettings):
     def qdrant_url_stripped(cls, value: str) -> str:
         return value.strip()
 
-    @field_validator("qdrant_path", mode="before")
+    @field_validator("qdrant_path", "gate_policy", mode="before")
     @classmethod
-    def qdrant_path_blank_is_none(cls, value: object) -> object:
+    def blank_path_is_none(cls, value: object) -> object:
         if value is None:
             return None
         if isinstance(value, str) and not value.strip():

@@ -32,6 +32,7 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.config import Settings, get_settings
+from capitalcite.gate import Gate, load_policy
 from capitalcite.ingest.rate_limit import shared_limiter
 from capitalcite.retrieval import (
     IndexNotBuilt,
@@ -175,7 +176,10 @@ async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings
     else:
         xbrl = XbrlClient(sec_client).fact
         fdic = FdicClient(fdic_client).lookup
-    tools = default_registry(search=search, xbrl=xbrl, fdic=fdic)
+    tools = Gate(
+        load_policy(settings.gate_policy),
+        default_registry(search=search, xbrl=xbrl, fdic=fdic),
+    )
     return await run_agent(
         body.question,
         model,
