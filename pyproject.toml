@@ -63,6 +63,7 @@ known-first-party = ["capitalcite"]
 # Typer/FastAPI declare options as default factories; B008 is the framework pattern.
 "src/capitalcite/cli.py" = ["B008"]
 "evals/golden/author.py" = ["E501", "RUF001"]
+"tests/test_sections_real.py" = ["E501", "RUF001"]
 
 [tool.mypy]
 python_version = "3.12"
