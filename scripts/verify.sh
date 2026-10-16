@@ -537,6 +537,124 @@ print(f"chunk files {len(chunk_paths)} rows {total_rows}")
 PY
 log "verify: chunk wrote cited rows with Item 7 table, Item 8, and a split long table"
 
+log "verify: capitalcite index --help"
+set +e
+uv run capitalcite index --help >"${ART}/index.help.out" 2>"${ART}/index.help.err"
+index_help_rc=$?
+set -e
+write index.help.exit "${index_help_rc}"
+if [[ "${index_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite index --help failed"
+  cat "${ART}/index.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/index.help.out" | grep -q -- "--embedder" \
+  || ! plain "${ART}/index.help.out" | grep -q -- "--input-dir" \
+  || ! plain "${ART}/index.help.out" | grep -q -- "--chunker"; then
+  log "verify: index --help missing required flags"
+  cat "${ART}/index.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite index --help ok"
+
+log "verify: POST /search"
+SEARCH_BODY='{"query":"CET1 capital ratio","mode":"hybrid","k":5}'
+printf '%s\n' "${SEARCH_BODY}" >"${ART}/search.request.json"
+set +e
+search_http="$(
+  curl -sS --max-time 20 \
+    -D "${ART}/search.headers" \
+    -o "${ART}/search.body.json" \
+    -w "%{http_code}" \
+    -H 'content-type: application/json' \
+    -d "${SEARCH_BODY}" \
+    "http://127.0.0.1:${PORT}/search"
+)"
+search_curl_rc=$?
+set -e
+write search.exit "${search_curl_rc}"
+write search.http "${search_http}"
+if [[ "${search_curl_rc}" -ne 0 ]]; then
+  write search.unreachable "curl POST /search failed (exit ${search_curl_rc})"
+  log "verify: POST /search UNVERIFIED (curl exit ${search_curl_rc})"
+elif [[ "${search_http}" == "503" ]]; then
+  write search.unreachable "POST /search HTTP 503. Qdrant is down or the index is not built."
+  log "verify: POST /search UNVERIFIED (HTTP 503)"
+elif [[ "${search_http}" != "200" ]]; then
+  log "verify: POST /search HTTP ${search_http}"
+  cat "${ART}/search.body.json" >&2 || true
+  exit 1
+else
+  set +e
+  uv run python - "${ART}/search.body.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+body = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+point_count = body.get("point_count")
+hits = body.get("hits")
+if not isinstance(point_count, int):
+    sys.stderr.write("verify: search body missing point_count\n")
+    sys.exit(1)
+if point_count == 0 or not hits:
+    hit_count = 0 if not isinstance(hits, list) else len(hits)
+    sys.stderr.write(f"verify: search point_count={point_count} hits={hit_count}\n")
+    sys.exit(2)
+required = ("doc_id", "section", "start", "end", "source_url", "text")
+for hit in hits:
+    if not isinstance(hit, dict):
+        sys.stderr.write("verify: search hit was not an object\n")
+        sys.exit(1)
+    score = hit.get("score")
+    chunk = hit.get("chunk")
+    if not isinstance(score, (int, float)) or not isinstance(chunk, dict):
+        sys.stderr.write("verify: search hit missing score or chunk\n")
+        sys.exit(1)
+    missing = [key for key in required if key not in chunk]
+    if missing:
+        sys.stderr.write("verify: search hit missing " + ", ".join(missing) + "\n")
+        sys.exit(1)
+print(f"search hits {len(hits)} points {point_count}")
+PY
+  search_check_rc=$?
+  set -e
+  if [[ "${search_check_rc}" -eq 2 ]]; then
+    write search.unreachable "POST /search HTTP 200 with an empty index or no hits"
+    log "verify: POST /search UNVERIFIED (empty index or no hits)"
+  elif [[ "${search_check_rc}" -ne 0 ]]; then
+    log "verify: POST /search body failed citation checks"
+    exit 1
+  else
+    log "verify: POST /search returned cited hits"
+  fi
+fi
+
+log "verify: quote-index sanity"
+set +e
+uv run python -m capitalcite.retrieval.sanity \
+  >"${ART}/quote-sanity.out" 2>"${ART}/quote-sanity.err"
+sanity_rc=$?
+set -e
+write quote-sanity.exit "${sanity_rc}"
+if [[ "${sanity_rc}" -eq 2 ]]; then
+  write quote-sanity.skipped "$(cat "${ART}/quote-sanity.err")"
+  log "verify: quote-index sanity UNVERIFIED"
+elif [[ "${sanity_rc}" -ne 0 ]]; then
+  log "verify: quote-index sanity failed"
+  cat "${ART}/quote-sanity.err" >&2 || true
+  exit 1
+else
+  if ! grep -q "recall_at_5=" "${ART}/quote-sanity.out" \
+    || ! grep -q "label=sanity" "${ART}/quote-sanity.out"; then
+    log "verify: quote-index sanity output missing recall_at_5"
+    cat "${ART}/quote-sanity.out" >&2 || true
+    exit 1
+  fi
+  log "verify: quote-index sanity (not the 12-filing corpus eval)"
+  cat "${ART}/quote-sanity.out"
+fi
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   log "verify: docker compose config"
   set +e
@@ -626,6 +744,18 @@ fi
   fi
   echo "chunk.help.exit $(cat "${ART}/chunk.help.exit")"
   echo "chunk.exit $(cat "${ART}/chunk.exit")"
+  echo "index.help.exit $(cat "${ART}/index.help.exit")"
+  if [[ -f "${ART}/search.unreachable" ]]; then
+    echo "search unreachable ($(cat "${ART}/search.unreachable"))"
+  else
+    echo "search.http $(cat "${ART}/search.http")"
+    echo "search.exit $(cat "${ART}/search.exit")"
+  fi
+  if [[ -f "${ART}/quote-sanity.skipped" ]]; then
+    echo "quote-sanity skipped ($(cat "${ART}/quote-sanity.skipped"))"
+  else
+    echo "quote-sanity.exit $(cat "${ART}/quote-sanity.exit")"
+  fi
   if [[ -f "${ART}/compose.config.exit" ]]; then
     echo "compose.config.exit $(cat "${ART}/compose.config.exit")"
   else

@@ -41,4 +41,4 @@ Preconditions:
 - Primary 10-K HTML is tens of megabytes. Always isolate `--output-dir`. Do not commit `data/raw/`.
 - SEC `primaryDocument` is not always the 10-K. WFC FY2025 declares `wfc-20251231_d2.htm` (~360KB shell); the real report is `wfc-20251231.htm`. FY2023/FY2024 invert the names. A stored WFC file under ~5MB is the shell, not the report.
 - `CliRunner().invoke(...)` in pytest is not this feature.
-- Index, `/ask`, and eval are still later issues. A missing `index` subcommand is expected.
+- `/ask` and eval are still later issues. `capitalcite index` and `POST /search` are covered by [search.md](./search.md).

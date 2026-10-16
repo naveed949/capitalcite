@@ -23,6 +23,13 @@ from capitalcite.ingest.parse import ParseError, parse_forms, parse_tickers, par
 from capitalcite.ingest.service import run_ingest
 from capitalcite.ingest.store import FilingStore
 from capitalcite.logging import configure_logging
+from capitalcite.retrieval import (
+    EmbedderName,
+    IndexUnavailable,
+    RetrievalError,
+    build_index,
+    create_retrieval_setup,
+)
 
 app = typer.Typer(
     name="capitalcite",
@@ -269,6 +276,79 @@ def chunk_cmd(
     if summary.files == 0:
         typer.echo("error: no filings found under raw/edgar", err=True)
         raise typer.Exit(code=1)
+
+
+@app.command("index")
+def index_cmd(
+    input_dir: Path | None = typer.Option(
+        None,
+        "--input-dir",
+        help="Root that contains parsed/edgar (defaults to DATA_DIR).",
+    ),
+    chunker: ChunkerName | None = typer.Option(
+        None,
+        "--chunker",
+        help="fixed, recursive, or section. Defaults to CHUNKER. Does not re-chunk.",
+    ),
+    size: int | None = typer.Option(
+        None,
+        "--size",
+        help="Chunk size recorded in the index config. Defaults to CHUNK_SIZE.",
+    ),
+    overlap: int | None = typer.Option(
+        None,
+        "--overlap",
+        help="Chunk overlap recorded in the index config. Defaults to CHUNK_OVERLAP.",
+    ),
+    embedder: EmbedderName | None = typer.Option(
+        None,
+        "--embedder",
+        help="bge-small, minilm, or openai-small. Defaults to EMBEDDER.",
+    ),
+) -> None:
+    """Embed chunks.jsonl into Qdrant and write an index sidecar.
+
+    Reads ``{input}/parsed/edgar/**/chunks.jsonl``. Does not parse or chunk.
+    Upserts points, deletes orphans, then writes
+    ``{input}/index/{collection}.json``.
+    """
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    root = input_dir if input_dir is not None else settings.data_dir
+    chosen_chunker = chunker if chunker is not None else settings.chunker
+    chosen_size = size if size is not None else settings.chunk_size
+    chosen_overlap = overlap if overlap is not None else settings.chunk_overlap
+    chosen_embedder = embedder.value if embedder is not None else settings.embedder
+    if chosen_size < 1:
+        typer.echo("error: --size must be at least 1", err=True)
+        raise typer.Exit(code=1)
+    if chosen_overlap < 0 or chosen_overlap >= chosen_size:
+        typer.echo("error: --overlap must be >= 0 and smaller than --size", err=True)
+        raise typer.Exit(code=1)
+    chosen = settings.model_copy(
+        update={
+            "chunker": chosen_chunker,
+            "chunk_size": chosen_size,
+            "chunk_overlap": chosen_overlap,
+            "embedder": chosen_embedder,
+        }
+    )
+    try:
+        setup = create_retrieval_setup(chosen)
+        receipt = asyncio.run(build_index(setup, root))
+    except IndexUnavailable as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except RetrievalError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(
+        "index "
+        f"collection={receipt.collection_name} "
+        f"config_hash={receipt.config_hash} "
+        f"points={receipt.point_count} "
+        f"output={root}"
+    )
 
 
 def create_edgar_client(user_agent: str) -> EdgarClient:

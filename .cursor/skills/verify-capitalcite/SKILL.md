@@ -85,6 +85,8 @@ Stable handles (do not invent others):
 | CLI | `capitalcite chunk --input-dir tests/fixtures/chunking/corpus --chunker section` | exit 0 + `chunks.jsonl` with citation fields (isolate `--output-dir`) |
 | CLI | `capitalcite golden validate` | exit 0 + mix counts; no network |
 | CLI | `capitalcite golden validate --against-raw <data_dir>` | exit 0 + `aligned=` / `recall=handwritten-only` after ingest+chunk |
+| CLI | `capitalcite index --help` | exit 0; lists `--embedder` |
+| HTTP | `POST /search` | 200 + citation fields, or UNVERIFIED when Qdrant or the index is missing |
 | Compose (optional) | `docker compose config` | exit 0 |
 | Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
 
@@ -125,6 +127,9 @@ Each run of `scripts/verify.sh` writes at least:
 | `ingest.out` / `ingest.exit` / `ingest.files.txt` **or** `ingest.unreachable` | Live EDGAR ingest proof |
 | `chunk.help.out` / `chunk.help.exit` | `capitalcite chunk --help` |
 | `chunk.out` / `chunk.exit` / `chunk.files.txt` | Fixture chunk proof |
+| `index.help.out` / `index.help.exit` | `capitalcite index --help` |
+| `search.body.json` / `search.exit` / `search.http` **or** `search.unreachable` | `POST /search`, or UNVERIFIED when Qdrant or the index is missing |
+| `quote-sanity.out` / `quote-sanity.exit` **or** `quote-sanity.skipped` | Quote-index recall sanity, not the 12-filing corpus eval |
 | `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
 | `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |
 
@@ -177,7 +182,7 @@ Expected later handles (do not add empty stubs now):
 | Issue | Handle to add |
 |---|---|
 | #3 chunking | `capitalcite chunk --chunker section` (landed) |
-| #4 retrieval | `POST /search` |
+| #4 retrieval | `POST /search` (landed) |
 | #5 golden set | `capitalcite golden validate` (landed) |
 | #6 evals | `capitalcite eval --suite golden` |
 | #7 answers | `POST /ask` |

@@ -22,3 +22,12 @@ data/parsed/edgar/{ticker}/{form}/{period}/{accession}/
   chunks.jsonl    # one chunk per line, with citation fields
   stats.json      # count and mean tokens for the selected chunker
 ```
+
+`capitalcite index` reads `parsed/edgar/**/chunks.jsonl` and writes one
+sidecar after the Qdrant upsert finishes. The points live in Qdrant. The
+file is the receipt for that collection name. The name is
+`{QDRANT_COLLECTION}-{config_hash}`.
+
+```
+data/index/{collection_name}.json
+```
