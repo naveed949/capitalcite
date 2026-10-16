@@ -1590,7 +1590,25 @@ elif len(records) < expected:
 if any(not row.trace_id.strip() for row in records):
     sys.stderr.write("verify: live audit record missing trace_id\n")
     sys.exit(1)
-print(f"audit live records={len(records)} traces={expected}")
+spans_path = art / "spans.jsonl"
+if not spans_path.is_file() or spans_path.stat().st_size == 0:
+    sys.stderr.write("verify: spans.jsonl missing for audit trace_id check\n")
+    sys.exit(1)
+ask_ids = {
+    str(row.get("trace_id") or "")
+    for line in spans_path.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+    for row in [json.loads(line)]
+    if row.get("name") == "ask" and not row.get("parent_id")
+}
+ask_ids.discard("")
+missing = sorted({row.trace_id for row in records if row.trace_id not in ask_ids})
+if missing:
+    sys.stderr.write(
+        "verify: audit trace_id not an ask root span: " + ", ".join(missing) + "\n"
+    )
+    sys.exit(1)
+print(f"audit live records={len(records)} traces={expected} ask_spans={len(ask_ids)}")
 PY
   audit_agent_rc=$?
   set -e

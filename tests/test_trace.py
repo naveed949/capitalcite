@@ -33,6 +33,7 @@ from capitalcite.trace.types import AttrValue, SpanRecord
 _SECRET = "sk-abcdefghijklmnopqrstuvwxyz"
 _EMAIL = "ada@example.com"
 _CARD = "4111111111111111"
+_SSN = "123-45-6789"
 
 
 def test_unconfigured_observation_records_nothing() -> None:
@@ -46,7 +47,7 @@ def test_unconfigured_observation_records_nothing() -> None:
 def test_nested_spans_share_a_trace_and_mask_the_question() -> None:
     exporter = MemoryExporter()
     configure_for_tests(exporter)
-    question = f"What did JPM say? mail {_EMAIL} key {_SECRET} card {_CARD}"
+    question = f"What did JPM say? mail {_EMAIL} ssn {_SSN} key {_SECRET} card {_CARD}"
     with observation("ask", ObservationKind.ASK) as span:
         root_id = current_trace_id()
         assert root_id
@@ -69,12 +70,14 @@ def test_nested_spans_share_a_trace_and_mask_the_question() -> None:
     assert isinstance(root.attributes["capitalcite.latency_ms"], float)
     blob = root.model_dump_json() + child.model_dump_json()
     assert _EMAIL not in blob
+    assert _SSN not in blob
     assert _SECRET not in blob
     assert _CARD not in blob
     assert "Bearer" not in blob
     assert "Authorization" not in blob
     assert "tier one capital buffer" not in blob
     assert "[REDACTED EMAIL]" in str(root.attributes["capitalcite.question"])
+    assert "[REDACTED SSN]" in str(root.attributes["capitalcite.question"])
 
 
 def test_sample_rate_zero_exports_nothing() -> None:
@@ -298,6 +301,11 @@ def test_importing_trace_does_not_import_langfuse() -> None:
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_ssn_is_masked() -> None:
+    assert _SSN not in mask_text(f"ssn {_SSN}")
+    assert mask_text(f"ssn {_SSN}") == "ssn [REDACTED SSN]"
 
 
 def test_question_is_masked_and_truncated() -> None:

@@ -9,6 +9,8 @@ from capitalcite.audit.digest import HEX64
 Decision = Literal["allowed", "denied"]
 GENESIS_HASH = "0" * HEX64
 _HASH_FIELD = r"^[0-9a-f]{64}$"
+AUDIT_UNAVAILABLE = "audit_unavailable"
+AUDIT_UNAVAILABLE_DETAIL = "audit unavailable"
 
 
 class AuditRecord(BaseModel):

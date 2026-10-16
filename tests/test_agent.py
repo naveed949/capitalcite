@@ -371,6 +371,7 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
         assert ObservationKind.GENERATE in kinds
         records = exporter.finished()
         ask_span = next(record for record in records if record.kind is ObservationKind.ASK)
+        ask_trace_id = ask_span.trace_id
         agent_span = next(record for record in records if record.kind is ObservationKind.AGENT)
         assert agent_span.parent_id == ask_span.span_id
         assert agent_span.trace_id == ask_span.trace_id
@@ -403,15 +404,15 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
     report = verify(audit_path)
     assert report.ok is True
     assert report.records == len(body.traces)
-    records = [
+    audit_rows = [
         AuditRecord.model_validate_json(line)
         for line in audit_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert [row.tool for row in records] == [step.tool for step in body.traces]
-    assert all(row.trace_id for row in records)
-    assert len({row.trace_id for row in records}) == 1
-    assert all(row.decision == "allowed" and row.reason is None for row in records)
+    assert [row.tool for row in audit_rows] == [step.tool for step in body.traces]
+    assert ask_trace_id
+    assert all(row.trace_id == ask_trace_id for row in audit_rows)
+    assert all(row.decision == "allowed" and row.reason is None for row in audit_rows)
 
 
 def test_post_ask_agent_tool_http_error_is_200(

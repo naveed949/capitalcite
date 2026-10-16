@@ -3,6 +3,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,8 @@ from capitalcite.audit.types import (
     VerifyIssue,
     VerifyReport,
 )
+
+_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
 def utc_iso(moment: datetime) -> str:
@@ -99,7 +102,7 @@ class AuditLog:
         with self.path.open("a+", encoding="utf-8") as handle:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
             try:
-                prev_hash, seq = _tail(handle)
+                prev_hash, seq = _prev(handle, self.path)
                 chained = AuditRecord(
                     seq=seq + 1,
                     ts=ts,
@@ -190,6 +193,29 @@ def verify(path: Path) -> VerifyReport:
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     return VerifyReport(ok=not issues, records=records, issues=tuple(issues))
+
+
+def _prev(handle: TextIO, path: Path) -> tuple[str, int]:
+    cached = _load_tip(_tip_path(path))
+    if cached is not None:
+        return cached
+    return _tail(handle)
+
+
+def _load_tip(tip_path: Path) -> tuple[str, int] | None:
+    try:
+        raw = json.loads(tip_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    record_hash = raw.get("hash")
+    seq = raw.get("seq")
+    if not isinstance(record_hash, str) or _HASH.fullmatch(record_hash) is None:
+        return None
+    if not isinstance(seq, int) or seq < 1:
+        return None
+    return record_hash, seq
 
 
 def _tail(handle: TextIO) -> tuple[str, int]:

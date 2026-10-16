@@ -1,5 +1,7 @@
 from capitalcite.audit.log import AuditLog, utc_iso, verify
 from capitalcite.audit.types import (
+    AUDIT_UNAVAILABLE,
+    AUDIT_UNAVAILABLE_DETAIL,
     GENESIS_HASH,
     AuditRecord,
     Decision,
@@ -8,6 +10,8 @@ from capitalcite.audit.types import (
 )
 
 __all__ = [
+    "AUDIT_UNAVAILABLE",
+    "AUDIT_UNAVAILABLE_DETAIL",
     "GENESIS_HASH",
     "AuditLog",
     "AuditRecord",
