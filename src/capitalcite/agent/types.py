@@ -64,6 +64,7 @@ class ToolResult(BaseModel):
     tool: str
     args: dict[str, object]
     detail: str
+    reason: str | None = None
     hits: tuple[Hit, ...] = ()
     value: str = ""
 

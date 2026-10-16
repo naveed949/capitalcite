@@ -65,7 +65,15 @@ default fake planner, given the same injected hit, only calls
 
 #10 can wrap the same `execute` and write one record per decision.
 #11 can span `decide`. This change does not add an audit log or a
-Langfuse client.
+Langfuse client. `ToolResult.reason` is the machine-readable deny
+code those wrappers copy. Oversized arguments are `args_too_large`.
+Call-count overage stays `budget_exceeded`.
+
+`Gate.execute` catches any exception from `decide()` and returns
+`ok=False`, `detail="gate error"`, `reason="gate_error"`. `_deny`
+stringifies keys and stores `repr` when args are not a mapping or
+cannot be walked, so building a deny cannot raise. Odd inputs
+(non-string keys, cycles, a non-dict) still never call the runner.
 
 ## CLI is the user path
 

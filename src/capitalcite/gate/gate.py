@@ -19,14 +19,18 @@ class DenyReason(StrEnum):
     unknown_tool = "unknown_tool"
     invalid_args = "invalid_args"
     budget_exceeded = "budget_exceeded"
+    args_too_large = "args_too_large"
     policy_load_failed = "policy_load_failed"
+    gate_error = "gate_error"
 
 
 _DETAIL = {
     DenyReason.unknown_tool: "unknown tool",
     DenyReason.invalid_args: "invalid args",
     DenyReason.budget_exceeded: "budget exceeded",
+    DenyReason.args_too_large: "args too large",
     DenyReason.policy_load_failed: "policy load failed",
+    DenyReason.gate_error: "gate error",
 }
 
 
@@ -58,42 +62,88 @@ class Gate:
         self._calls: dict[str, int] = {}
 
     def decide(self, name: str, args: Mapping[str, object]) -> Decision:
-        copied = dict(args)
+        recorded = _record_args(args)
         if isinstance(self._policy, BrokenPolicy):
-            return _deny(name, copied, DenyReason.policy_load_failed)
+            return _deny(name, recorded, DenyReason.policy_load_failed)
         rule = self._policy.tools.get(name)
         if rule is None:
-            return _deny(name, copied, DenyReason.unknown_tool)
+            return _deny(name, recorded, DenyReason.unknown_tool)
+        if not isinstance(args, Mapping):
+            return _deny(name, recorded, DenyReason.invalid_args)
+        try:
+            copied = dict(args)
+        except Exception:
+            return _deny(name, recorded, DenyReason.invalid_args)
         self._calls[name] = self._calls.get(name, 0) + 1
         if self._calls[name] > rule.max_calls:
-            return _deny(name, copied, DenyReason.budget_exceeded)
+            return _deny(name, recorded, DenyReason.budget_exceeded)
         try:
             encoded = json.dumps(copied, sort_keys=True, default=str)
-        except TypeError:
-            return _deny(name, copied, DenyReason.invalid_args)
+        except (TypeError, ValueError):
+            return _deny(name, recorded, DenyReason.invalid_args)
         if len(encoded.encode("utf-8")) > rule.max_arg_bytes:
-            return _deny(name, copied, DenyReason.budget_exceeded)
+            return _deny(name, recorded, DenyReason.args_too_large)
         if validate_args(rule.args, copied) is not None:
-            return _deny(name, copied, DenyReason.invalid_args)
-        return Decision(kind="allow", tool=name, args=copied, detail="allow")
+            return _deny(name, recorded, DenyReason.invalid_args)
+        return Decision(kind="allow", tool=name, args=recorded, detail="allow")
 
     async def execute(self, name: str, args: Mapping[str, object]) -> ToolResult:
-        decision = self.decide(name, args)
+        try:
+            decision = self.decide(name, args)
+        except Exception:
+            return ToolResult(
+                ok=False,
+                tool=name,
+                args=_record_args(args),
+                detail=_DETAIL[DenyReason.gate_error],
+                reason=DenyReason.gate_error,
+            )
         if decision.kind == "deny":
             return ToolResult(
                 ok=False,
                 tool=name,
-                args=dict(args),
+                args=decision.args,
                 detail=decision.detail,
+                reason=decision.reason,
             )
         return await self._inner.execute(name, args)
 
 
-def _deny(name: str, args: dict[str, object], reason: DenyReason) -> Decision:
+def _record_args(args: object) -> dict[str, object]:
+    """Snapshot args so a deny Decision and ToolResult cannot raise."""
+    try:
+        if not isinstance(args, Mapping):
+            return {"repr": repr(args)}
+        recorded: dict[str, object] = {}
+        for key, value in args.items():
+            recorded[str(key)] = _safe_value(value)
+        return recorded
+    except Exception:
+        try:
+            return {"repr": repr(args)}
+        except Exception:
+            return {"repr": "<unrepresentable>"}
+
+
+def _safe_value(value: object) -> object:
+    try:
+        json.dumps(value, default=str)
+    except (TypeError, ValueError):
+        return repr(value)
+    if isinstance(value, Mapping):
+        return {str(key): _safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_safe_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_safe_value(item) for item in value]
+    return value
+
+
+def _deny(name: str, args: object, reason: DenyReason) -> Decision:
     return Decision(
         kind="deny",
         tool=name,
-        args=args,
+        args=_record_args(args),
         reason=reason,
-        detail=_DETAIL[reason],
+        detail=_DETAIL.get(reason, _DETAIL[DenyReason.gate_error]),
     )
