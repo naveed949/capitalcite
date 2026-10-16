@@ -126,6 +126,7 @@ def test_api_and_cli_do_not_import_store_clients() -> None:
         root / "cli.py",
         root / "api" / "app.py",
         root / "api" / "routes" / "search.py",
+        root / "api" / "routes" / "ask.py",
         root / "api" / "routes" / "health.py",
     )
     banned = ("qdrant_client", "fastembed")

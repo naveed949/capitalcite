@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+AskModelName = Literal["openai", "fake"]
+
 
 class AskError(Exception):
     """Domain failure. Routes map these. Ask does not raise HTTPException."""
