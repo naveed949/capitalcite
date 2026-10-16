@@ -234,7 +234,7 @@ async def retrieve(
             f"embedder returned {width} dims, config expects {setup.config.dense_size}"
         )
     qfilter = _payload_filter(filters)
-    prefetch_limit = max(limit * 4, 20)
+    prefetch_limit = max(limit * 10, 50)
     dense_name = setup.config.dense_vector
     sparse_name = setup.config.sparse_vector
     dense_query = list(embedding.dense)

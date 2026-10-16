@@ -110,7 +110,8 @@ field.
 1. The lists `a, b` and `b, c` at k 60 score `b` at `1/61 + 1/62`, `a` at
 `1/61`, and `c` at `1/62`. Tests lock those numbers. Production search does
 not call that function. It sends `RrfQuery` to Qdrant with `k` set from
-`RRF_K`. Qdrant's rank index starts at 0, so a first-place hit from one
+`RRF_K`. Each hybrid prefetch asks for `max(10 * k, 50)` candidates so a
+long 10-K still has room for both legs. Qdrant's rank index starts at 0, so a first-place hit from one
 list scores `1/k`, not `1/(k+1)`. With the default 60, a point that is
 first on both legs scores `1/30`. Tests that go through the memory client
 lock that Qdrant number. We do not pass `k+1` to sneak the paper formula

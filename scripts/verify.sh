@@ -597,9 +597,17 @@ if [[ -f "${ART}/ingest.unreachable" ]]; then
   write search.unreachable "live ingest unreachable; embedded index needs JPM FY24 and WFC FY25 chunks"
   log "verify: POST /search UNVERIFIED (no ingested corpus)"
 else
+  INDEX_CORPUS="${ART}/index-corpus"
+  mkdir -p \
+    "${INDEX_CORPUS}/parsed/edgar/JPM/10-K" \
+    "${INDEX_CORPUS}/parsed/edgar/WFC/10-K" \
+    "${INDEX_CORPUS}/parsed/edgar/BAC/10-K"
+  cp -a "${INGEST_DIR}/parsed/edgar/JPM/10-K/2024-12-31" "${INDEX_CORPUS}/parsed/edgar/JPM/10-K/"
+  cp -a "${INGEST_DIR}/parsed/edgar/WFC/10-K/2025-12-31" "${INDEX_CORPUS}/parsed/edgar/WFC/10-K/"
+  cp -a "${INGEST_DIR}/parsed/edgar/BAC/10-K/2024-12-31" "${INDEX_CORPUS}/parsed/edgar/BAC/10-K/"
   INDEX_CMD=(
     uv run capitalcite index
-    --input-dir "${INGEST_DIR}"
+    --input-dir "${INDEX_CORPUS}"
     --chunker section
     --embedder bge-small
   )
@@ -636,7 +644,7 @@ else
   post_search search.repro.2 "${Q013}"
   post_search search.cc-h-013.hybrid "${Q013}"
   post_search search.cc-h-013.hybrid-jpm \
-    '{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":5,"ticker":"JPM"}'
+    '{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":10,"ticker":"JPM"}'
   post_search search.cc-h-013.dense \
     '{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"dense","k":5}'
   post_search search.cc-h-013.bm25 \
@@ -644,9 +652,9 @@ else
   post_search search.cc-h-063.hybrid \
     '{"query":"What CET1 ratio did Wells Fargo report under the Standardized Approach at year-end 2025?","mode":"hybrid","k":5}'
   post_search search.cc-h-063.hybrid-wfc \
-    '{"query":"What CET1 ratio did Wells Fargo report under the Standardized Approach at year-end 2025?","mode":"hybrid","k":5,"ticker":"WFC"}'
+    '{"query":"What CET1 ratio did Wells Fargo report under the Standardized Approach at year-end 2025?","mode":"hybrid","k":10,"ticker":"WFC"}'
 
-  uv run python - "${ART}" "${INGEST_DIR}" evals/golden/v1.jsonl <<'PY'
+  uv run python - "${ART}" "${INDEX_CORPUS}" evals/golden/v1.jsonl <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -755,19 +763,37 @@ if hit_ids(first) != hit_ids(second):
 dump("search.repro.1", first)
 dump("search.repro.2", second)
 
-cases = (
-    ("search.cc-h-013.hybrid", "cc-h-013", None),
+def gold_doc(item_id: str) -> str:
+    return str(items[item_id]["evidence"][0]["doc_id"])
+
+
+def has_doc(body: dict, item_id: str) -> bool:
+    want = gold_doc(item_id)
+    return any((hit.get("chunk") or {}).get("doc_id") == want for hit in body.get("hits") or [])
+
+
+span_cases = (
     ("search.cc-h-013.hybrid-jpm", "cc-h-013", "JPM"),
+    ("search.cc-h-063.hybrid-wfc", "cc-h-063", "WFC"),
+)
+doc_cases = (
+    ("search.cc-h-013.hybrid", "cc-h-013", None),
     ("search.cc-h-013.dense", "cc-h-013", None),
     ("search.cc-h-013.bm25", "cc-h-013", None),
     ("search.cc-h-063.hybrid", "cc-h-063", None),
-    ("search.cc-h-063.hybrid-wfc", "cc-h-063", "WFC"),
 )
-for name, item_id, ticker in cases:
+for name, item_id, ticker in span_cases:
     body = load(name)
     dump(name, body)
     if not overlaps(body, item_id):
         errors.append(f"{name}: gold span for {item_id} missed top-k")
+    if ticker is not None and tickers(body) - {ticker, ""}:
+        errors.append(f"{name}: hits outside ticker {ticker}: {sorted(tickers(body))}")
+for name, item_id, ticker in doc_cases:
+    body = load(name)
+    dump(name, body)
+    if not has_doc(body, item_id):
+        errors.append(f"{name}: gold doc_id {gold_doc(item_id)} missed top-k")
     if ticker is not None and tickers(body) - {ticker, ""}:
         errors.append(f"{name}: hits outside ticker {ticker}: {sorted(tickers(body))}")
 
