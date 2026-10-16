@@ -905,6 +905,98 @@ print(f"chunk files {len(chunk_paths)} rows {total_rows}")
 PY
 log "verify: chunk wrote cited rows with Item 7 table, Item 8, and a split long table"
 
+log "verify: capitalcite mcp --help"
+set +e
+uv run capitalcite mcp --help >"${ART}/mcp.help.out" 2>"${ART}/mcp.help.err"
+mcp_help_rc=$?
+set -e
+write mcp.help.exit "${mcp_help_rc}"
+if [[ "${mcp_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite mcp --help failed"
+  cat "${ART}/mcp.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/mcp.help.out" | grep -qi "stdio"; then
+  log "verify: mcp --help missing stdio"
+  cat "${ART}/mcp.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite mcp --help ok"
+
+MCP_QDRANT="${ART}/mcp-qdrant"
+MCP_AUDIT="${ART}/mcp.audit.jsonl"
+MCP_SPANS="${ART}/mcp.spans.jsonl"
+mkdir -p "${MCP_QDRANT}"
+write mcp.qdrant.path "${MCP_QDRANT}"
+write mcp.audit.path "${MCP_AUDIT}"
+write mcp.spans.path "${MCP_SPANS}"
+MCP_INDEX_CMD=(env QDRANT_PATH="${MCP_QDRANT}" uv run capitalcite index --input-dir "${CHUNK_OUT}" --chunker section)
+printf '%s\n' "${MCP_INDEX_CMD[*]}" >"${ART}/mcp.index.cmd"
+log "verify: ${MCP_INDEX_CMD[*]}"
+set +e
+"${MCP_INDEX_CMD[@]}" >"${ART}/mcp.index.out" 2>"${ART}/mcp.index.err"
+mcp_index_rc=$?
+set -e
+write mcp.index.exit "${mcp_index_rc}"
+if [[ "${mcp_index_rc}" -ne 0 ]]; then
+  log "verify: MCP fixture index failed"
+  cat "${ART}/mcp.index.out" >&2 || true
+  cat "${ART}/mcp.index.err" >&2 || true
+  exit 1
+fi
+log "verify: MCP fixture index ok"
+
+log "verify: official MCP client against capitalcite mcp"
+set +e
+env \
+  QDRANT_PATH="${MCP_QDRANT}" \
+  AUDIT_LOG_PATH="${MCP_AUDIT}" \
+  CAPITALCITE_TRACE_FILE="${MCP_SPANS}" \
+  ASK_MODEL=fake \
+  LANGFUSE_TRACING_ENABLED=false \
+  uv run python "${ROOT}/scripts/mcp_probe.py" --artifacts "${ART}" --root "${ROOT}" \
+  >"${ART}/mcp.probe.out" 2>"${ART}/mcp.probe.err"
+mcp_probe_rc=$?
+set -e
+write mcp.probe.exit "${mcp_probe_rc}"
+if [[ "${mcp_probe_rc}" -ne 0 ]]; then
+  log "verify: MCP probe failed"
+  cat "${ART}/mcp.probe.out" >&2 || true
+  cat "${ART}/mcp.probe.err" >&2 || true
+  exit 1
+fi
+if [[ ! -f "${ART}/mcp.tools.json" ]] \
+  || [[ ! -f "${ART}/mcp.search.body.json" ]] \
+  || [[ ! -f "${ART}/mcp.search.extra.body.json" ]] \
+  || [[ ! -f "${ART}/mcp.calculator.body.json" ]] \
+  || [[ ! -f "${ART}/mcp.ask.body.json" ]]; then
+  log "verify: MCP probe missing JSON bodies"
+  exit 1
+fi
+if [[ ! -f "${MCP_SPANS}" ]]; then
+  log "verify: MCP span file missing"
+  exit 1
+fi
+set +e
+uv run capitalcite audit verify --path "${MCP_AUDIT}" \
+  >"${ART}/mcp.audit.out" 2>"${ART}/mcp.audit.err"
+mcp_audit_rc=$?
+set -e
+write mcp.audit.exit "${mcp_audit_rc}"
+if [[ "${mcp_audit_rc}" -ne 0 ]]; then
+  log "verify: MCP audit verify failed"
+  cat "${ART}/mcp.audit.out" >&2 || true
+  cat "${ART}/mcp.audit.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "audit ok records=" "${ART}/mcp.audit.out"; then
+  log "verify: MCP audit verify stdout missing records"
+  cat "${ART}/mcp.audit.out" >&2 || true
+  exit 1
+fi
+log "verify: MCP stdio client ok"
+cat "${ART}/mcp.probe.out"
+
 log "verify: capitalcite index --help"
 set +e
 uv run capitalcite index --help >"${ART}/index.help.out" 2>"${ART}/index.help.err"
@@ -2057,6 +2149,10 @@ fi
   fi
   echo "chunk.help.exit $(cat "${ART}/chunk.help.exit")"
   echo "chunk.exit $(cat "${ART}/chunk.exit")"
+  echo "mcp.help.exit $(cat "${ART}/mcp.help.exit")"
+  echo "mcp.index.exit $(cat "${ART}/mcp.index.exit")"
+  echo "mcp.probe.exit $(cat "${ART}/mcp.probe.exit")"
+  echo "mcp.audit.exit $(cat "${ART}/mcp.audit.exit")"
   echo "index.help.exit $(cat "${ART}/index.help.exit")"
   if [[ -f "${ART}/index.1.exit" ]]; then
     echo "index.1.exit $(cat "${ART}/index.1.exit")"

@@ -1,6 +1,6 @@
 ---
 name: verify-capitalcite
-description: "Drive capitalcite's FastAPI HTTP API (primary) and `capitalcite` CLI (secondary) the way a user does: launch uvicorn on a free port, curl /health, run `capitalcite version`, optionally check docker compose and Qdrant. Use when proving a change works, after editing API/CLI/compose, or before merging."
+description: "Drive capitalcite's FastAPI HTTP API (primary), `capitalcite` CLI, and `capitalcite mcp` stdio the way a user does: launch uvicorn on a free port, curl /health, run `capitalcite version`, drive MCP with the official client, optionally check docker compose and Qdrant. Use when proving a change works, after editing API/CLI/compose/MCP, or before merging."
 ---
 
 # Verify capitalcite
@@ -9,6 +9,7 @@ This skill is for the next agent, mid-task, who has never seen the app. It drive
 
 **Primary surface:** HTTP API — FastAPI, `uv run uvicorn capitalcite.api:app`.
 **Secondary surface:** `capitalcite` CLI (`uv run capitalcite`).
+**MCP surface:** `capitalcite mcp` on stdio, driven with the official `mcp.Client` and `StdioServerParameters`.
 **Not a surface yet:** there is no web UI. Do not open a browser.
 
 Two instances can run side by side: pick a free loopback port per run and a unique `artifacts/verify/<timestamp>/` directory. Do not attach to an already-running uvicorn you did not start. Do not `docker compose down` a stack you did not start.
@@ -72,7 +73,7 @@ Fail (do not drive) when: curl hangs or non-200, JSON missing those keys, versio
 
 ## Drive
 
-Harness: `scripts/verify.sh` (HTTP via curl, CLI via `uv run capitalcite`). Prefer the helper; the raw commands below are what it runs and what you use to extend it.
+Harness: `scripts/verify.sh` (HTTP via curl, CLI via `uv run capitalcite`, MCP via `scripts/mcp_probe.py` and the official stdio client). Prefer the helper; the raw commands below are what it runs and what you use to extend it.
 
 Stable handles (do not invent others):
 
@@ -95,6 +96,7 @@ Stable handles (do not invent others):
 | File | `CAPITALCITE_TRACE_FILE` JSONL | after `capitalcite gate decide`, JSONL has deny spans with tool and reason; after fake `POST /ask`, JSONL has `ask` + `retrieve`; after `eval --small`, an `eval` span has `git_sha` and `config_hash`. Live Langfuse `:3000` is UNVERIFIED when down |
 | CLI | `capitalcite audit verify` | exit 0 on an intact chain; exit 1 after a mutated field or a removed last record; no network |
 | CLI | `capitalcite check` | exit 0 + `ok=true`; quote-index sanity and fixture recall vs `evals/baselines/ci.json` at zero item drop; `cc-ci-002` answered; `cc-u-001` refused; red-team `failed` 0. `--live` without `OPENAI_API_KEY` is UNVERIFIED |
+| MCP | `capitalcite mcp` via official `Client(StdioServerParameters)` | `list_tools` is `search_filings`+`ask`; extra keys `invalid_args`; `calculator` `unknown_tool`; fake `ask` writes audit JSONL and span JSONL |
 | CLI | `capitalcite eval --suite golden --small` | exit 0 + Recall@5 table; FakeEmbedder, no download |
 | CLI | `capitalcite graph load --backend memory` | exit 0 + `backend=memory` `banks=8`; no Neo4j |
 | CLI | `capitalcite graph query --kind subsidiaries --ticker JPM` | exit 0 + `852218` |
@@ -150,6 +152,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `langfuse.skipped` | Live Langfuse UI on `:3000` was not reachable. UNVERIFIED, not a pass |
 | `audit.help.out` / `audit.ok.out` / `audit.tamper.out` / `audit.removed.out` | Offline `capitalcite audit verify` on an intact chain, after a mutated field, and after deleting the last line |
 | `audit.agent.out` **or** `audit.agent.skipped` | Live one-record-per-trace check after `path=agent`, or UNVERIFIED when the agent path could not run |
+| `mcp.help.out` / `mcp.tools.json` / `mcp.search.body.json` / `mcp.search.extra.body.json` / `mcp.calculator.body.json` / `mcp.ask.body.json` / `mcp.audit.out` / `mcp.spans.jsonl` | Official stdio MCP client against `capitalcite mcp` on the fixture index. Isolated `AUDIT_LOG_PATH` and `QDRANT_PATH` |
 | `quote-sanity.out` / `quote-sanity.exit` **or** `quote-sanity.skipped` | Quote-index recall sanity, not the 12-filing corpus eval |
 | `check.help.out` / `check.help.exit` | `capitalcite check --help` (must list `--baseline` and `--live`) |
 | `check.out` / `check.exit` / `check/check.json` | Deterministic regression pack vs the committed baseline |
@@ -190,7 +193,7 @@ If a run fails mid-way, run cleanup anyway (the trap should fire). If you launch
 ./scripts/verify.sh
 ```
 
-No arguments. It prints each step to stdout (paste that into a PR) and mirrors the same facts into `artifacts/verify/<timestamp>/`. Exit 0 means required API and CLI checks passed. Optional Docker or Qdrant steps that did not run are `UNVERIFIED`, not passed. The script still exits 0 in that case.
+No arguments. It prints each step to stdout (paste that into a PR) and mirrors the same facts into `artifacts/verify/<timestamp>/`. Exit 0 means required API, CLI, and MCP checks passed. Optional Docker or Qdrant steps that did not run are `UNVERIFIED`, not passed. The script still exits 0 in that case.
 
 Do not reverse-engineer the script: the Drive table and the feature files list the exact commands it wraps.
 
@@ -219,6 +222,7 @@ Expected later handles (do not add empty stubs now):
 | #10 audit | `capitalcite audit verify` (landed) |
 | #11 tracing | `CAPITALCITE_TRACE_FILE` JSONL after `/ask` (landed). Live Langfuse UI is UNVERIFIED without `:3000` |
 | #12 eval CI | `capitalcite check` (landed) |
+| #15 MCP | `capitalcite mcp` via official stdio client (landed) |
 | #16 entity graph | `capitalcite graph load/query` and `eval --suite graph --small` (landed). Live Neo4j Bolt is UNVERIFIED without Docker |
 
 `./scripts/verify.sh` runs `capitalcite check`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED.

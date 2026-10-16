@@ -78,6 +78,14 @@ def show_version() -> None:
     typer.echo(version("capitalcite"))
 
 
+@app.command("mcp")
+def mcp_serve() -> None:
+    """Speak MCP on stdio. stdout is the protocol wire. Logging goes to stderr."""
+    from capitalcite.mcp import run_stdio
+
+    run_stdio()
+
+
 golden_app = typer.Typer(
     help="Validate the committed golden Q&A set. No network.",
     no_args_is_help=True,

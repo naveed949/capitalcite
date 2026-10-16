@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import TextIO
 
 
-def configure_logging(level: str) -> None:
-    """Configure root logging once at process start."""
+def configure_logging(level: str, *, stream: TextIO | None = None) -> None:
+    """Configure root logging once at process start.
+
+    MCP stdio uses stderr. stdout is the protocol wire.
+    """
     logging.basicConfig(
         level=level.upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        stream=sys.stdout,
+        stream=stream if stream is not None else sys.stdout,
         force=True,
     )

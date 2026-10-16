@@ -60,7 +60,7 @@ flowchart LR
 | Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
 | Evals in CI | `capitalcite check` on every PR: quote-index sanity and fixture span-overlap vs `evals/baselines/ci.json` at zero item drop, fake-model cite/refuse contracts, gate red-team. Nightly ingests the twelve 10-Ks and gates section/bge-small/hybrid Recall@5 vs `evals/baselines/nightly.json` (one-item allowance). The Qdrant cache key is config hash plus accession ids; only a cold miss pays the embed. The published six-arm table is not the nightly gate. Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Baseline file edits need the `eval-baseline` label. | 🟡 `capitalcite check` |
 | Deploy | Azure Container Apps (Bicep, scale-to-zero API, internal Qdrant). Live Azure `/health` is UNVERIFIED until someone opts in. | 🟡 IaC + image recipe |
-| MCP server (optional) | Exposes `search_filings` / `ask` as MCP tools | ⬜ optional |
+| MCP server (optional) | `capitalcite mcp` speaks stdio. `search_filings` and `ask` go through the same gate, audit log, and `ground()` path as the agent. | 🟡 `capitalcite mcp` |
 | Entity graph (optional) | BHC → subsidiary → filing → metric. `capitalcite graph load` MERGE-loads a recorded NIC snapshot. `graph_query` is a typed agent tool. Blank `NEO4J_URI` leaves RAG unchanged. Tests use `MemoryGraphStore`. Live Bolt is UNVERIFIED without Docker. | 🟡 `capitalcite graph`, `eval --suite graph` |
 
 ## Evaluation
@@ -191,6 +191,7 @@ uv run capitalcite graph query --kind subsidiaries --ticker JPM
 uv run capitalcite eval --suite graph --small
 uv run capitalcite gate decide --tool shell --args '{"cmd":"ls"}'
 uv run capitalcite audit verify --path data/audit.jsonl
+uv run capitalcite mcp
 ```
 
 Ingest design: [docs/decisions/0002-edgar-ingester.md](docs/decisions/0002-edgar-ingester.md).
@@ -202,6 +203,7 @@ Fail-closed tool gate: [docs/decisions/0009-fail-closed-tool-gate.md](docs/decis
 Plan-then-act agent: [docs/decisions/0008-plan-then-act-agent.md](docs/decisions/0008-plan-then-act-agent.md).
 Langfuse tracing: [docs/decisions/0010-langfuse-tracing.md](docs/decisions/0010-langfuse-tracing.md).
 Audit log: [docs/decisions/0011-append-only-audit-log.md](docs/decisions/0011-append-only-audit-log.md).
+MCP server: [docs/decisions/0014-mcp-server.md](docs/decisions/0014-mcp-server.md).
 Azure Container Apps: [docs/decisions/0012-azure-container-apps.md](docs/decisions/0012-azure-container-apps.md).
 Regression CI: [docs/decisions/0013-eval-regression-ci.md](docs/decisions/0013-eval-regression-ci.md).
 Optional entity graph: [docs/decisions/0014-optional-entity-graph.md](docs/decisions/0014-optional-entity-graph.md).
@@ -275,7 +277,7 @@ Everything below is public. Each link was checked on 2026-10-16.
 ## Layout
 
 ```
-src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask, agent, gate, audit, kg
+src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask, agent, gate, audit, kg, mcp
 tests/               pytest (recorded fixtures; no live network)
 docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records

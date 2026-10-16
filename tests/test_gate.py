@@ -21,6 +21,7 @@ from capitalcite.gate import (
     run_redteam,
 )
 from capitalcite.gate.policy import Policy
+from capitalcite.mcp.names import MCP_ONLY_TOOLS
 from capitalcite.trace import MemoryExporter, ObservationKind, configure_for_tests, reset_for_tests
 
 runner = CliRunner()
@@ -44,7 +45,8 @@ def test_gate_help_lists_commands() -> None:
 def test_shipped_policy_lists_registered_tools() -> None:
     loaded = load_policy(None)
     assert isinstance(loaded, Policy)
-    assert set(loaded.tools) == set(TOOL_NAMES)
+    assert set(loaded.tools) == set(TOOL_NAMES) | MCP_ONLY_TOOLS
+    assert MCP_ONLY_TOOLS.isdisjoint(TOOL_NAMES)
     assert loaded.default == "deny"
     assert default_policy_path().is_file()
 

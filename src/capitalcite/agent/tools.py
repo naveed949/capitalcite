@@ -100,13 +100,9 @@ class ToolRegistry:
             return result
 
 
-def default_registry(
-    *,
-    search: SearchFn,
-    xbrl: XbrlFn,
-    fdic: FdicFn,
-    graph: GraphStore | None = None,
-) -> ToolRegistry:
+def make_search_filings(search: SearchFn) -> ToolFn:
+    """search_filings runner. Agent and MCP share this function."""
+
     async def search_filings(args: Mapping[str, object]) -> ToolResult:
         try:
             parsed = SearchFilingsArgs.model_validate(args)
@@ -125,6 +121,18 @@ def default_registry(
             detail=detail,
             hits=tuple(hits),
         )
+
+    return search_filings
+
+
+def default_registry(
+    *,
+    search: SearchFn,
+    xbrl: XbrlFn,
+    fdic: FdicFn,
+    graph: GraphStore | None = None,
+) -> ToolRegistry:
+    search_filings = make_search_filings(search)
 
     async def xbrl_fact(args: Mapping[str, object]) -> ToolResult:
         try:
