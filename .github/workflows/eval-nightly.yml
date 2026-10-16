@@ -9,6 +9,7 @@ on:
       - ".github/workflows/eval-nightly.yml"
       - "evals/baselines/nightly.json"
       - "src/capitalcite/eval/baseline.py"
+      - "src/capitalcite/eval/cache_key.py"
       - "src/capitalcite/eval/runner.py"
       - "src/capitalcite/retrieval/embedders.py"
       - "src/capitalcite/retrieval/service.py"
@@ -72,7 +73,11 @@ jobs:
   full:
     name: twelve-filing section/hybrid
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 360
+    outputs:
+      cache-hit: ${{ steps.qdrant.outputs.cache-hit }}
+      cache-key: ${{ steps.cachekey.outputs.key }}
+      unverified: ${{ steps.ingest.outputs.unverified }}
     env:
       SEC_USER_AGENT: capitalcite-ci ci@example.com
       APP_ENV: test
@@ -102,13 +107,6 @@ jobs:
         with:
           path: .cache/fastembed
           key: fastembed-bge-small-en-v1.5-bm25-v1
-
-      - name: Restore eval index
-        id: qdrant
-        uses: actions/cache/restore@v4
-        with:
-          path: .cache/qdrant-eval
-          key: qdrant-eval-bge-small-section-hybrid-v1
 
       - name: Ingest twelve 10-Ks
         id: ingest
@@ -173,9 +171,43 @@ jobs:
           path: .cache/fastembed
           key: fastembed-bge-small-en-v1.5-bm25-v1
 
-      - name: Twelve-filing section/hybrid vs nightly baseline
+      - name: Eval index cache key
+        id: cachekey
         if: steps.ingest.outputs.unverified != 'true'
-        timeout-minutes: 70
+        run: |
+          set -euo pipefail
+          key="$(uv run capitalcite eval --suite golden --print-cache-key \
+            --input-dir data --chunker section --embedder bge-small | tail -n 1)"
+          if [ -z "${key}" ] || [ "${#key}" -ne 64 ]; then
+            echo "::error::expected 64-char cache key, got '${key}'"
+            exit 1
+          fi
+          echo "key=${key}" >> "${GITHUB_OUTPUT}"
+          echo "eval index cache key ${key}"
+
+      - name: Restore eval index
+        id: qdrant
+        if: steps.ingest.outputs.unverified != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/qdrant-eval
+          key: qdrant-eval-${{ steps.cachekey.outputs.key }}
+
+      - name: Drop Qdrant lockfiles
+        if: steps.qdrant.outputs.cache-hit == 'true'
+        run: find .cache/qdrant-eval \( -name '*.lock' -o -name 'LOCK' \) -delete
+
+      - name: Twelve-filing section/hybrid vs nightly baseline (warm)
+        if: steps.ingest.outputs.unverified != 'true' && steps.qdrant.outputs.cache-hit == 'true'
+        timeout-minutes: 20
+        run: |
+          uv run capitalcite eval --suite golden --input-dir data \
+            --chunker section --mode hybrid --embedder bge-small \
+            --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"
+
+      - name: Twelve-filing section/hybrid vs nightly baseline (cold)
+        if: steps.ingest.outputs.unverified != 'true' && steps.qdrant.outputs.cache-hit != 'true'
+        timeout-minutes: 330
         run: |
           uv run capitalcite eval --suite golden --input-dir data \
             --chunker section --mode hybrid --embedder bge-small \
@@ -186,4 +218,94 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .cache/qdrant-eval
-          key: qdrant-eval-bge-small-section-hybrid-v1
+          key: qdrant-eval-${{ steps.cachekey.outputs.key }}
+
+  warm:
+    name: twelve-filing section/hybrid (cache hit)
+    needs: full
+    if: needs.full.result == 'success' && needs.full.outputs.unverified != 'true' && needs.full.outputs.cache-hit != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
+      QDRANT_PATH: ${{ github.workspace }}/.cache/qdrant-eval
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --frozen --all-groups
+
+      - name: Restore EDGAR filings
+        id: edgar
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw/edgar
+          key: edgar-jpm-bac-wfc-c-10k-2023-2025-v1
+
+      - name: Restore FastEmbed models
+        id: fastembed
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-en-v1.5-bm25-v1
+
+      - name: Require restored filings and models
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.edgar.outputs.cache-hit }}" != "true" ]; then
+            echo "::error::warm job expected EDGAR cache hit"
+            exit 1
+          fi
+          if [ "${{ steps.fastembed.outputs.cache-hit }}" != "true" ]; then
+            echo "::error::warm job expected FastEmbed cache hit"
+            exit 1
+          fi
+          count="$(find data/raw/edgar -name metadata.json | wc -l | tr -d ' ')"
+          if [ "${count}" != "12" ]; then
+            echo "::error::warm job expected 12 filings, have ${count}"
+            exit 1
+          fi
+
+      - name: Eval index cache key
+        id: cachekey
+        run: |
+          set -euo pipefail
+          key="$(uv run capitalcite eval --suite golden --print-cache-key \
+            --input-dir data --chunker section --embedder bge-small | tail -n 1)"
+          expected="${{ needs.full.outputs.cache-key }}"
+          if [ "${key}" != "${expected}" ]; then
+            echo "::error::cache key ${key} != cold job ${expected}"
+            exit 1
+          fi
+          echo "key=${key}" >> "${GITHUB_OUTPUT}"
+          echo "eval index cache key ${key}"
+
+      - name: Restore eval index
+        id: qdrant
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/qdrant-eval
+          key: qdrant-eval-${{ steps.cachekey.outputs.key }}
+
+      - name: Require eval index cache hit
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.qdrant.outputs.cache-hit }}" != "true" ]; then
+            echo "::error::warm job expected Qdrant cache hit after cold save"
+            exit 1
+          fi
+          find .cache/qdrant-eval \( -name '*.lock' -o -name 'LOCK' \) -delete
+
+      - name: Twelve-filing section/hybrid vs nightly baseline (warm)
+        timeout-minutes: 15
+        run: |
+          uv run capitalcite eval --suite golden --input-dir data \
+            --chunker section --mode hybrid --embedder bge-small \
+            --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"

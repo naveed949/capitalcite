@@ -40,6 +40,7 @@ from capitalcite.retrieval.sanity import run_quote_index_sanity
 from capitalcite.retrieval.sparse import (
     BM25_K1,
     FAKE_SPARSE_ID,
+    FASTEMBED_SPARSE_ID,
     bm25_document,
     bm25_query,
     bm25_terms,
@@ -308,7 +309,9 @@ async def test_rebuild_is_idempotent_and_drops_orphans(tmp_path: Path) -> None:
         await client.close()
 
 
-async def test_rebuild_skips_embed_when_point_ids_match(tmp_path: Path) -> None:
+async def test_rebuild_skips_embed_when_point_ids_match(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     class Counting(FakeEmbedder):
         def __init__(self) -> None:
             self.calls = 0
@@ -320,14 +323,49 @@ async def test_rebuild_skips_embed_when_point_ids_match(tmp_path: Path) -> None:
     embedder = Counting()
     _write_chunks(tmp_path, [_chunk(doc_id="doc-keep", text="tier one capital buffer")])
     client = AsyncQdrantClient(":memory:")
+    caplog.set_level("INFO")
     try:
         setup = setup_retrieval(_settings(), client=client, embedder=embedder)
         first = await build_index(setup, tmp_path)
         assert first.point_count == 1
         assert embedder.calls == 1
+        assert "reuse=false" in caplog.text
+        caplog.clear()
         second = await build_index(setup, tmp_path)
         assert second.point_count == 1
         assert embedder.calls == 1
+        assert "reuse=true" in caplog.text
+        assert "embed_s=0.000" in caplog.text
+    finally:
+        await client.close()
+
+
+async def test_eval_index_config_hash_matches_setup_retrieval() -> None:
+    from capitalcite.eval.cache_key import eval_index_config
+
+    spec = spec_for(EmbedderName.BGE_SMALL)
+
+    class Stub:
+        id = spec.embedder_id
+        dense_size = spec.dense_size
+        sparse_id = FASTEMBED_SPARSE_ID
+
+        async def embed_documents(self, texts: list[str]) -> list[TextEmbedding]:
+            raise NotImplementedError
+
+        async def embed_query(self, text: str) -> TextEmbedding:
+            raise NotImplementedError
+
+        def sparse_query_terms(self, text: str) -> tuple[str, ...]:
+            return ()
+
+    settings = _settings(chunk_size=512, chunk_overlap=64)
+    expected = eval_index_config(settings, ChunkerName.SECTION, EmbedderName.BGE_SMALL)
+    client = AsyncQdrantClient(":memory:")
+    try:
+        setup = setup_retrieval(settings, client=client, embedder=Stub())
+        assert config_hash(setup.config) == config_hash(expected)
+        assert setup.config.collection_prefix == "filings"
     finally:
         await client.close()
 

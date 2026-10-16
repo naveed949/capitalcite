@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import warnings
 from collections.abc import Awaitable, Sequence
 from pathlib import Path
@@ -180,8 +181,15 @@ async def build_index(setup: RetrievalSetup, input_dir: Path) -> IndexReceipt:
     wanted = set(by_id)
     existing = await _point_ids(client, name)
     if existing == wanted:
+        message = (
+            f"eval timing phase=embed collection={name} chunks={len(wanted)} "
+            "reuse=true embed_s=0.000"
+        )
+        logger.info(message)
+        print(message, flush=True)
         logger.info("index reuse collection=%s points=%s", name, len(wanted))
     else:
+        embed_started = time.perf_counter()
         embeddings = await _embed_batched(setup.embedder, [chunk.text for _, chunk in ordered])
         points = [
             _point(pid, chunk, embedding, setup.config)
@@ -190,6 +198,13 @@ async def build_index(setup: RetrievalSetup, input_dir: Path) -> IndexReceipt:
         for batch in _batches(points, _UPSERT_BATCH):
             await _call(client.upsert(collection_name=name, points=list(batch)), collection=name)
         await _delete_orphans(client, name, wanted)
+        embed_s = time.perf_counter() - embed_started
+        message = (
+            f"eval timing phase=embed collection={name} chunks={len(wanted)} "
+            f"reuse=false embed_s={embed_s:.3f}"
+        )
+        logger.info(message)
+        print(message, flush=True)
     counted = await _call(client.count(collection_name=name, exact=True), collection=name)
     total = int(counted.count)
     if total != len(by_id):

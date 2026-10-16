@@ -75,23 +75,29 @@ Nightly therefore ingests the twelve 10-Ks itself
 (`JPM,BAC,WFC,C` × `10-K` × `2023-2025`) with
 `SEC_USER_AGENT=capitalcite-ci ci@example.com`. EDGAR is public. The
 filings cache under `actions/cache` keyed on that filing list.
-FastEmbed models cache under `FASTEMBED_CACHE_PATH`. The eval index
-caches under `QDRANT_PATH`; `build_index` skips re-embed when point
-ids already match. Caches save after ingest, model warmup, and a
-successful eval.
+FastEmbed models cache under `FASTEMBED_CACHE_PATH`. The eval index caches under `QDRANT_PATH`. The Actions cache key is
+SHA-256 of the IndexConfig hash plus the sorted filing accession ids
+(`capitalcite eval --print-cache-key`). `build_index` skips re-embed
+when point ids already match. Caches save after ingest, model warmup,
+and a successful cold eval. A follow-up job restores that Qdrant
+cache and must hit; that is the warm proof.
+
+Eval logs per-phase wall time: `chunk_s`, `embed_s` (and `reuse=`),
+`index_s`, `probe_s`, `query_s`, `agent_s`, plus `chunks=`. Those
+lines are how a 60-minute eval is explained, not another embedder
+tweak.
 
 The nightly gate is one published cell: `--chunker section --mode
 hybrid --embedder bge-small` against n=77. Two chunkers (~12k section
-points plus ~17k fixed) do not finish inside the 90-minute
-GitHub-hosted cap even with threaded ONNX (batch 256, no process
-pool): section alone took 39 minutes, then the job died mid-fixed.
-Raising the timeout or iterating embedder throughput is not the fix.
-The six-arm README table stays generated from
-`evals/results/8b63d12acd50.json`. That file is not the nightly
-compare. `evals/baselines/nightly.json` is the section/hybrid
-Recall@5 snapshot (13/77). Ingest is bounded by five EDGAR retries
-and a 10-minute step timeout. The job timeout is 90 minutes; the
-eval step is 70.
+points plus ~17k fixed) do not finish inside a short GitHub-hosted
+cap even with threaded ONNX (batch 256, no process pool): section
+alone took 39 minutes, then the job died mid-fixed. The six-arm
+README table stays generated from `evals/results/8b63d12acd50.json`.
+That file is not the nightly compare. `evals/baselines/nightly.json`
+is the section/hybrid Recall@5 snapshot (13/77). Ingest is bounded by
+five EDGAR retries and a 10-minute step timeout. A cold embed is
+allowed 360 minutes (GitHub-hosted max); the eval step is 330. A
+warm restore must finish in 20 minutes.
 
 UNVERIFIED (exit 0) is only ingest exit 2: `EdgarAccessError` or
 `EdgarUnavailableError` (403, 429 after retries, 5xx, transport). A
@@ -134,8 +140,10 @@ A 1-item PR budget would hide a deterministic FakeEmbedder miss.
 Skipping nightly when `data/` is missing would make the full golden
 eval a no-op on every hosted runner.
 
-Gating all six published arms on GitHub-hosted runners exceeds the
-90-minute cap. The laptop and `verify.sh` path still run the full
-matrix. Nightly gates the one section/hybrid cell.
+Gating all six published arms on GitHub-hosted runners exceeds a
+short job cap. The laptop and `verify.sh` path still run the full
+matrix. Nightly gates the one section/hybrid cell. A cold embed is
+allowed the 360-minute hosted maximum; subsequent runs restore the
+index.
 
 RAGAS and DeepEval need an LLM judge. Those rows stay UNVERIFIED.

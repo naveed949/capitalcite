@@ -122,6 +122,7 @@ def test_eval_help_lists_small_and_suite() -> None:
     assert "--from-results" in result.stdout
     assert "--baseline" in result.stdout
     assert "--write-baseline" in result.stdout
+    assert "--print-cache-key" in result.stdout
 
 
 def test_small_rejects_baseline() -> None:
@@ -140,6 +141,127 @@ def test_small_rejects_embedder() -> None:
     )
     assert result.exit_code == 1
     assert "--small does not take --embedder" in result.output
+
+
+def test_small_rejects_print_cache_key() -> None:
+    result = runner.invoke(app, ["eval", "--suite", "golden", "--small", "--print-cache-key"])
+    assert result.exit_code == 1
+    assert "--small does not take --print-cache-key" in result.output
+
+
+def test_print_cache_key_is_stable() -> None:
+    args = [
+        "eval",
+        "--suite",
+        "golden",
+        "--print-cache-key",
+        "--input-dir",
+        "tests/fixtures/chunking/corpus",
+        "--chunker",
+        "section",
+        "--embedder",
+        "bge-small",
+    ]
+    first = runner.invoke(app, args)
+    second = runner.invoke(app, args)
+    assert first.exit_code == 0, first.output
+    key = first.stdout.strip()
+    assert key == second.stdout.strip()
+    assert len(key) == 64
+    int(key, 16)
+
+
+def test_print_cache_key_changes_with_chunker() -> None:
+    common = [
+        "eval",
+        "--suite",
+        "golden",
+        "--print-cache-key",
+        "--input-dir",
+        "tests/fixtures/chunking/corpus",
+        "--embedder",
+        "bge-small",
+    ]
+    section = runner.invoke(app, [*common, "--chunker", "section"])
+    fixed = runner.invoke(app, [*common, "--chunker", "fixed"])
+    assert section.exit_code == 0, section.output
+    assert fixed.exit_code == 0, fixed.output
+    assert section.stdout.strip() != fixed.stdout.strip()
+
+
+def test_print_cache_key_changes_with_accession(tmp_path: Path) -> None:
+    import shutil
+
+    corpus = tmp_path / "corpus"
+    shutil.copytree("tests/fixtures/chunking/corpus", corpus)
+    extra = corpus / "raw" / "edgar" / "JPM" / "10-K" / "2024-12-31" / "extra"
+    extra.mkdir()
+    source = (
+        corpus
+        / "raw"
+        / "edgar"
+        / "JPM"
+        / "10-K"
+        / "2024-12-31"
+        / "0000019617-25-000270"
+        / "metadata.json"
+    )
+    meta = json.loads(source.read_text(encoding="utf-8"))
+    meta["accession"] = "0000000000-00-000000"
+    (extra / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")
+    args = [
+        "eval",
+        "--suite",
+        "golden",
+        "--print-cache-key",
+        "--chunker",
+        "section",
+        "--embedder",
+        "bge-small",
+    ]
+    base = runner.invoke(app, [*args, "--input-dir", "tests/fixtures/chunking/corpus"])
+    changed = runner.invoke(app, [*args, "--input-dir", str(corpus)])
+    assert changed.exit_code == 0, changed.output
+    assert base.stdout.strip() != changed.stdout.strip()
+
+
+def test_print_cache_key_rejects_missing_filings(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "--suite",
+            "golden",
+            "--print-cache-key",
+            "--input-dir",
+            str(tmp_path),
+            "--chunker",
+            "section",
+            "--embedder",
+            "bge-small",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "no metadata.json" in result.output
+
+
+def test_eval_index_config_uses_bge_small_and_filings_prefix() -> None:
+    from capitalcite.config import Settings
+    from capitalcite.eval.cache_key import EVAL_COLLECTION_PREFIX, eval_index_config
+    from capitalcite.retrieval.embedders import spec_for
+    from capitalcite.retrieval.sparse import FASTEMBED_SPARSE_ID
+    from capitalcite.retrieval.types import EmbedderName
+
+    settings = Settings(sec_user_agent="capitalcite-tests tests@example.com")
+    config = eval_index_config(settings, ChunkerName.SECTION, EmbedderName.BGE_SMALL)
+    spec = spec_for(EmbedderName.BGE_SMALL)
+    assert config.embedder_id == spec.embedder_id
+    assert config.dense_size == spec.dense_size
+    assert config.sparse_id == FASTEMBED_SPARSE_ID
+    assert config.collection_prefix == EVAL_COLLECTION_PREFIX
+    assert config.chunker == ChunkerName.SECTION
+    assert config.chunk_size == settings.chunk_size
+    assert config.chunk_overlap == settings.chunk_overlap
 
 
 def test_from_results_prints_table(tmp_path: Path) -> None:
@@ -287,6 +409,13 @@ def test_small_bm25_writes_json(tmp_path: Path) -> None:
         assert len(eval_spans) == 1
         assert eval_spans[0].attributes["capitalcite.git_sha"] == body["git_sha"]
         assert eval_spans[0].attributes["capitalcite.config_hash"] == body["arms"][0]["config_hash"]
+        assert "eval timing phase=chunk" in result.output
+        assert "eval timing phase=embed" in result.output
+        assert "eval timing phase=query" in result.output
+        assert "chunks=" in result.output
+        assert "chunk_s=" in result.output
+        assert "embed_s=" in result.output
+        assert "query_s=" in result.output
         assert eval_spans[0].attributes["capitalcite.suite"] == "golden"
         retrieve_spans = [
             record for record in exporter.finished() if record.kind is ObservationKind.RETRIEVE

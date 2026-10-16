@@ -24,6 +24,7 @@ from capitalcite.eval.baseline import (
     snapshot_nightly,
     write_nightly,
 )
+from capitalcite.eval.cache_key import eval_index_cache_key
 from capitalcite.eval.check import (
     DEFAULT_BASELINE,
     CheckFailed,
@@ -550,6 +551,11 @@ def eval_cmd(
         "--write-baseline",
         help="Rewrite --baseline (or evals/baselines/nightly.json) from this run.",
     ),
+    print_cache_key: bool = typer.Option(
+        False,
+        "--print-cache-key",
+        help="Print the eval Qdrant cache key (config hash + accessions) and exit.",
+    ),
 ) -> None:
     """Score handwritten gold with span-overlap recall@k, MRR, and nDCG.
 
@@ -559,6 +565,29 @@ def eval_cmd(
     if small and (baseline is not None or write_baseline_file):
         typer.echo("error: --small does not take --baseline", err=True)
         raise typer.Exit(code=1)
+    if small and print_cache_key:
+        typer.echo("error: --small does not take --print-cache-key", err=True)
+        raise typer.Exit(code=1)
+    if print_cache_key:
+        if from_results is not None:
+            typer.echo("error: --print-cache-key does not take --from-results", err=True)
+            raise typer.Exit(code=1)
+        settings = _eval_settings(False)
+        source = input_dir if input_dir is not None else settings.data_dir
+        chunkers = tuple(chunker) if chunker else (ChunkerName.SECTION, ChunkerName.FIXED)
+        chosen_embedder = embedder if embedder is not None else EmbedderName.BGE_SMALL
+        try:
+            key = eval_index_cache_key(
+                source,
+                chunkers=chunkers,
+                embedder=chosen_embedder,
+                settings=settings,
+            )
+        except ValueError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(key)
+        raise typer.Exit(code=0)
     if from_results is not None:
         try:
             reports = load_reports(from_results)

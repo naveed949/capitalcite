@@ -8,7 +8,7 @@ corpus, `FakeEmbedder`, and in-memory Qdrant.
 
 ## Sub-features
 
-- `eval-help` lists `--suite`, `--small`, `--out`, `--chunker`, `--mode`, `--from-results`, `--baseline`, and `--write-baseline`.
+- `eval-help` lists `--suite`, `--small`, `--out`, `--chunker`, `--mode`, `--from-results`, `--baseline`, `--write-baseline`, and `--print-cache-key`.
 - `eval-small` runs the matrix on `tests/fixtures/chunking/corpus` with no model download.
 - `eval-corpus` re-chunks the twelve ingested 10-Ks, embeds with `bge-small`, and scores dense, BM25, and hybrid on section and fixed.
 - `eval-report` prints recall@k, MRR, and nDCG from the JSON. README numbers come from that file.
@@ -37,7 +37,7 @@ Preconditions:
 ## Gotchas
 
 - `--small` rejects `--embedder`, `--input-dir`, and `--baseline`. That is a product error, not UNVERIFIED.
-- Nightly CI ingests the twelve 10-Ks, caches them, and runs `eval --suite golden --chunker section --mode hybrid --embedder bge-small --baseline evals/baselines/nightly.json`. A missing `data/` tree is not a skip. Ingest exit 2 (EDGAR 403/429/5xx) is UNVERIFIED. Do not add that compare to `verify.sh`. The six-arm README table is not the nightly gate.
+- Nightly CI ingests the twelve 10-Ks, caches them, and runs `eval --suite golden --chunker section --mode hybrid --embedder bge-small --baseline evals/baselines/nightly.json`. The Qdrant cache key comes from `--print-cache-key` (IndexConfig hash plus sorted accession ids). Cold embed may take up to 360 minutes; a restore must finish in 20. A missing `data/` tree is not a skip. Ingest exit 2 (EDGAR 403/429/5xx) is UNVERIFIED. Do not add that compare to `verify.sh`. The six-arm README table is not the nightly gate. Eval logs `chunk_s` / `embed_s` / `query_s`.
 - The corpus run re-chunks into a private tree. It does not reuse `data/parsed` from an earlier `capitalcite chunk`.
 - RAGAS and hybrid+rerank are UNVERIFIED. Do not invent those numbers.
 - `CliRunner().invoke(...)` in pytest is not this feature.
