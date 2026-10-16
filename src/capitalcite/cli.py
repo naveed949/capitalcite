@@ -13,6 +13,15 @@ import typer
 from capitalcite.chunking.models import ChunkerName
 from capitalcite.chunking.service import run_chunk
 from capitalcite.config import Settings, get_settings
+from capitalcite.eval.baseline import Baseline, Thresholds, TrackedRate, compare
+from capitalcite.eval.check import (
+    DEFAULT_BASELINE,
+    CheckFailed,
+    CheckReport,
+    load_baseline,
+    run_check,
+    write_baseline,
+)
 from capitalcite.eval.models import EvalReport
 from capitalcite.eval.report import load_reports, render_markdown, update_readme
 from capitalcite.eval.runner import EvalFailed, EvalUnverified, run_suite
@@ -596,6 +605,125 @@ def eval_cmd(
         except ValueError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
+
+
+@app.command("check")
+def check_cmd(
+    baseline: Path = typer.Option(
+        DEFAULT_BASELINE,
+        "--baseline",
+        help="Committed snapshot. PRs fail when a gated rate drops past its item budget.",
+    ),
+    out: Path | None = typer.Option(
+        None,
+        "--out",
+        help="Optional directory for check.json.",
+    ),
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Call OpenAI on one contract item. Skips as UNVERIFIED without OPENAI_API_KEY.",
+    ),
+    write_baseline_file: bool = typer.Option(
+        False,
+        "--write-baseline",
+        help="Rewrite --baseline from this run. CI still requires the eval-baseline label.",
+    ),
+) -> None:
+    """Fail if retrieval, contracts, or gate red-team regress against the baseline."""
+    settings = _eval_settings(True)
+    configure_logging(settings.log_level)
+    configure_settings(settings)
+    committed: Baseline | None = None
+    if baseline.is_file():
+        try:
+            committed = load_baseline(baseline)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    elif not write_baseline_file:
+        typer.echo(f"error: missing baseline {baseline}", err=True)
+        raise typer.Exit(code=1)
+    seed = committed if committed is not None else _bootstrap_baseline()
+    report: CheckReport | None = None
+    try:
+
+        async def _run() -> CheckReport:
+            return await run_check(committed=seed, live=live)
+
+        report = asyncio.run(_run())
+    except CheckFailed as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except EvalFailed as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except EvalUnverified as exc:
+        typer.echo(f"unverified: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    finally:
+        shutdown()
+    if report is None:
+        raise typer.Exit(code=1)
+    pack_ok = (
+        report.redteam_failed == 0
+        and all(case.ok for case in report.contracts)
+        and report.live.kind != "failed"
+    )
+    if write_baseline_file:
+        if not pack_ok:
+            _echo_check_failures(report)
+            typer.echo("error: refusing to write baseline from a failed pack", err=True)
+            raise typer.Exit(code=1)
+        write_baseline(baseline, report.snapshot)
+        typer.echo(f"wrote baseline {baseline}")
+        report = report.model_copy(update={"compare": compare(report.snapshot, report.snapshot)})
+    if out is not None:
+        from capitalcite.atomic import atomic_write_text
+
+        out.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(out / "check.json", report.model_dump_json(indent=2) + "\n")
+    live_status = report.live
+    typer.echo(
+        "check "
+        f"ok={str(report.ok).lower()} "
+        f"quote_sanity={report.snapshot.quote_sanity.hits}/"
+        f"{report.snapshot.quote_sanity.items} "
+        f"fixture={report.snapshot.fixture.hits}/{report.snapshot.fixture.items} "
+        f"redteam_failed={report.redteam_failed} "
+        f"live={live_status.kind}"
+    )
+    if live_status.kind == "unverified":
+        typer.echo(f"unverified: {live_status.detail}", err=True)
+    if not report.ok:
+        _echo_check_failures(report)
+        raise typer.Exit(code=1)
+
+
+def _echo_check_failures(report: CheckReport) -> None:
+    for failure in report.compare.failures:
+        typer.echo(f"fail {failure.metric}: {failure.detail}", err=True)
+    for case in report.contracts:
+        if not case.ok:
+            typer.echo(
+                f"fail contract {case.id}: expected {case.expected} got {case.observed}",
+                err=True,
+            )
+    if report.redteam_failed:
+        typer.echo(f"fail redteam failed={report.redteam_failed}", err=True)
+    if report.live.kind == "failed":
+        typer.echo(f"fail live: {report.live.detail}", err=True)
+
+
+def _bootstrap_baseline() -> Baseline:
+    return Baseline(
+        quote_sanity=TrackedRate(hits=0, items=0),
+        fixture=TrackedRate(hits=0, items=0),
+        small_n_items=0,
+        small_arms=0,
+        small_embedder_id="bootstrap",
+        thresholds=Thresholds(),
+    )
 
 
 def _eval_settings(small: bool) -> Settings:

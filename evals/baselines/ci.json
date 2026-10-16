@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "quote_sanity": {
+    "hits": 36,
+    "items": 77,
+    "rate": 0.4675324675324675
+  },
+  "fixture": {
+    "hits": 3,
+    "items": 3,
+    "rate": 1.0
+  },
+  "small_n_items": 77,
+  "small_arms": 6,
+  "small_embedder_id": "fake:deterministic",
+  "thresholds": {
+    "quote_sanity_max_drop_items": 1,
+    "fixture_max_drop_items": 1
+  }
+}

@@ -57,6 +57,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Fail-closed tool gate](./gate.md) covers `capitalcite gate validate`, `decide`, `redteam`, and `bench`.
 - [Langfuse tracing](./tracing.md) covers `CAPITALCITE_TRACE_FILE` span JSONL after `POST /ask` and `capitalcite eval --small`.
 - [Audit log](./audit.md) covers `capitalcite audit verify`.
+- [Behavioral regression check](./check.md) covers `capitalcite check` against `evals/baselines/ci.json`.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
 
 ## Extending the map

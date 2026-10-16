@@ -1,0 +1,42 @@
+name: Baseline label
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: baseline-label-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  eval-baseline:
+    name: evals/baselines needs eval-baseline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail when baseline files change without the label
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}" -- evals/baselines || true)"
+          if [ -z "${changed}" ]; then
+            echo "evals/baselines/ unchanged"
+            exit 0
+          fi
+          echo "Changed:"
+          printf '%s\n' "${changed}"
+          case ",${LABELS}," in
+            *,eval-baseline,*)
+              echo "eval-baseline label present"
+              ;;
+            *)
+              echo "::error::evals/baselines/ changed without the eval-baseline label. Create that label on the repo if it is missing, then apply it to this PR."
+              exit 1
+              ;;
+          esac

@@ -1,4 +1,4 @@
-.PHONY: help sync lint format typecheck test ci up down health eval-report infra-validate image bootstrap deploy
+.PHONY: help sync lint format typecheck test ci check up down health eval-report infra-validate image bootstrap deploy
 
 UV ?= uv
 PYTEST ?= $(UV) run pytest
@@ -12,6 +12,7 @@ help:
 	@echo "typecheck  mypy (strict)"
 	@echo "test       pytest"
 	@echo "ci         lint + typecheck + test"
+	@echo "check      capitalcite check against evals/baselines/ci.json"
 	@echo "up         docker compose up -d"
 	@echo "down       docker compose down"
 	@echo "health     GET /health against a running local API"
@@ -36,7 +37,10 @@ typecheck:
 test:
 	$(PYTEST)
 
-ci: lint typecheck test
+ci: lint typecheck test check
+
+check:
+	$(UV) run capitalcite check
 
 up:
 	docker compose up -d

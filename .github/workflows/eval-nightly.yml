@@ -1,0 +1,85 @@
+name: Eval nightly
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: eval-nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: deterministic regression pack
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --frozen --all-groups
+
+      - name: capitalcite check
+        run: uv run capitalcite check --out "${RUNNER_TEMP}/check"
+
+  live:
+    name: live LLM eval
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --frozen --all-groups
+
+      - name: Live OpenAI contract
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "UNVERIFIED: OPENAI_API_KEY is empty"
+            exit 0
+          fi
+          uv run capitalcite check --live --out "${RUNNER_TEMP}/check-live"
+
+  full:
+    name: full golden eval
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --frozen --all-groups
+
+      - name: Twelve-filing matrix
+        run: |
+          if [ ! -d data/raw/edgar ]; then
+            echo "UNVERIFIED: data/raw/edgar is not on this runner"
+            exit 0
+          fi
+          uv run capitalcite eval --suite golden --out "${RUNNER_TEMP}/eval-full"
