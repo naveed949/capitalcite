@@ -1,0 +1,10 @@
+title = "capitalcite"
+
+[allowlist]
+description = "Public Azure built-in role definition IDs. Not credentials."
+regexes = [
+  '''7f951dda-4ed3-4680-a7ca-43fe172d538d''',
+  '''8311e382-0749-4cb8-b69d-38feb7eb23f0''',
+  '''4633458b-17de-408a-b874-0445c86b69e6''',
+  '''b24988ac-6180-42a0-ab88-20f7382dd24c''',
+]
