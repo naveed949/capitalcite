@@ -149,12 +149,32 @@ class Settings(BaseSettings):
         description="Append-only hash-chained JSONL of gated tool calls.",
     )
 
+    neo4j_uri: str | None = Field(
+        default=None,
+        description=(
+            "Bolt URI for the optional entity graph. Empty leaves graph_query unconfigured. "
+            "RAG and /health do not read this."
+        ),
+    )
+    neo4j_user: str = Field(default="neo4j", description="Neo4j user when NEO4J_URI is set.")
+    neo4j_password: str | None = Field(
+        default=None,
+        description="Neo4j password when NEO4J_URI is set. Unused when the URI is empty.",
+    )
+
     @field_validator("qdrant_url")
     @classmethod
     def qdrant_url_stripped(cls, value: str) -> str:
         return value.strip()
 
-    @field_validator("qdrant_path", "gate_policy", "capitalcite_trace_file", mode="before")
+    @field_validator(
+        "qdrant_path",
+        "gate_policy",
+        "capitalcite_trace_file",
+        "neo4j_uri",
+        "neo4j_password",
+        mode="before",
+    )
     @classmethod
     def blank_path_is_none(cls, value: object) -> object:
         if value is None:

@@ -54,14 +54,14 @@ flowchart LR
 | Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with reciprocal rank fusion. `capitalcite index` builds it. `POST /search` returns scores and citations. Cross-encoder rerank waits for a measured eval. | 🟡 `capitalcite index`, `POST /search` |
 | Structured answers | `POST /ask` returns an answer whose citations are copied from retrieved chunks, or a refusal. The model supplies a hit index and a quote. The server copies `doc_id`, `start`, `end`, `quote_start`, `quote_end`, `section`, and `source_url` only when that quote is a verbatim, non-trivial substring of the chunk and every answer figure appears in a cited quote. Weak retrieval or a named entity missing from the hits refuses before the model. `ASK_MODEL=fake` quotes the first hit and does not read `OPENAI_API_KEY`. | 🟡 `POST /ask` |
 | Agent | `POST /ask` with `path=agent` runs a LangGraph plan → tools → synthesizer loop. The synthesizer is still `ask()` / `ground()` / `guard`. The plan and tool trace are on the response. Step and token budgets refuse instead of guessing. | 🟡 `POST /ask` `path=agent` |
-| Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, and `calculator`. Unknown names are denied. HTTP tools take an injected client so tests stay offline. | 🟡 agent tools |
+| Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, `calculator`, and `graph_query`. Unknown names are denied. HTTP tools take an injected client so tests stay offline. `graph_query` returns `graph not configured` when `NEO4J_URI` is empty. | 🟡 agent tools |
 | Fail-closed gate | JSON allow-list per tool with argument schemas and per-request budgets. Unknown names, invalid args, and a policy-load failure are denies. `capitalcite gate decide` prints the decision. Denied calls do not run. | 🟡 `capitalcite gate` |
 | Audit log | Append-only, hash-chained JSONL of every gated tool call, plus a sibling head file so deleting the last line fails verify. The wrapper writes the gate decision before the tool runs and refuses with `audit unavailable` if that write fails. Records store the gate `decision` and `reason`. `trace_id` is `current_trace_id()` (UUID only when tracing is off). The chain is not keyed: anyone with write access can rebuild it. | 🟡 `capitalcite audit verify` |
 | Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
 | Evals in CI | `capitalcite check` on every PR: quote-index sanity and fixture span-overlap vs `evals/baselines/ci.json` at zero item drop, fake-model cite/refuse contracts, gate red-team. Nightly ingests the twelve 10-Ks and gates section/bge-small/hybrid Recall@5 vs `evals/baselines/nightly.json` (one-item allowance). The Qdrant cache key is config hash plus accession ids; only a cold miss pays the embed. The published six-arm table is not the nightly gate. Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Baseline file edits need the `eval-baseline` label. | 🟡 `capitalcite check` |
 | Deploy | Azure Container Apps (Bicep, scale-to-zero API, internal Qdrant). Live Azure `/health` is UNVERIFIED until someone opts in. | 🟡 IaC + image recipe |
 | MCP server (optional) | Exposes `search_filings` / `ask` as MCP tools | ⬜ optional |
-| Entity graph (optional) | Neo4j graph of bank → subsidiary → filing → metric | ⬜ optional |
+| Entity graph (optional) | BHC → subsidiary → filing → metric. `capitalcite graph load` MERGE-loads a recorded NIC snapshot. `graph_query` is a typed agent tool. Blank `NEO4J_URI` leaves RAG unchanged. Tests use `MemoryGraphStore`. Live Bolt is UNVERIFIED without Docker. | 🟡 `capitalcite graph`, `eval --suite graph` |
 
 ## Evaluation
 
@@ -108,6 +108,21 @@ Comparison and multi-hop handwritten items. The agent row is the fake planner th
 Comparison and multi-hop handwritten items only. Answer quality stays UNVERIFIED.
 
 <!-- END AGENT RAG EVAL -->
+
+### Entity graph vs hybrid
+
+Questions that need a BHC → subsidiary or RSSD join. Not in the 77-item filing-span matrix.
+
+<!-- BEGIN GRAPH EVAL -->
+
+| System | n | Hit rate |
+|---|---:|---:|
+| Hybrid (fixture corpus substrings) | 6 | 0.000 |
+| graph_query (memory snapshot) | 6 | 1.000 |
+
+Delta (graph minus hybrid) = 1.000. Generated from `evals/results/e610e5d62ef3-graph.json`. Hybrid hit rate is 1 only when every expected substring is in the --small fixture HTML. Those files do not contain the RSSDs, so the rate is limited by the corpus text. These items need entity traversal. They are not in the 77-item filing-span matrix.
+
+<!-- END GRAPH EVAL -->
 
 ### Gate & safety
 
@@ -171,6 +186,9 @@ curl -s localhost:8000/ask -H 'content-type: application/json' \
 uv run capitalcite eval --suite golden   # writes evals/results/<sha12>.json
 uv run capitalcite eval --suite golden --small   # FakeEmbedder, fixture corpus, no download
 uv run capitalcite check                 # PR regression pack vs evals/baselines/ci.json
+uv run capitalcite graph load --backend memory
+uv run capitalcite graph query --kind subsidiaries --ticker JPM
+uv run capitalcite eval --suite graph --small
 uv run capitalcite gate decide --tool shell --args '{"cmd":"ls"}'
 uv run capitalcite audit verify --path data/audit.jsonl
 ```
@@ -186,6 +204,7 @@ Langfuse tracing: [docs/decisions/0010-langfuse-tracing.md](docs/decisions/0010-
 Audit log: [docs/decisions/0011-append-only-audit-log.md](docs/decisions/0011-append-only-audit-log.md).
 Azure Container Apps: [docs/decisions/0012-azure-container-apps.md](docs/decisions/0012-azure-container-apps.md).
 Regression CI: [docs/decisions/0013-eval-regression-ci.md](docs/decisions/0013-eval-regression-ci.md).
+Optional entity graph: [docs/decisions/0014-optional-entity-graph.md](docs/decisions/0014-optional-entity-graph.md).
 
 ### Observability
 
@@ -256,13 +275,13 @@ Everything below is public. Each link was checked on 2026-10-16.
 ## Layout
 
 ```
-src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask, agent, gate, audit
+src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask, agent, gate, audit, kg
 tests/               pytest (recorded fixtures; no live network)
 docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records
 evals/               golden set and results (issues #5 / #6)
 data/                raw and parsed filings (gitignored contents)
-docker-compose.yml   Qdrant + self-hosted Langfuse
+docker-compose.yml   Qdrant + self-hosted Langfuse + optional Neo4j (`--profile graph`)
 Dockerfile           multi-stage API image (`ASK_MODEL=fake` by default)
 infra/               bootstrap.bicep (identities + RBAC) and main.bicep (apps)
 ```

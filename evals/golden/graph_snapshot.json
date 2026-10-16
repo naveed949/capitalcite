@@ -1,0 +1,195 @@
+{
+  "banks": [
+    {
+      "rssd": "1039502",
+      "name": "JPMORGAN CHASE & CO.",
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "lei": "8I5DZWZKVSZI1NUHU748",
+      "is_bhc": true
+    },
+    {
+      "rssd": "852218",
+      "name": "JPMORGAN CHASE BANK, NATIONAL ASSOCIATION",
+      "ticker": "",
+      "cik": "",
+      "fdic_cert": "628",
+      "is_bhc": false
+    },
+    {
+      "rssd": "1073757",
+      "name": "BANK OF AMERICA CORPORATION",
+      "ticker": "BAC",
+      "cik": "0000070858",
+      "is_bhc": true
+    },
+    {
+      "rssd": "480228",
+      "name": "BANK OF AMERICA, NATIONAL ASSOCIATION",
+      "ticker": "",
+      "cik": "",
+      "fdic_cert": "3510",
+      "is_bhc": false
+    },
+    {
+      "rssd": "1120754",
+      "name": "WELLS FARGO & COMPANY",
+      "ticker": "WFC",
+      "cik": "0000072971",
+      "is_bhc": true
+    },
+    {
+      "rssd": "451965",
+      "name": "WELLS FARGO BANK, NATIONAL ASSOCIATION",
+      "ticker": "",
+      "cik": "",
+      "fdic_cert": "3511",
+      "is_bhc": false
+    },
+    {
+      "rssd": "1951350",
+      "name": "CITIGROUP INC.",
+      "ticker": "C",
+      "cik": "0000831001",
+      "is_bhc": true
+    },
+    {
+      "rssd": "476810",
+      "name": "CITIBANK, N.A.",
+      "ticker": "",
+      "cik": "",
+      "fdic_cert": "7213",
+      "is_bhc": false
+    }
+  ],
+  "parents": [
+    {"parent_rssd": "1039502", "child_rssd": "852218"},
+    {"parent_rssd": "1073757", "child_rssd": "480228"},
+    {"parent_rssd": "1120754", "child_rssd": "451965"},
+    {"parent_rssd": "1951350", "child_rssd": "476810"}
+  ],
+  "filings": [
+    {
+      "accession": "0000019617-24-000225",
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "form": "10-K",
+      "period": "2023-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/19617/000001961724000225/jpm-20231231.htm"
+    },
+    {
+      "accession": "0000019617-25-000270",
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "form": "10-K",
+      "period": "2024-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/19617/000001961725000270/jpm-20241231.htm"
+    },
+    {
+      "accession": "0001628280-26-008131",
+      "ticker": "JPM",
+      "cik": "0000019617",
+      "form": "10-K",
+      "period": "2025-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/19617/000162828026008131/"
+    },
+    {
+      "accession": "0000070858-24-000122",
+      "ticker": "BAC",
+      "cik": "0000070858",
+      "form": "10-K",
+      "period": "2023-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/70858/000007085824000122/"
+    },
+    {
+      "accession": "0000070858-25-000139",
+      "ticker": "BAC",
+      "cik": "0000070858",
+      "form": "10-K",
+      "period": "2024-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/70858/000007085825000139/"
+    },
+    {
+      "accession": "0000070858-26-000157",
+      "ticker": "BAC",
+      "cik": "0000070858",
+      "form": "10-K",
+      "period": "2025-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/70858/000007085826000157/"
+    },
+    {
+      "accession": "0000072971-24-000064",
+      "ticker": "WFC",
+      "cik": "0000072971",
+      "form": "10-K",
+      "period": "2023-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/72971/000007297124000064/"
+    },
+    {
+      "accession": "0000072971-25-000066",
+      "ticker": "WFC",
+      "cik": "0000072971",
+      "form": "10-K",
+      "period": "2024-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/72971/000007297125000066/"
+    },
+    {
+      "accession": "0000072971-26-000133",
+      "ticker": "WFC",
+      "cik": "0000072971",
+      "form": "10-K",
+      "period": "2025-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/72971/000007297126000133/"
+    },
+    {
+      "accession": "0000831001-24-000033",
+      "ticker": "C",
+      "cik": "0000831001",
+      "form": "10-K",
+      "period": "2023-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/831001/000083100124000033/"
+    },
+    {
+      "accession": "0000831001-25-000067",
+      "ticker": "C",
+      "cik": "0000831001",
+      "form": "10-K",
+      "period": "2024-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/831001/000083100125000067/"
+    },
+    {
+      "accession": "0000831001-26-000011",
+      "ticker": "C",
+      "cik": "0000831001",
+      "form": "10-K",
+      "period": "2025-12-31",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/831001/000083100126000011/"
+    }
+  ],
+  "metrics": [
+    {
+      "name": "Standardized CET1",
+      "period": "2024-12-31",
+      "value": "15.7%",
+      "unit": "%",
+      "accession": "0000019617-25-000270",
+      "ticker": "JPM"
+    },
+    {
+      "name": "Standardized CET1",
+      "period": "2024-12-31",
+      "value": "11.9",
+      "unit": "%",
+      "accession": "0000070858-25-000139",
+      "ticker": "BAC"
+    },
+    {
+      "name": "Standardized CET1",
+      "period": "2024-12-31",
+      "value": "13.6",
+      "unit": "%",
+      "accession": "0000831001-25-000067",
+      "ticker": "C"
+    }
+  ]
+}

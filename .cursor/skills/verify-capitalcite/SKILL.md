@@ -96,6 +96,9 @@ Stable handles (do not invent others):
 | CLI | `capitalcite audit verify` | exit 0 on an intact chain; exit 1 after a mutated field or a removed last record; no network |
 | CLI | `capitalcite check` | exit 0 + `ok=true`; quote-index sanity and fixture recall vs `evals/baselines/ci.json` at zero item drop; `cc-ci-002` answered; `cc-u-001` refused; red-team `failed` 0. `--live` without `OPENAI_API_KEY` is UNVERIFIED |
 | CLI | `capitalcite eval --suite golden --small` | exit 0 + Recall@5 table; FakeEmbedder, no download |
+| CLI | `capitalcite graph load --backend memory` | exit 0 + `backend=memory` `banks=8`; no Neo4j |
+| CLI | `capitalcite graph query --kind subsidiaries --ticker JPM` | exit 0 + `852218` |
+| CLI | `capitalcite eval --suite graph --small` | exit 0 + `graph_exact=` and `hybrid_hit_rate=`; MemoryGraphStore, no Bolt |
 | CLI | `capitalcite eval --suite golden` | exit 0 + six-row dense/bm25/hybrid × section/fixed table on the twelve 10-Ks plus an Agent vs RAG recall@k line on comparison/multi-hop items (`fake/heuristic planner`); UNVERIFIED only when ingest could not run. Nightly CI ingests then compares the section/bge-small/hybrid cell vs `--baseline evals/baselines/nightly.json`; do not add that compare to verify.sh |
 | Compose (optional) | `docker compose config` | exit 0 |
 | Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
@@ -153,6 +156,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `check.live.unverified` **or** `check.live.out` | `--live` without a key, or a grounded live run |
 | `eval.help.out` / `eval.help.exit` | `capitalcite eval --help` (must list `--suite` and `--small`) |
 | `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |
+| `graph.help.out` / `graph.load.out` / `graph.query.out` / `eval-graph-small.out` | Memory-backend graph load/query and `eval --suite graph --small`. Live Bolt is UNVERIFIED |
 | `eval.out` / `eval.exit` / `eval.table.md` **or** `eval.skipped` | Real-corpus eval with embedded Qdrant + bge-small, or UNVERIFIED if ingest was unreachable |
 | `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
 | `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |
@@ -215,8 +219,9 @@ Expected later handles (do not add empty stubs now):
 | #10 audit | `capitalcite audit verify` (landed) |
 | #11 tracing | `CAPITALCITE_TRACE_FILE` JSONL after `/ask` (landed). Live Langfuse UI is UNVERIFIED without `:3000` |
 | #12 eval CI | `capitalcite check` (landed) |
+| #16 entity graph | `capitalcite graph load/query` and `eval --suite graph --small` (landed). Live Neo4j Bolt is UNVERIFIED without Docker |
 
-`./scripts/verify.sh` runs `capitalcite check` and `capitalcite eval --suite golden --small` always, and the twelve-filing bge-small matrix when ingest succeeded. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED.
+`./scripts/verify.sh` runs `capitalcite check`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED.
 
 ## Offer the maintenance loop
 
