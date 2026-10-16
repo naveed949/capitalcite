@@ -275,7 +275,7 @@ def graph_load(
             store = MemoryGraphStore()
         else:
             settings = get_settings()
-            opened = open_store(settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password)
+            opened = open_store(settings)
             if opened is None:
                 raise EvalUnverified("NEO4J_URI is empty")
             store = opened
@@ -344,7 +344,7 @@ def graph_query_cmd(
             await store.load(load_snapshot(input_path))
         elif backend == "neo4j":
             settings = get_settings()
-            opened = open_store(settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password)
+            opened = open_store(settings)
             if opened is None:
                 raise EvalUnverified("NEO4J_URI is empty")
             store = opened

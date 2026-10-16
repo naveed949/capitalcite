@@ -64,7 +64,10 @@
         "additionalProperties": false,
         "required": ["kind"],
         "properties": {
-          "kind": {"type": "string", "minLength": 1},
+          "kind": {
+            "type": "string",
+            "enum": ["subsidiaries", "parent", "filings", "metric", "path"]
+          },
           "ticker": {"type": ["string", "null"]},
           "rssd": {"type": ["string", "null"]},
           "name": {"type": ["string", "null"]},

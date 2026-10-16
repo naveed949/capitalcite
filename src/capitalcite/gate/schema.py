@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 _OBJECT_KEYS = frozenset({"type", "properties", "required", "additionalProperties"})
-_PROP_KEYS = frozenset({"type", "minLength", "minimum", "maximum"})
+_PROP_KEYS = frozenset({"type", "minLength", "minimum", "maximum", "enum"})
 _TYPES = frozenset({"object", "string", "integer", "number", "boolean", "null"})
 
 
@@ -33,6 +33,9 @@ def unsupported_schema(schema: Mapping[str, object]) -> str | None:
             type_error = _check_type_field(spec.get("type"))
             if type_error is not None:
                 return f"{name}: {type_error}"
+            enum_error = _check_enum(spec.get("enum"))
+            if enum_error is not None:
+                return f"{name}: {enum_error}"
     required = schema.get("required")
     if required is not None and (
         not isinstance(required, list) or not all(isinstance(item, str) for item in required)
@@ -57,6 +60,9 @@ def _validate(schema: Mapping[str, object], value: object) -> str | None:
             return "invalid args"
     if value is None:
         return None
+    enum = schema.get("enum")
+    if isinstance(enum, list) and value not in enum:
+        return "invalid args"
     min_length = _as_int(schema.get("minLength"))
     if min_length is not None and isinstance(value, str) and len(value) < min_length:
         return "invalid args"
@@ -95,6 +101,16 @@ def _validate(schema: Mapping[str, object], value: object) -> str | None:
                     return error
         elif additional is False:
             return "invalid args"
+    return None
+
+
+def _check_enum(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, list) or not value:
+        return "enum must be a non-empty list of strings"
+    if not all(isinstance(item, str) and item for item in value):
+        return "enum must be a non-empty list of strings"
     return None
 
 

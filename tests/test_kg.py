@@ -79,13 +79,19 @@ async def test_path_from_jpm_to_chase_bank() -> None:
     assert "852218" in result.detail
 
 
+def _settings(**overrides: object) -> Settings:
+    payload: dict[str, object] = {"sec_user_agent": "capitalcite-tests tests@example.com"}
+    payload.update(overrides)
+    return Settings.model_validate(payload)
+
+
 def test_blank_uri_opens_nothing() -> None:
-    assert open_store(None) is None
-    assert open_store("  ") is None
+    assert open_store(_settings()) is None
+    assert open_store(_settings(neo4j_uri="  ")) is None
 
 
 def test_open_store_with_uri_does_not_dial() -> None:
-    store = open_store("bolt://127.0.0.1:1", "neo4j", "unused")
+    store = open_store(_settings(neo4j_uri="bolt://127.0.0.1:1", neo4j_password="unused"))
     assert store is not None
 
 
@@ -196,15 +202,16 @@ def test_cli_graph_load_neo4j_without_uri_is_unverified(
         get_settings.cache_clear()
 
 
-def test_gate_allows_graph_kind_string_and_denies_shell() -> None:
+def test_gate_denies_unknown_graph_kind() -> None:
     from capitalcite.agent.tools import ToolRegistry
     from capitalcite.gate import DenyReason, Gate, load_policy
 
     gate = Gate(load_policy(None), ToolRegistry({}))
-    unknown_kind = gate.decide("graph_query", {"kind": "cypher", "ticker": "JPM"})
+    denied = gate.decide("graph_query", {"kind": "cypher", "ticker": "JPM"})
     allowed = gate.decide("graph_query", {"kind": "subsidiaries", "ticker": "JPM"})
     unknown = gate.decide("shell", {"cmd": "ls"})
-    assert unknown_kind.kind == "allow"
+    assert denied.kind == "deny"
+    assert denied.reason == DenyReason.invalid_args
     assert allowed.kind == "allow"
     assert unknown.kind == "deny"
     assert unknown.reason == DenyReason.unknown_tool

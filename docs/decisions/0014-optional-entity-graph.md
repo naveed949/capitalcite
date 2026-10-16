@@ -34,9 +34,10 @@ unchanged. `/health` stays process-local.
 ## Typed queries, not Cypher from the model
 
 The planner is untrusted. A free Cypher string is prompt injection into
-the database and a moving target for eval. The gate subset has no `enum`
-keyword (ADR 0009). `kind` is a string. `GraphQuery` parses it. Kinds
-are `subsidiaries`, `parent`, `filings`, `metric`, and `path`. The store
+the database and a moving target for eval. The gate allow-lists `kind`
+with an enum, which this change adds to the schema subset. An unknown
+kind is `invalid_args` and the runner is not called. Kinds are
+`subsidiaries`, `parent`, `filings`, `metric`, and `path`. The store
 walks `PARENT_OF`, `FILED`, and `REPORTS`. MERGE keys are RSSD for a
 bank, accession for a filing, and `(ticker, name, period)` for a metric.
 

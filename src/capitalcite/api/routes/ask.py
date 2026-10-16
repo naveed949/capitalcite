@@ -197,7 +197,7 @@ async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings
     else:
         xbrl = XbrlClient(sec_client).fact
         fdic = FdicClient(fdic_client).lookup
-    graph = open_store(settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password)
+    graph = open_store(settings)
     try:
         tools = AuditingTools(
             Gate(
