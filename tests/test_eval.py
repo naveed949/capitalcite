@@ -120,6 +120,17 @@ def test_eval_help_lists_small_and_suite() -> None:
     assert "--suite" in result.stdout
     assert "--small" in result.stdout
     assert "--from-results" in result.stdout
+    assert "--baseline" in result.stdout
+    assert "--write-baseline" in result.stdout
+
+
+def test_small_rejects_baseline() -> None:
+    result = runner.invoke(
+        app,
+        ["eval", "--suite", "golden", "--small", "--baseline", "evals/baselines/nightly.json"],
+    )
+    assert result.exit_code == 1
+    assert "--small does not take --baseline" in result.output
 
 
 def test_small_rejects_embedder() -> None:
@@ -139,6 +150,82 @@ def test_from_results_prints_table(tmp_path: Path) -> None:
     assert "Recall@5" in result.stdout
     assert "0.500" in result.stdout
     assert "cc-h-013" in result.stdout
+
+
+def test_from_results_compare_passes_matching_nightly_snapshot(tmp_path: Path) -> None:
+    matrix = tmp_path / "matrix.json"
+    matrix.write_text(_sample_report_json(), encoding="utf-8")
+    baseline = tmp_path / "nightly.json"
+    written = runner.invoke(
+        app,
+        [
+            "eval",
+            "--suite",
+            "golden",
+            "--from-results",
+            str(matrix),
+            "--write-baseline",
+            "--baseline",
+            str(baseline),
+        ],
+    )
+    assert written.exit_code == 0, written.output
+    assert "wrote baseline" in written.output
+    assert "eval-baseline ok=true" in written.output
+    compared = runner.invoke(
+        app,
+        [
+            "eval",
+            "--suite",
+            "golden",
+            "--from-results",
+            str(matrix),
+            "--baseline",
+            str(baseline),
+        ],
+    )
+    assert compared.exit_code == 0, compared.output
+    assert "eval-baseline ok=true" in compared.output
+
+
+def test_from_results_compare_fails_on_drop(tmp_path: Path) -> None:
+    from capitalcite.eval.baseline import load_nightly
+
+    matrix = tmp_path / "matrix.json"
+    matrix.write_text(_sample_report_json(), encoding="utf-8")
+    baseline = tmp_path / "nightly.json"
+    written = runner.invoke(
+        app,
+        [
+            "eval",
+            "--suite",
+            "golden",
+            "--from-results",
+            str(matrix),
+            "--write-baseline",
+            "--baseline",
+            str(baseline),
+        ],
+    )
+    assert written.exit_code == 0, written.output
+    snap = json.loads(baseline.read_text(encoding="utf-8"))
+    snap["arms"][0]["recall_at_5"]["hits"] = 3
+    baseline.write_text(json.dumps(snap, indent=2) + "\n", encoding="utf-8")
+    assert load_nightly(baseline).arms[0].recall_at_5.hits == 3
+    failed = runner.invoke(
+        app,
+        [
+            "eval",
+            "--suite",
+            "golden",
+            "--from-results",
+            str(matrix),
+            "--baseline",
+            str(baseline),
+        ],
+    )
+    assert failed.exit_code == 1, failed.output
+    assert "recall_at_5" in failed.output
 
 
 def test_update_readme_replaces_markers(tmp_path: Path) -> None:

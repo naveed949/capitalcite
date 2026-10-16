@@ -8,11 +8,18 @@ from typer.testing import CliRunner
 
 from capitalcite.cli import app
 from capitalcite.eval.baseline import (
+    DEFAULT_NIGHTLY,
     Baseline,
     CompareReport,
+    NightlyArm,
+    NightlyBaseline,
+    NightlyThresholds,
     Thresholds,
     TrackedRate,
     compare,
+    compare_nightly,
+    load_nightly,
+    snapshot_nightly,
 )
 from capitalcite.eval.check import (
     DEFAULT_BASELINE,
@@ -34,8 +41,8 @@ def _snapshot(
     n_items: int = 77,
     arms: int = 6,
     embedder: str = "fake:deterministic",
-    quote_drop: int = 1,
-    fixture_drop: int = 1,
+    quote_drop: int = 0,
+    fixture_drop: int = 0,
 ) -> Baseline:
     return Baseline(
         quote_sanity=TrackedRate(hits=quote_hits, items=quote_items),
@@ -57,16 +64,25 @@ def test_compare_passes_on_equal_snapshot() -> None:
     assert report.failures == ()
 
 
-def test_compare_allows_one_quote_sanity_miss() -> None:
-    committed = _snapshot(quote_hits=36)
-    current = _snapshot(quote_hits=35)
+def test_compare_allows_one_quote_sanity_miss_when_budget_is_one() -> None:
+    committed = _snapshot(quote_hits=36, quote_drop=1)
+    current = _snapshot(quote_hits=35, quote_drop=1)
     report = compare(current, committed)
     assert report.ok
 
 
-def test_compare_fails_when_quote_sanity_drops_two_items() -> None:
+def test_compare_zero_budget_fails_on_one_quote_sanity_miss() -> None:
     committed = _snapshot(quote_hits=36)
-    current = _snapshot(quote_hits=34)
+    current = _snapshot(quote_hits=35)
+    report = compare(current, committed)
+    assert not report.ok
+    assert report.failures[0].metric == "quote_sanity"
+    assert "dropped 1" in report.failures[0].detail
+
+
+def test_compare_fails_when_quote_sanity_drops_two_items() -> None:
+    committed = _snapshot(quote_hits=36, quote_drop=1)
+    current = _snapshot(quote_hits=34, quote_drop=1)
     report = compare(current, committed)
     assert not report.ok
     assert report.failures[0].metric == "quote_sanity"
@@ -97,6 +113,125 @@ def test_compare_fixture_drop_uses_item_budget() -> None:
     assert allowed.ok
     assert not blocked.ok
     assert blocked.failures[0].metric == "fixture"
+
+
+def test_compare_zero_fixture_budget_fails_on_one_miss() -> None:
+    committed = _snapshot(fixture_hits=3)
+    report = compare(_snapshot(fixture_hits=2), committed)
+    assert not report.ok
+    assert report.failures[0].metric == "fixture"
+
+
+def _nightly(
+    *,
+    hits: dict[tuple[str, str], int] | None = None,
+    n_items: int = 77,
+    embedder: str = "fastembed:BAAI/bge-small-en-v1.5",
+    sparse: str = "fastembed:Qdrant/bm25:k1=1.2:b=0.75:avgdl=256.0",
+    drop: int = 1,
+) -> NightlyBaseline:
+    rates = hits or {
+        ("section", "dense"): 6,
+        ("section", "bm25"): 14,
+        ("section", "hybrid"): 13,
+        ("fixed", "dense"): 13,
+        ("fixed", "bm25"): 10,
+        ("fixed", "hybrid"): 15,
+    }
+    return NightlyBaseline(
+        n_items=n_items,
+        embedder_id=embedder,
+        sparse_id=sparse,
+        arms=tuple(
+            NightlyArm(
+                chunker=chunker,
+                mode=mode,
+                recall_at_5=TrackedRate(hits=count, items=n_items),
+            )
+            for (chunker, mode), count in rates.items()
+        ),
+        thresholds=NightlyThresholds(max_drop_items=drop),
+    )
+
+
+def test_compare_nightly_allows_one_item_drop() -> None:
+    committed = _nightly()
+    current_hits = {
+        ("section", "dense"): 6,
+        ("section", "bm25"): 13,
+        ("section", "hybrid"): 13,
+        ("fixed", "dense"): 13,
+        ("fixed", "bm25"): 10,
+        ("fixed", "hybrid"): 15,
+    }
+    report = compare_nightly(_nightly(hits=current_hits), committed)
+    assert report.ok
+
+
+def test_compare_nightly_fails_on_two_item_drop() -> None:
+    committed = _nightly()
+    current_hits = {
+        ("section", "dense"): 6,
+        ("section", "bm25"): 12,
+        ("section", "hybrid"): 13,
+        ("fixed", "dense"): 13,
+        ("fixed", "bm25"): 10,
+        ("fixed", "hybrid"): 15,
+    }
+    report = compare_nightly(_nightly(hits=current_hits), committed)
+    assert not report.ok
+    assert report.failures[0].metric == "section/bm25/recall_at_5"
+    assert "dropped 2" in report.failures[0].detail
+
+
+def test_compare_nightly_fails_on_arm_identity_drift() -> None:
+    committed = _nightly()
+    current = _nightly(
+        hits={
+            ("section", "dense"): 6,
+            ("section", "bm25"): 14,
+            ("section", "hybrid"): 13,
+        }
+    )
+    report = compare_nightly(current, committed)
+    assert not report.ok
+    assert report.failures[0].metric == "arms"
+
+
+def test_committed_nightly_baseline_matches_published_matrix() -> None:
+    from capitalcite.eval.report import load_report
+
+    snap = load_nightly(DEFAULT_NIGHTLY)
+    assert snap.n_items == 77
+    assert snap.embedder_id == "fastembed:BAAI/bge-small-en-v1.5"
+    assert snap.thresholds.max_drop_items == 1
+    by_arm = {(arm.chunker, arm.mode): arm.recall_at_5.hits for arm in snap.arms}
+    assert by_arm == {
+        ("section", "dense"): 6,
+        ("section", "bm25"): 14,
+        ("section", "hybrid"): 13,
+        ("fixed", "dense"): 13,
+        ("fixed", "bm25"): 10,
+        ("fixed", "hybrid"): 15,
+    }
+    published = load_report(Path("evals/results/8b63d12acd50.json"))
+    assert compare_nightly(snapshot_nightly(published), snap).ok
+
+
+def test_snapshot_nightly_rejects_small() -> None:
+    from capitalcite.eval.models import EvalReport
+
+    report = EvalReport(
+        git_sha="b" * 40,
+        suite="golden",
+        small=True,
+        k=5,
+        n_items=77,
+        embedder_id="fake:deterministic",
+        arms=(),
+    )
+    with pytest.raises(ValueError, match="twelve-filing"):
+        snapshot_nightly(report)
 
 
 def test_check_report_fails_on_contract_miss() -> None:
@@ -181,8 +316,8 @@ def test_committed_baseline_is_fake_embedder_snapshot() -> None:
     assert snap.small_n_items == 77
     assert snap.small_arms == 6
     assert snap.small_embedder_id == "fake:deterministic"
-    assert snap.thresholds.quote_sanity_max_drop_items == 1
-    assert snap.thresholds.fixture_max_drop_items == 1
+    assert snap.thresholds.quote_sanity_max_drop_items == 0
+    assert snap.thresholds.fixture_max_drop_items == 0
 
 
 def test_check_passes_committed_baseline(tmp_path: Path) -> None:

@@ -14,7 +14,7 @@
   "small_arms": 6,
   "small_embedder_id": "fake:deterministic",
   "thresholds": {
-    "quote_sanity_max_drop_items": 1,
-    "fixture_max_drop_items": 1
+    "quote_sanity_max_drop_items": 0,
+    "fixture_max_drop_items": 0
   }
 }

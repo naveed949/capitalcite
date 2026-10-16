@@ -58,7 +58,7 @@ flowchart LR
 | Fail-closed gate | JSON allow-list per tool with argument schemas and per-request budgets. Unknown names, invalid args, and a policy-load failure are denies. `capitalcite gate decide` prints the decision. Denied calls do not run. | 🟡 `capitalcite gate` |
 | Audit log | Append-only, hash-chained JSONL of every gated tool call, plus a sibling head file so deleting the last line fails verify. The wrapper writes the gate decision before the tool runs and refuses with `audit unavailable` if that write fails. Records store the gate `decision` and `reason`. `trace_id` is `current_trace_id()` (UUID only when tracing is off). The chain is not keyed: anyone with write access can rebuild it. | 🟡 `capitalcite audit verify` |
 | Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
-| Evals in CI | `capitalcite check` on every PR: quote-index sanity and fixture span-overlap vs `evals/baselines/ci.json`, fake-model cite/refuse contracts, gate red-team. Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Baseline file edits need the `eval-baseline` label. | 🟡 `capitalcite check` |
+| Evals in CI | `capitalcite check` on every PR: quote-index sanity and fixture span-overlap vs `evals/baselines/ci.json` at zero item drop, fake-model cite/refuse contracts, gate red-team. Nightly ingests the twelve 10-Ks and gates bge-small Recall@5 vs `evals/baselines/nightly.json` (one-item allowance). Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Baseline file edits need the `eval-baseline` label. | 🟡 `capitalcite check` |
 | Deploy | Azure Container Apps (Bicep, scale-to-zero API, internal Qdrant). Live Azure `/health` is UNVERIFIED until someone opts in. | 🟡 IaC + image recipe |
 | MCP server (optional) | Exposes `search_filings` / `ask` as MCP tools | ⬜ optional |
 | Entity graph (optional) | Neo4j graph of bank → subsidiary → filing → metric | ⬜ optional |
@@ -118,7 +118,7 @@ Comparison and multi-hop handwritten items only. Answer quality stays UNVERIFIED
 | Audit log integrity (hash chain verify) | TBD | TBD |
 | CI contract pack (`capitalcite check`) | 2 cite/refuse + 5 red-team | 1.00 |
 
-`capitalcite check` also gates quote-index sanity and fixture span-overlap against `evals/baselines/ci.json`. Drops are counted in items, not as a 1% relative change. Live OpenAI stays UNVERIFIED without `OPENAI_API_KEY`.
+`capitalcite check` also gates quote-index sanity and fixture span-overlap against `evals/baselines/ci.json`. The PR pack is FakeEmbedder-deterministic, so the item budget is zero. Nightly live-corpus Recall@5 vs `evals/baselines/nightly.json` allows one item of rank-boundary noise. Drops are counted in items, not as a 1% relative change. Live OpenAI stays UNVERIFIED without `OPENAI_API_KEY`. EDGAR ingest exit 2 is the only nightly skip.
 
 ### Latency & cost
 

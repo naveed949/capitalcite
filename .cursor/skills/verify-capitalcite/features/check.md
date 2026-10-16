@@ -3,9 +3,10 @@
 `capitalcite check` runs the PR regression pack against
 `evals/baselines/ci.json`. It scores quote-index sanity and fixture
 span-overlap, drives fake-model cite/refuse contracts, and runs
-`gate redteam`. A drop past the item budget exits 1. `--live` without
+`gate redteam`. The committed PR budget is zero item drops. `--live` without
 `OPENAI_API_KEY` prints UNVERIFIED and still exits 0 when the
-deterministic pack passed.
+deterministic pack passed. The twelve-filing compare is
+`capitalcite eval --baseline`, not this command.
 
 ## Sub-features
 
@@ -36,5 +37,6 @@ Preconditions:
 ## Gotchas
 
 - `eval --small` Recall@5 on the 77-item gold set is 0.000 against the fixture corpus. That is not the gated retrieval number. Quote-index sanity and `evals/golden/ci.jsonl` are.
+- The PR pack is deterministic, so `quote_sanity_max_drop_items` and `fixture_max_drop_items` are 0. The 1-item allowance is nightly only.
 - `--write-baseline` rewrites the snapshot. CI never passes that flag. Changing `evals/baselines/` on a PR without the `eval-baseline` label fails a workflow job.
 - `CliRunner().invoke(...)` in pytest is not this feature.

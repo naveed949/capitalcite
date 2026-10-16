@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/eval-nightly.yml"
+      - "evals/baselines/nightly.json"
+      - "src/capitalcite/eval/baseline.py"
+      - "src/capitalcite/eval/runner.py"
 
 concurrency:
   group: eval-nightly
@@ -15,6 +21,7 @@ permissions:
 jobs:
   check:
     name: deterministic regression pack
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       SEC_USER_AGENT: capitalcite-ci ci@example.com
@@ -35,6 +42,7 @@ jobs:
 
   live:
     name: live LLM eval
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       SEC_USER_AGENT: capitalcite-ci ci@example.com
@@ -60,11 +68,13 @@ jobs:
           uv run capitalcite check --live --out "${RUNNER_TEMP}/check-live"
 
   full:
-    name: full golden eval
+    name: twelve-filing golden matrix
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     env:
       SEC_USER_AGENT: capitalcite-ci ci@example.com
       APP_ENV: test
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
     steps:
       - uses: actions/checkout@v4
 
@@ -76,10 +86,53 @@ jobs:
       - name: Install package and dev tools
         run: uv sync --frozen --all-groups
 
-      - name: Twelve-filing matrix
+      - name: Cache EDGAR filings
+        uses: actions/cache@v4
+        with:
+          path: data/raw/edgar
+          key: edgar-jpm-bac-wfc-c-10k-2023-2025-v1
+
+      - name: Cache FastEmbed models
+        uses: actions/cache@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-en-v1.5-bm25-v1
+
+      - name: Ingest twelve 10-Ks
         run: |
-          if [ ! -d data/raw/edgar ]; then
-            echo "UNVERIFIED: data/raw/edgar is not on this runner"
-            exit 0
+          set -euo pipefail
+          expected=12
+          count=0
+          if [ -d data/raw/edgar ]; then
+            count="$(find data/raw/edgar -name metadata.json | wc -l | tr -d ' ')"
           fi
-          uv run capitalcite eval --suite golden --out "${RUNNER_TEMP}/eval-full"
+          if [ "${count}" = "${expected}" ]; then
+            echo "cache hit: ${count} filings"
+          else
+            echo "cache miss: ${count} filings; ingesting"
+            set +e
+            uv run capitalcite ingest \
+              --tickers JPM,BAC,WFC,C \
+              --forms 10-K \
+              --years 2023-2025 \
+              --output-dir data
+            ingest_rc=$?
+            set -e
+            count=0
+            if [ -d data/raw/edgar ]; then
+              count="$(find data/raw/edgar -name metadata.json | wc -l | tr -d ' ')"
+            fi
+            if [ "${count}" != "${expected}" ]; then
+              if [ "${ingest_rc}" = "2" ]; then
+                echo "UNVERIFIED: EDGAR outage or rate-limit (ingest exit 2, filings=${count})"
+                exit 0
+              fi
+              echo "::error::expected ${expected} filings, have ${count}, ingest exit ${ingest_rc}"
+              exit 1
+            fi
+          fi
+
+      - name: Twelve-filing matrix vs nightly baseline
+        run: |
+          uv run capitalcite eval --suite golden --input-dir data --embedder bge-small \
+            --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"

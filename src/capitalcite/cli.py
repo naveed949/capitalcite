@@ -13,7 +13,17 @@ import typer
 from capitalcite.chunking.models import ChunkerName
 from capitalcite.chunking.service import run_chunk
 from capitalcite.config import Settings, get_settings
-from capitalcite.eval.baseline import Baseline, Thresholds, TrackedRate, compare
+from capitalcite.eval.baseline import (
+    DEFAULT_NIGHTLY,
+    Baseline,
+    Thresholds,
+    TrackedRate,
+    compare,
+    compare_nightly,
+    load_nightly,
+    snapshot_nightly,
+    write_nightly,
+)
 from capitalcite.eval.check import (
     DEFAULT_BASELINE,
     CheckFailed,
@@ -530,12 +540,25 @@ def eval_cmd(
         "--readme",
         help="Rewrite the README retrieval table from this run or --from-results.",
     ),
+    baseline: Path | None = typer.Option(
+        None,
+        "--baseline",
+        help="Committed twelve-filing Recall@5 snapshot. Forbidden with --small.",
+    ),
+    write_baseline_file: bool = typer.Option(
+        False,
+        "--write-baseline",
+        help="Rewrite --baseline (or evals/baselines/nightly.json) from this run.",
+    ),
 ) -> None:
     """Score handwritten gold with span-overlap recall@k, MRR, and nDCG.
 
     Full mode re-chunks raw filings, embeds them, and writes
     ``evals/results/<sha12>.json``. ``--small`` is the CI path.
     """
+    if small and (baseline is not None or write_baseline_file):
+        typer.echo("error: --small does not take --baseline", err=True)
+        raise typer.Exit(code=1)
     if from_results is not None:
         try:
             reports = load_reports(from_results)
@@ -550,6 +573,7 @@ def eval_cmd(
                 except ValueError as exc:
                     typer.echo(f"error: {exc}", err=True)
                     raise typer.Exit(code=1) from exc
+            _gate_nightly(stored, baseline=baseline, write_baseline=write_baseline_file)
         return
 
     settings = _eval_settings(small)
@@ -605,6 +629,7 @@ def eval_cmd(
         except ValueError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
+    _gate_nightly(report, baseline=baseline, write_baseline=write_baseline_file)
 
 
 @app.command("check")
@@ -724,6 +749,45 @@ def _bootstrap_baseline() -> Baseline:
         small_embedder_id="bootstrap",
         thresholds=Thresholds(),
     )
+
+
+def _gate_nightly(
+    report: EvalReport,
+    *,
+    baseline: Path | None,
+    write_baseline: bool,
+) -> None:
+    if not write_baseline and baseline is None:
+        return
+    if report.small:
+        typer.echo("error: --small does not take --baseline", err=True)
+        raise typer.Exit(code=1)
+    snapshot = snapshot_nightly(report)
+    target = baseline if baseline is not None else DEFAULT_NIGHTLY
+    if write_baseline:
+        write_nightly(target, snapshot)
+        typer.echo(f"wrote baseline {target}")
+        committed = snapshot
+    elif not target.is_file():
+        typer.echo(f"error: missing baseline {target}", err=True)
+        raise typer.Exit(code=1)
+    else:
+        try:
+            committed = load_nightly(target)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    compared = compare_nightly(snapshot, committed)
+    typer.echo(
+        "eval-baseline "
+        f"ok={str(compared.ok).lower()} "
+        f"arms={len(snapshot.arms)} "
+        f"items={snapshot.n_items}"
+    )
+    if not compared.ok:
+        for failure in compared.failures:
+            typer.echo(f"fail {failure.metric}: {failure.detail}", err=True)
+        raise typer.Exit(code=1)
 
 
 def _eval_settings(small: bool) -> Settings:

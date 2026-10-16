@@ -9,7 +9,8 @@ never calls tools outside the policy) plus an eval-subset regression
 gate. A GitHub Action must run a fast subset on PRs and the full set
 nightly. A PR fails when a tracked metric drops more than a configured
 threshold below a committed baseline. Updating that baseline requires
-the `eval-baseline` label.
+the `eval-baseline` label. Azure Container Apps took ADR 0012, so this
+record is 0013.
 
 ## Two kinds of tests
 
@@ -57,29 +58,53 @@ already the user path for "never calls tools outside the policy."
 ## Noise, flake, and cost
 
 FakeEmbedder and the fake chat model are deterministic. There is no
-LLM sampling in PR CI. The item budget (`quote_sanity_max_drop_items=1`,
-`fixture_max_drop_items=1`) is the small-n cushion so a single
-rank-boundary flip does not fail the build. Two missed quote-sanity
-hits, or two missed fixture items, fail.
+LLM sampling in PR CI. The PR pack therefore uses
+`quote_sanity_max_drop_items=0` and `fixture_max_drop_items=0`. A
+one-item miss is a product change, not rank-boundary noise. The
+1-item allowance lives on the nightly twelve-filing matrix instead.
 
 Live OpenAI is `--live`. Empty `OPENAI_API_KEY` is UNVERIFIED, not a
-failure. The nightly job skips the same way. PR CI does not pass
+failure. The nightly live job skips the same way. PR CI does not pass
 `--live`. That is cost control and flake control in one flag.
 
-The twelve-filing bge-small matrix needs `data/raw/edgar`. That tree
-is gitignored. Nightly full eval exits 0 with UNVERIFIED when the
-corpus is missing. CI does not ingest EDGAR.
+## Nightly twelve-filing matrix
+
+`data/raw/edgar` is gitignored. A job that skipped when that tree was
+missing would never score the golden set on GitHub-hosted runners.
+Nightly therefore ingests the twelve 10-Ks itself
+(`JPM,BAC,WFC,C` × `10-K` × `2023-2025`) with
+`SEC_USER_AGENT=capitalcite-ci ci@example.com`. EDGAR is public. The
+filings cache under `actions/cache` keyed on that filing list.
+FastEmbed models cache under `FASTEMBED_CACHE_PATH`. `capitalcite eval
+--suite golden` then re-chunks, indexes embedded Qdrant with
+`bge-small`, and compares Recall@5 hit counts to
+`evals/baselines/nightly.json`.
+
+UNVERIFIED (exit 0) is only ingest exit 2: `EdgarAccessError` or
+`EdgarUnavailableError` (403, 429 after retries, 5xx, transport). A
+short corpus after any other ingest failure fails the job. Eval
+itself is not skipped.
+
+Nightly `max_drop_items` is 1. The committed matrix is n=77 against
+live bge-small ranks. One item moving across the cutoff is noise. Two
+is a drop. `agent_vs_rag` is not gated; that row is a planner probe,
+not a retrieval baseline.
+
+`capitalcite eval --baseline` is the compare. `--small` rejects that
+flag. CI never passes `--write-baseline`.
 
 ## Baseline updates
 
-`evals/baselines/ci.json` is the snapshot. `capitalcite check`
-compares the current run to the file in the checkout. Lowering the
-file would pass the compare. The `eval-baseline` label is the
-control. A workflow job diffs `evals/baselines/` against the PR base
-and fails when those files changed and the label is absent.
+`evals/baselines/ci.json` is the PR snapshot.
+`evals/baselines/nightly.json` is the twelve-filing snapshot.
+Lowering either file would pass the compare. The `eval-baseline`
+label is the control. A workflow job diffs `evals/baselines/` against
+the PR base and fails when those files changed and the label is
+absent.
 
-`capitalcite check --write-baseline` rewrites the file from a local
-run. CI never passes that flag.
+`capitalcite check --write-baseline` and
+`capitalcite eval --write-baseline` rewrite those files from a local
+run. CI never passes those flags.
 
 ## Alternatives
 
@@ -90,5 +115,10 @@ Gating `--small` Recall@5 would look like a retrieval gate and would
 never fire.
 
 A relative 5% drop would fail or pass at random at n=3.
+
+A 1-item PR budget would hide a deterministic FakeEmbedder miss.
+
+Skipping nightly when `data/` is missing would make the full golden
+eval a no-op on every hosted runner.
 
 RAGAS and DeepEval need an LLM judge. Those rows stay UNVERIFIED.
