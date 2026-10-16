@@ -43,8 +43,7 @@ def _unlimited_calls() -> Policy:
     if not isinstance(loaded, Policy):
         raise ValueError(f"shipped policy failed to load: {loaded.detail}")
     tools = {
-        name: rule.model_copy(update={"max_calls": 100_000})
-        for name, rule in loaded.tools.items()
+        name: rule.model_copy(update={"max_calls": 100_000}) for name, rule in loaded.tools.items()
     }
     return Policy(version=1, default="deny", tools=tools)
 

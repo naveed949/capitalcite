@@ -17,7 +17,6 @@ from capitalcite.agent import (
     default_registry,
     run_agent,
 )
-from capitalcite.gate import Gate, load_policy
 from capitalcite.agent.fdic import FakeFdicClient, FdicClient
 from capitalcite.agent.http import HttpxJsonClient
 from capitalcite.agent.xbrl import FakeXbrlClient, XbrlClient
@@ -33,6 +32,7 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.config import Settings, get_settings
+from capitalcite.gate import Gate, load_policy
 from capitalcite.ingest.rate_limit import shared_limiter
 from capitalcite.retrieval import (
     IndexNotBuilt,

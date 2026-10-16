@@ -34,9 +34,10 @@ def unsupported_schema(schema: Mapping[str, object]) -> str | None:
             if type_error is not None:
                 return f"{name}: {type_error}"
     required = schema.get("required")
-    if required is not None:
-        if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
-            return "required must be a list of strings"
+    if required is not None and (
+        not isinstance(required, list) or not all(isinstance(item, str) for item in required)
+    ):
+        return "required must be a list of strings"
     additional = schema.get("additionalProperties")
     if additional is not None and not isinstance(additional, bool):
         return "additionalProperties must be a boolean"
@@ -56,17 +57,25 @@ def _validate(schema: Mapping[str, object], value: object) -> str | None:
             return "invalid args"
     if value is None:
         return None
-    min_length = schema.get("minLength")
-    if min_length is not None and isinstance(value, str) and len(value) < int(min_length):
+    min_length = _as_int(schema.get("minLength"))
+    if min_length is not None and isinstance(value, str) and len(value) < min_length:
         return "invalid args"
-    minimum = schema.get("minimum")
-    if minimum is not None and isinstance(value, (int, float)) and not isinstance(value, bool):
-        if value < minimum:
-            return "invalid args"
-    maximum = schema.get("maximum")
-    if maximum is not None and isinstance(value, (int, float)) and not isinstance(value, bool):
-        if value > maximum:
-            return "invalid args"
+    minimum = _as_number(schema.get("minimum"))
+    if (
+        minimum is not None
+        and isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and value < minimum
+    ):
+        return "invalid args"
+    maximum = _as_number(schema.get("maximum"))
+    if (
+        maximum is not None
+        and isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and value > maximum
+    ):
+        return "invalid args"
     if not isinstance(value, Mapping):
         return None
     properties = schema.get("properties")
@@ -96,6 +105,18 @@ def _check_type_field(value: object) -> str | None:
     if not items or not all(isinstance(item, str) and item in _TYPES for item in items):
         return "type must be a supported JSON Schema type"
     return None
+
+
+def _as_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _as_number(value: object) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
 
 
 def _type_matches(expected: str, value: object) -> bool:
