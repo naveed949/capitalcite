@@ -1,4 +1,4 @@
-.PHONY: help sync lint format typecheck test ci up down health
+.PHONY: help sync lint format typecheck test ci up down health eval-report
 
 UV ?= uv
 PYTEST ?= $(UV) run pytest
@@ -15,6 +15,7 @@ help:
 	@echo "up         docker compose up -d"
 	@echo "down       docker compose down"
 	@echo "health     GET /health against a running local API"
+	@echo "eval-report  Rewrite the README retrieval table from evals/results"
 
 sync:
 	$(UV) sync --all-groups
@@ -41,3 +42,6 @@ down:
 
 health:
 	curl -sf http://127.0.0.1:8000/health && echo
+
+eval-report:
+	$(UV) run capitalcite eval --suite golden --from-results evals/results --readme README.md

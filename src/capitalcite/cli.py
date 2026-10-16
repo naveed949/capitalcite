@@ -11,7 +11,10 @@ import typer
 
 from capitalcite.chunking.models import ChunkerName
 from capitalcite.chunking.service import run_chunk
-from capitalcite.config import get_settings
+from capitalcite.config import Settings, get_settings
+from capitalcite.eval.models import EvalReport
+from capitalcite.eval.report import load_reports, render_markdown, update_readme
+from capitalcite.eval.runner import EvalFailed, EvalUnverified, run_suite
 from capitalcite.ingest.client import (
     EdgarAccessError,
     EdgarClient,
@@ -28,6 +31,7 @@ from capitalcite.retrieval import (
     IndexReceipt,
     IndexUnavailable,
     RetrievalError,
+    RetrievalMode,
     build_index,
     create_retrieval_setup,
 )
@@ -357,6 +361,152 @@ def index_cmd(
         f"points={receipt.point_count} "
         f"output={root}"
     )
+
+
+@app.command("eval")
+def eval_cmd(
+    suite: str = typer.Option(..., "--suite", help="Only golden is defined."),
+    small: bool = typer.Option(
+        False,
+        "--small",
+        help="Fixture corpus, FakeEmbedder, in-memory Qdrant. No download.",
+    ),
+    input_dir: Path | None = typer.Option(
+        None,
+        "--input-dir",
+        help="Root that contains raw/edgar. Forbidden with --small.",
+    ),
+    out: Path = typer.Option(
+        Path("evals/results"),
+        "--out",
+        help="Directory for the versioned JSON and markdown table.",
+    ),
+    golden_path: Path = typer.Option(
+        Path("evals/golden"),
+        "--golden",
+        help="Directory with v1.jsonl and passages/.",
+    ),
+    chunker: list[ChunkerName] | None = typer.Option(
+        None,
+        "--chunker",
+        help="Repeatable. Defaults to section and fixed.",
+    ),
+    mode: list[str] | None = typer.Option(
+        None,
+        "--mode",
+        help="Repeatable. dense, bm25, or hybrid. Defaults to all three.",
+    ),
+    embedder: EmbedderName | None = typer.Option(
+        None,
+        "--embedder",
+        help="bge-small, minilm, or openai-small. Forbidden with --small.",
+    ),
+    k: int = typer.Option(5, "--k", help="Published cutoff. Retrieve still walks 10."),
+    from_results: Path | None = typer.Option(
+        None,
+        "--from-results",
+        help="Render a stored JSON matrix. Does not retrieve.",
+    ),
+    readme: Path | None = typer.Option(
+        None,
+        "--readme",
+        help="Rewrite the README retrieval table from this run or --from-results.",
+    ),
+) -> None:
+    """Score handwritten gold with span-overlap recall@k, MRR, and nDCG.
+
+    Full mode re-chunks raw filings, embeds them, and writes
+    ``evals/results/<sha12>.json``. ``--small`` is the CI path.
+    """
+    if from_results is not None:
+        try:
+            reports = load_reports(from_results)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        for report in reports:
+            typer.echo(render_markdown(report), nl=False)
+            if readme is not None:
+                try:
+                    update_readme(readme, report)
+                except ValueError as exc:
+                    typer.echo(f"error: {exc}", err=True)
+                    raise typer.Exit(code=1) from exc
+        return
+
+    settings = _eval_settings(small)
+    configure_logging(settings.log_level)
+    chunkers = tuple(chunker) if chunker else (ChunkerName.SECTION, ChunkerName.FIXED)
+    try:
+        modes = _parse_modes(mode)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    try:
+
+        async def _run() -> EvalReport:
+            return await run_suite(
+                suite=suite,
+                small=small,
+                input_dir=input_dir,
+                out_dir=out,
+                golden_dir=golden_path,
+                chunkers=chunkers,
+                modes=modes,
+                embedder=embedder,
+                k=k,
+                settings=settings,
+            )
+
+        report = asyncio.run(_run())
+    except EvalFailed as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except EvalUnverified as exc:
+        typer.echo(f"unverified: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    typer.echo(
+        "eval "
+        f"suite={report.suite} "
+        f"small={str(report.small).lower()} "
+        f"items={report.n_items} "
+        f"arms={len(report.arms)} "
+        f"out={out}"
+    )
+    typer.echo(render_markdown(report), nl=False)
+    if readme is not None:
+        try:
+            update_readme(readme, report)
+        except ValueError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
+
+def _eval_settings(small: bool) -> Settings:
+    if small:
+        return Settings(
+            sec_user_agent="capitalcite-eval eval@example.com",
+            chunker=ChunkerName.SECTION,
+            chunk_size=512,
+            chunk_overlap=64,
+            embedder="bge-small",
+            qdrant_url=":memory:",
+        )
+    return get_settings()
+
+
+def _parse_modes(raw: list[str] | None) -> tuple[RetrievalMode, ...]:
+    if not raw:
+        return (RetrievalMode.DENSE, RetrievalMode.BM25, RetrievalMode.HYBRID)
+    modes: list[RetrievalMode] = []
+    for value in raw:
+        try:
+            modes.append(RetrievalMode(value))
+        except ValueError as exc:
+            raise ValueError(f"unknown mode {value!r}") from exc
+    return tuple(modes)
 
 
 def create_edgar_client(user_agent: str) -> EdgarClient:
