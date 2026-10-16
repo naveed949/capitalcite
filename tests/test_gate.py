@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-
+import pytest
 from typer.testing import CliRunner
 
 from capitalcite.agent.tools import ToolRegistry
@@ -76,7 +76,9 @@ async def test_deny_does_not_call_the_runner() -> None:
     unknown = await gate.execute("shell", {"cmd": "ls"})
     invalid = await gate.execute("calculator", {"expression": "1+1", "cmd": "id"})
     assert unknown.ok is False
+    assert unknown.reason == "unknown_tool"
     assert invalid.ok is False
+    assert invalid.reason == "invalid_args"
     assert calls == []
 
 
@@ -186,7 +188,60 @@ def test_oversized_args_are_budget(tmp_path: Path) -> None:
         "calculator",
         {"expression": "1234567890"},
     )
-    assert decision.reason == DenyReason.budget_exceeded
+    assert decision.reason == DenyReason.args_too_large
+    assert decision.detail == "args too large"
+
+
+def _cyclic_args() -> dict[object, object]:
+    args: dict[object, object] = {}
+    args["self"] = args
+    return args
+
+
+@pytest.mark.parametrize(
+    ("label", "args"),
+    [
+        ("int-key", {1: "x"}),
+        ("cyclic", _cyclic_args()),
+        ("not-mapping", "notamapping"),
+    ],
+    ids=["int-key", "cyclic", "not-mapping"],
+)
+async def test_odd_args_deny_without_running_the_runner(
+    label: str,
+    args: object,
+) -> None:
+    _ = label
+    calls: list[str] = []
+
+    async def boom(payload: Mapping[str, object]) -> ToolResult:
+        calls.append("ran")
+        return ToolResult(ok=True, tool="calculator", args=dict(payload), detail="boom")
+
+    gate = Gate(load_policy(None), ToolRegistry({"calculator": boom}))
+    result = await gate.execute("calculator", args)  # type: ignore[arg-type]
+    assert result.ok is False
+    assert result.reason is not None
+    assert calls == []
+
+
+async def test_validate_args_raise_is_gate_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def explode(_schema: Mapping[str, object], _args: Mapping[str, object]) -> str | None:
+        raise RuntimeError("schema exploded")
+
+    monkeypatch.setattr("capitalcite.gate.gate.validate_args", explode)
+    calls: list[str] = []
+
+    async def boom(payload: Mapping[str, object]) -> ToolResult:
+        calls.append("ran")
+        return ToolResult(ok=True, tool="calculator", args=dict(payload), detail="boom")
+
+    gate = Gate(load_policy(None), ToolRegistry({"calculator": boom}))
+    result = await gate.execute("calculator", {"expression": "1+1"})
+    assert result.ok is False
+    assert result.detail == "gate error"
+    assert result.reason == "gate_error"
+    assert calls == []
 
 
 async def test_redteam_suite_passes() -> None:
