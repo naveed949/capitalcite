@@ -86,3 +86,34 @@ answers belong to `#7`. This harness scores retrieval only.
 About 77 handwritten spanned items is a small sample. Moving one item
 changes recall by about `1/n`. A 0.02 gap is noise. The table reports n
 and does not rank chunkers on a gap that small.
+
+## BM25 is wired; the corpus still buries gold
+
+The first matrix had section BM25 Recall@5 = 0/77 and hybrid worse than
+dense on both chunkers. That looked like a broken sparse path. A probe
+on `cc-h-013`, `cc-h-063`, and `cc-h-001` (FakeEmbedder, same
+`term_counts` as production, 12 filings) says it is not.
+
+`embed_query` still builds the dense vector (BGE may prefix that vector)
+and pairs `term_counts` of the raw query as the sparse vector.
+`embed_documents` pairs `term_counts` of `chunk.text`. BM25 search
+sends only the sparse vector. The collection sparse params are
+`Modifier.IDF`. The tokenizer is `[a-z0-9]+` after lowercasing, so
+`CET1` survives as `cet1`. Those three checks hold.
+
+The gold chunks exist and overlap the handwritten spans. They contain
+`cet1`. On the section chunker the gold BM25 ranks are 172, 212, and
+271. On fixed they are 389, 118, and 370. The top-5 for every probe is
+a Citi (or Citi-like) capital-ratio passage that repeats
+`CET1` / `capital` / `ratio` / `Standardized Approach` in a tight
+block. The gold JPM and WFC Item 7 chunks mention `CET1` once in
+narrative. JPM's body often says "the Firm", not "JPMorgan". WFC's
+Item 7 gold chunk says "we", not "Wells Fargo". Hashed raw term
+frequency plus Qdrant IDF has no length normalization, so the dense
+Citi block wins.
+
+Hybrid is worse than dense because RRF mixes that BM25 ranking in.
+This record does not replace the #24 sparse encoder. A real BM25
+formula (document-length normalization, or a stop list) is a retrieval
+change, not an eval scoring change. minilm is UNVERIFIED: a second
+full embed of 12k–17k chunks is not cheap on this corpus.
