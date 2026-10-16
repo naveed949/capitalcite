@@ -5,9 +5,10 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from capitalcite.agent.graph import run_agent
 from capitalcite.agent.models import FakeAgentModel
 from capitalcite.agent.tools import default_registry
-from capitalcite.agent.types import TraceStep
+from capitalcite.agent.types import Budgets
 from capitalcite.cli import app
 from capitalcite.config import Settings, get_settings
 from capitalcite.eval.graph_eval import run_graph_suite
@@ -154,23 +155,31 @@ async def test_fake_planner_skips_graph_on_cet1_comparison() -> None:
 
 async def test_fake_planner_uses_graph_for_subsidiary_rssd() -> None:
     model = FakeAgentModel()
-    traces = (
-        TraceStep(
-            tool="search_filings",
-            args={"query": "rssd", "ticker": "JPM"},
-            ok=True,
-            detail="hits=0",
-        ),
-    )
     decision = await model.plan(
         "What is the RSSD of the national bank subsidiary of JPM?",
-        traces,
+        [],
         [],
     )
     assert decision.kind == "plan"
-    assert decision.calls[0].name == "graph_query"
-    assert decision.calls[0].args["kind"] == "subsidiaries"
-    assert decision.calls[0].args["ticker"] == "JPM"
+    graph = next(call for call in decision.calls if call.name == "graph_query")
+    assert graph.args["kind"] == "subsidiaries"
+    assert graph.args["ticker"] == "JPM"
+
+
+async def test_run_agent_calls_graph_query_on_the_first_plan() -> None:
+    store = MemoryGraphStore()
+    await store.load(load_snapshot(_SNAPSHOT))
+    tools = default_registry(
+        search=_empty_search, xbrl=_missing_xbrl, fdic=_missing_fdic, graph=store
+    )
+    result = await run_agent(
+        "What is the RSSD of the national bank subsidiary of JPM?",
+        FakeAgentModel(),
+        tools,
+        Budgets(max_steps=8, max_tokens=8000),
+    )
+    assert any(step.tool == "graph_query" for step in result.plan)
+    assert any("852218" in step.detail for step in result.traces)
 
 
 def test_cli_graph_load_memory_twice() -> None:

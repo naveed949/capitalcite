@@ -96,11 +96,11 @@ class FakeAgentModel:
                 if year:
                     args["period"] = year
                 calls.append(ToolCall(name="search_filings", args=args))
-        if calls:
-            return PlannerDecision(kind="plan", calls=tuple(calls))
         graph_call = _graph_call(question, traces)
         if graph_call is not None:
-            return PlannerDecision(kind="plan", calls=(graph_call,))
+            calls.insert(0, graph_call)
+        if calls:
+            return PlannerDecision(kind="plan", calls=tuple(calls))
         if not traces:
             return PlannerDecision(
                 kind="plan",
