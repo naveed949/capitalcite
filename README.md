@@ -50,7 +50,7 @@ flowchart LR
 |---|---|---|
 | Ingestion | Pulls bank 10-K/10-Q filings from EDGAR (with a declared User-Agent and rate limits) plus regulatory PDFs; parses text and tables | 🟡 EDGAR 10-K/10-Q (`capitalcite ingest`); HTML/PDF parse in #3 |
 | Chunking experiments | Compares fixed, recursive, and section-aware (10-K Item boundaries) chunking | 🟡 `capitalcite chunk --chunker fixed\|recursive\|section` |
-| Embedding comparison | Local FastEmbed `bge-small` (`BAAI/bge-small-en-v1.5`) and `minilm`, plus `openai-small` when `OPENAI_API_KEY` is set. Golden-set comparison stays TBD until #6. | 🟡 models selectable, eval TBD |
+| Embedding comparison | Local FastEmbed `bge-small` (`BAAI/bge-small-en-v1.5`) and `minilm`, plus `openai-small` when `OPENAI_API_KEY` is set. The committed matrix uses `bge-small`. `minilm` is UNVERIFIED. | 🟡 `bge-small` measured; other models UNVERIFIED |
 | Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with reciprocal rank fusion. `capitalcite index` builds it. `POST /search` returns scores and citations. Cross-encoder rerank waits for a measured eval. | 🟡 `capitalcite index`, `POST /search` |
 | Structured answers | Pydantic schemas: `answer`, `citations[]`, `confidence`, `refusal_reason` | ⬜ planned |
 | Agent | Plan-then-act loop (LangGraph or PydanticAI) for multi-step questions, e.g. "compare CET1 ratios across JPM and BAC FY2025" | ⬜ planned |
@@ -73,15 +73,15 @@ Golden set: **112** questions (v1). Handwritten items over the twelve ingested 1
 
 | Chunking | Embedding | Retrieval | n | Recall@5 | MRR@5 | nDCG@5 | Recall@10 | MRR@10 | nDCG@10 |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|
-| fixed | UNVERIFIED | dense | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| fixed | UNVERIFIED | bm25 | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| fixed | UNVERIFIED | hybrid | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| section | UNVERIFIED | dense | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| section | UNVERIFIED | bm25 | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| section | UNVERIFIED | hybrid | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| section | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | 0.078 | 0.043 | 0.047 | 0.156 | 0.053 | 0.070 |
+| section | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.000 | 0.000 | 0.000 | 0.039 | 0.005 | 0.011 |
+| section | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.065 | 0.020 | 0.029 | 0.117 | 0.027 | 0.049 |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | 0.169 | 0.118 | 0.103 | 0.208 | 0.124 | 0.118 |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.026 | 0.016 | 0.018 | 0.065 | 0.021 | 0.029 |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.065 | 0.048 | 0.044 | 0.117 | 0.055 | 0.056 |
 | section | — | hybrid + rerank | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
 
-Numbers come from `capitalcite eval --suite golden`. RAGAS context precision/recall is UNVERIFIED (no LLM key).
+Generated from `evals/results/4d472e1c3922.json` (sha `4d472e1c3922`, embedder `fastembed:BAAI/bge-small-en-v1.5`). RAGAS context precision/recall is UNVERIFIED (no LLM key).
 
 <!-- END RETRIEVAL EVAL -->
 
