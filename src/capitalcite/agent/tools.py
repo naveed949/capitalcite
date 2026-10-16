@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from capitalcite.agent.calculator import calculate
 from capitalcite.agent.types import TOOL_NAMES, ToolResult
 from capitalcite.retrieval.types import Hit, SearchFilters, parse_filters
+from capitalcite.trace import ObservationKind, observation, tool_attrs
 
 ToolFn = Callable[[Mapping[str, object]], Awaitable[ToolResult]]
 
@@ -75,23 +76,27 @@ class ToolRegistry:
         self._tools = dict(tools)
 
     async def execute(self, name: str, args: Mapping[str, object]) -> ToolResult:
-        runner = self._tools.get(name)
-        if runner is None:
-            return ToolResult(
-                ok=False,
-                tool=name,
-                args=dict(args),
-                detail="unknown tool",
-            )
-        try:
-            return await runner(args)
-        except Exception as exc:
-            return ToolResult(
-                ok=False,
-                tool=name,
-                args=dict(args),
-                detail=str(exc) or type(exc).__name__,
-            )
+        with observation("tool", ObservationKind.TOOL, **tool_attrs(tool=name, ok=False)) as span:
+            runner = self._tools.get(name)
+            if runner is None:
+                result = ToolResult(
+                    ok=False,
+                    tool=name,
+                    args=dict(args),
+                    detail="unknown tool",
+                )
+            else:
+                try:
+                    result = await runner(args)
+                except Exception as exc:
+                    result = ToolResult(
+                        ok=False,
+                        tool=name,
+                        args=dict(args),
+                        detail=str(exc) or type(exc).__name__,
+                    )
+            span.set(**tool_attrs(tool=result.tool, ok=result.ok))
+            return result
 
 
 def default_registry(

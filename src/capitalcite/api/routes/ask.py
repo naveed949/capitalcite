@@ -47,6 +47,7 @@ from capitalcite.retrieval import (
     retrieve,
 )
 from capitalcite.retrieval.types import Hit
+from capitalcite.trace import ObservationKind, ask_attrs, git_sha, observation
 
 router = APIRouter(tags=["ask"])
 
@@ -110,36 +111,53 @@ async def post_ask(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AskResponse:
     """Return a grounded answer or a refusal. Both are HTTP 200."""
-    try:
-        count = await point_count(setup)
-        if body.path == "agent":
-            result = await _run_agent(body, setup, settings)
-            return _flatten(
-                result.answer,
-                setup,
-                count,
-                path="agent",
-                plan=list(result.plan),
-                traces=list(result.traces),
-                steps_used=result.steps_used,
-                tokens_used=result.tokens_used,
+    with observation(
+        "ask",
+        ObservationKind.ASK,
+        **ask_attrs(path=body.path, question=body.question),
+    ) as span:
+        try:
+            count = await point_count(setup)
+            if body.path == "agent":
+                result = await _run_agent(body, setup, settings)
+                response = _flatten(
+                    result.answer,
+                    setup,
+                    count,
+                    path="agent",
+                    plan=list(result.plan),
+                    traces=list(result.traces),
+                    steps_used=result.steps_used,
+                    tokens_used=result.tokens_used,
+                )
+            else:
+                filters = parse_filters(ticker=body.ticker, form=body.form, period=body.period)
+                limit = body.k if body.k is not None else setup.search_k
+                hits = await retrieve(
+                    setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters
+                )
+                answer = await ask(
+                    hits,
+                    body.question,
+                    _model_for(body, settings, hits_exist=bool(hits)),
+                    min_score=settings.ask_min_hit_score,
+                )
+                response = _flatten(answer, setup, count)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except (IndexUnavailable, IndexNotBuilt, ModelNotConfigured, ModelUnavailable) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        span.set(
+            **ask_attrs(
+                path=response.path,
+                question=body.question,
+                outcome=response.kind,
+                refusal_reason=response.refusal_reason,
+                config_hash=response.config_hash,
+                git_sha=git_sha(),
             )
-        filters = parse_filters(ticker=body.ticker, form=body.form, period=body.period)
-        limit = body.k if body.k is not None else setup.search_k
-        hits = await retrieve(
-            setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters
         )
-        answer = await ask(
-            hits,
-            body.question,
-            _model_for(body, settings, hits_exist=bool(hits)),
-            min_score=settings.ask_min_hit_score,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except (IndexUnavailable, IndexNotBuilt, ModelNotConfigured, ModelUnavailable) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return _flatten(answer, setup, count)
+        return response
 
 
 async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings) -> AgentResult:

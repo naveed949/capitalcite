@@ -39,6 +39,13 @@ from capitalcite.retrieval import (
     config_hash,
     setup_retrieval,
 )
+from capitalcite.trace import (
+    MemoryExporter,
+    ObservationKind,
+    configure_for_tests,
+    reset_for_tests,
+)
+from capitalcite.trace.types import SpanRecord
 
 _JPM_URL = "https://www.sec.gov/Archives/edgar/data/19617/jpm.htm"
 _CHAT_URL = "https://api.openai.com/v1/chat/completions"
@@ -352,6 +359,56 @@ def test_post_ask_rejects_empty_question_and_bad_period(tmp_path: Path) -> None:
     assert period.json()["detail"] == "period must be YYYY-MM-DD or a 4-digit year"
 
 
+def test_post_ask_emits_nested_retrieve_and_generate_spans(tmp_path: Path) -> None:
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    try:
+        application, _setup = _indexed_app(tmp_path, [_chunk()])
+        with TestClient(application) as http:
+            response = http.post(
+                "/ask",
+                json={"question": "tier one capital", "ticker": "JPM", "model": "fake"},
+            )
+        assert response.status_code == 200
+        names = [record.name for record in exporter.finished()]
+        assert "ask" in names
+        assert "retrieve" in names
+        assert "generate" in names
+        by_name = {record.name: record for record in exporter.finished()}
+        assert by_name["ask"].kind is ObservationKind.ASK
+        assert by_name["retrieve"].parent_id == by_name["ask"].span_id
+        assert by_name["generate"].parent_id == by_name["ask"].span_id
+        assert by_name["generate"].trace_id == by_name["ask"].trace_id
+        hit_count = by_name["retrieve"].attributes["capitalcite.hit_count"]
+        assert isinstance(hit_count, int) and hit_count >= 1
+        values = " ".join(str(value) for value in by_name["retrieve"].attributes.values())
+        assert "tier one capital buffer" not in values
+        assert by_name["ask"].attributes["capitalcite.outcome"] == "answered"
+        assert by_name["ask"].duration_ms >= 0
+    finally:
+        reset_for_tests()
+
+
+def test_post_ask_survives_exporter_failure(tmp_path: Path) -> None:
+    class Boom(MemoryExporter):
+        def export(self, record: SpanRecord) -> None:
+            raise RuntimeError(f"export down {record.name}")
+
+    configure_for_tests(Boom())
+    try:
+        application, _setup = _indexed_app(tmp_path, [_chunk()])
+        with TestClient(application) as http:
+            response = http.post(
+                "/ask",
+                json={"question": "tier one capital", "ticker": "JPM", "model": "fake"},
+            )
+        assert response.status_code == 200
+        body = AskResponse.model_validate(response.json())
+        assert body.kind in {"answered", "refused"}
+    finally:
+        reset_for_tests()
+
+
 def test_post_ask_503_when_qdrant_is_down() -> None:
     client = AsyncQdrantClient(url="http://127.0.0.1:1", timeout=1, check_compatibility=False)
     setup = setup_retrieval(_settings(), client=client, embedder=FakeEmbedder())
@@ -363,7 +420,14 @@ def test_post_ask_503_when_qdrant_is_down() -> None:
 
 
 def test_ask_domain_does_not_import_frameworks() -> None:
-    banned = ("fastapi", "qdrant_client", "fastembed", "pydantic_ai", "pydantic-ai")
+    banned = (
+        "fastapi",
+        "qdrant_client",
+        "fastembed",
+        "pydantic_ai",
+        "pydantic-ai",
+        "langfuse",
+    )
     root = Path("src/capitalcite/ask")
     for path in sorted(root.glob("*.py")):
         text = path.read_text(encoding="utf-8")
