@@ -83,6 +83,8 @@ export LOG_LEVEL="${LOG_LEVEL:-WARNING}"
 # Typer/Rich splits "--against-raw" with SGR codes; grep needs the literal flag.
 export NO_COLOR="${NO_COLOR:-1}"
 export EMBEDDER="${EMBEDDER:-bge-small}"
+# The openai probe sends "model":"openai" in the body. This server stays on fake.
+export ASK_MODEL=fake
 QDRANT_STORE="${ART}/qdrant"
 mkdir -p "${QDRANT_STORE}"
 export QDRANT_PATH="${QDRANT_STORE}"
@@ -593,9 +595,42 @@ post_search() {
   fi
 }
 
+post_ask() {
+  local name="$1"
+  local body="$2"
+  printf '%s\n' "${body}" >"${ART}/${name}.request.json"
+  set +e
+  local http
+  http="$(
+    curl -sS --max-time 180 \
+      -D "${ART}/${name}.headers" \
+      -o "${ART}/${name}.body.json" \
+      -w "%{http_code}" \
+      -H 'content-type: application/json' \
+      -d "${body}" \
+      "http://127.0.0.1:${PORT}/ask"
+  )"
+  local rc=$?
+  set -e
+  write "${name}.exit" "${rc}"
+  write "${name}.http" "${http}"
+  if [[ "${rc}" -ne 0 ]]; then
+    log "verify: POST /ask ${name} curl exit ${rc}"
+    cat "${ART}/${name}.body.json" >&2 || true
+    exit 1
+  fi
+  if [[ "${http}" != "200" ]]; then
+    log "verify: POST /ask ${name} HTTP ${http}"
+    cat "${ART}/${name}.body.json" >&2 || true
+    exit 1
+  fi
+}
+
 if [[ -f "${ART}/ingest.unreachable" ]]; then
   write search.unreachable "live ingest unreachable; embedded index needs JPM FY24 and WFC FY25 chunks"
+  write ask.unreachable "POST /search was unverified; POST /ask needs the same index"
   log "verify: POST /search UNVERIFIED (no ingested corpus)"
+  log "verify: POST /ask UNVERIFIED (no ingested corpus)"
 else
   INDEX_CORPUS="${ART}/index-corpus"
   mkdir -p \
@@ -816,6 +851,171 @@ PY
   cp "${ART}/search.cc-h-013.hybrid.body.json" "${ART}/search.body.json"
   cp "${ART}/search.cc-h-013.hybrid.http" "${ART}/search.http"
   cp "${ART}/search.cc-h-013.hybrid.exit" "${ART}/search.exit"
+
+  ASK013='{"question":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":10,"ticker":"JPM","model":"fake"}'
+  ASK_U001='{"question":"What CET1 ratio did Wells Fargo disclose for year-end 2026?","mode":"hybrid","k":10,"ticker":"WFC","model":"fake"}'
+  SEARCH_U001='{"query":"What CET1 ratio did Wells Fargo disclose for year-end 2026?","mode":"hybrid","k":10,"ticker":"WFC"}'
+  log "verify: POST /ask cc-h-013 model=fake"
+  post_ask ask.cc-h-013 "${ASK013}"
+  log "verify: POST /ask cc-u-001 model=fake"
+  post_ask ask.cc-u-001 "${ASK_U001}"
+  post_search search.cc-u-001.hybrid-wfc "${SEARCH_U001}"
+
+  ASK_OPENAI='{"question":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":10,"ticker":"JPM","model":"openai"}'
+  KEY_PRESENT="$(uv run python -c 'from capitalcite.config import Settings; key=(Settings().openai_api_key or "").strip(); print("yes" if key else "no")')"
+  write ask.openai.key "${KEY_PRESENT}"
+  printf '%s\n' "${ASK_OPENAI}" >"${ART}/ask.openai.request.json"
+  log "verify: POST /ask cc-h-013 model=openai (key ${KEY_PRESENT})"
+  set +e
+  ask_openai_http="$(
+    curl -sS --max-time 180 \
+      -D "${ART}/ask.openai.headers" \
+      -o "${ART}/ask.openai.body.json" \
+      -w "%{http_code}" \
+      -H 'content-type: application/json' \
+      -d "${ASK_OPENAI}" \
+      "http://127.0.0.1:${PORT}/ask"
+  )"
+  ask_openai_rc=$?
+  set -e
+  write ask.openai.exit "${ask_openai_rc}"
+  write ask.openai.http "${ask_openai_http}"
+
+  uv run python - "${ART}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+art = Path(sys.argv[1])
+errors: list[str] = []
+
+
+def load(name: str) -> dict:
+    return json.loads((art / f"{name}.body.json").read_text(encoding="utf-8"))
+
+
+def schema(name: str, body: dict) -> None:
+    kind = body.get("kind")
+    if kind not in ("answered", "refused"):
+        errors.append(f"{name}: kind={kind!r}")
+        return
+    if not isinstance(body.get("confidence"), (int, float)):
+        errors.append(f"{name}: confidence={body.get('confidence')!r}")
+    if not isinstance(body.get("config_hash"), str) or len(body["config_hash"]) != 64:
+        errors.append(f"{name}: config_hash missing")
+    if not isinstance(body.get("collection_name"), str) or not body["collection_name"]:
+        errors.append(f"{name}: collection_name missing")
+    if not isinstance(body.get("point_count"), int) or body["point_count"] < 0:
+        errors.append(f"{name}: point_count={body.get('point_count')!r}")
+    citations = body.get("citations")
+    if not isinstance(citations, list):
+        errors.append(f"{name}: citations was not a list")
+        return
+    if kind == "answered":
+        answer = body.get("answer")
+        if not isinstance(answer, str) or not answer.strip():
+            errors.append(f"{name}: answered without an answer")
+        if not citations:
+            errors.append(f"{name}: answered without citations")
+        if body.get("refusal_reason") is not None:
+            errors.append(f"{name}: answered included refusal_reason")
+    else:
+        if body.get("answer") is not None:
+            errors.append(f"{name}: refused included an answer")
+        if citations:
+            errors.append(f"{name}: refused included citations")
+        reason = body.get("refusal_reason")
+        if not isinstance(reason, str) or not reason.strip():
+            errors.append(f"{name}: refused without a reason")
+
+
+def same_index(name: str, body: dict, search: dict) -> None:
+    for key in ("config_hash", "collection_name", "point_count"):
+        if body.get(key) != search.get(key):
+            errors.append(f"{name}: {key} does not match {search.get(key)!r}")
+
+
+def ground(name: str, body: dict, search: dict) -> None:
+    spans: dict[tuple[object, object, object], dict] = {}
+    for hit in search.get("hits") or []:
+        chunk = hit.get("chunk") or {}
+        spans[(chunk.get("doc_id"), chunk.get("start"), chunk.get("end"))] = chunk
+    for cite in body.get("citations") or []:
+        if not isinstance(cite, dict):
+            errors.append(f"{name}: citation was not an object")
+            continue
+        key = (cite.get("doc_id"), cite.get("start"), cite.get("end"))
+        chunk = spans.get(key)
+        if chunk is None:
+            errors.append(f"{name}: citation {key} is not a retrieved hit")
+            continue
+        quote = cite.get("quote")
+        text = chunk.get("text")
+        if not isinstance(quote, str) or not isinstance(text, str) or quote not in text:
+            errors.append(f"{name}: quote is not in the cited chunk")
+        if cite.get("section") != chunk.get("section"):
+            errors.append(f"{name}: section does not match the hit")
+        if cite.get("source_url") != chunk.get("source_url"):
+            errors.append(f"{name}: source_url does not match the hit")
+
+
+answered = load("ask.cc-h-013")
+answered_search = load("search.cc-h-013.hybrid-jpm")
+schema("ask.cc-h-013", answered)
+same_index("ask.cc-h-013", answered, answered_search)
+if answered.get("kind") != "answered":
+    errors.append("ask.cc-h-013: fake model did not answer")
+if not (answered.get("citations") or []):
+    errors.append("ask.cc-h-013: no citations")
+ground("ask.cc-h-013", answered, answered_search)
+
+unanswerable = load("ask.cc-u-001")
+unanswerable_search = load("search.cc-u-001.hybrid-wfc")
+schema("ask.cc-u-001", unanswerable)
+same_index("ask.cc-u-001", unanswerable, unanswerable_search)
+if unanswerable.get("citations"):
+    ground("ask.cc-u-001", unanswerable, unanswerable_search)
+
+key = (art / "ask.openai.key").read_text(encoding="utf-8").strip()
+status = (art / "ask.openai.http").read_text(encoding="utf-8").strip()
+if key == "no":
+    if status != "503":
+        errors.append(f"ask openai without a key returned HTTP {status}, expected 503")
+    else:
+        (art / "ask.openai.unverified").write_text(
+            "OPENAI_API_KEY is empty. POST /ask with model openai returned HTTP 503. "
+            "Live generation was not run.\n",
+            encoding="utf-8",
+        )
+elif status != "200":
+    (art / "ask.openai.unverified").write_text(
+        f"OPENAI_API_KEY is set. POST /ask with model openai returned HTTP {status}. "
+        "Live generation is UNVERIFIED.\n",
+        encoding="utf-8",
+    )
+else:
+    live = load("ask.openai")
+    schema("ask.openai", live)
+    same_index("ask.openai", live, answered_search)
+    if live.get("citations"):
+        ground("ask.openai", live, answered_search)
+
+if errors:
+    sys.stderr.write("verify: ask checks failed:\n  " + "\n  ".join(errors) + "\n")
+    sys.exit(1)
+print(f"ask cc-h-013 kind={answered.get('kind')} citations={len(answered.get('citations') or [])}")
+print(f"ask cc-u-001 kind={unanswerable.get('kind')} citations={len(unanswerable.get('citations') or [])}")
+PY
+  cp "${ART}/ask.cc-h-013.body.json" "${ART}/ask.body.json"
+  cp "${ART}/ask.cc-h-013.http" "${ART}/ask.http"
+  cp "${ART}/ask.cc-h-013.exit" "${ART}/ask.exit"
+  if [[ -f "${ART}/ask.openai.unverified" ]]; then
+    log "verify: POST /ask openai UNVERIFIED"
+    cat "${ART}/ask.openai.unverified"
+  else
+    log "verify: POST /ask openai returned a grounded response"
+  fi
+  log "verify: POST /ask fake path ok"
 fi
 
 log "verify: quote-index sanity"
@@ -1029,6 +1229,17 @@ fi
   else
     echo "search.http $(cat "${ART}/search.http")"
     echo "search.exit $(cat "${ART}/search.exit")"
+  fi
+  if [[ -f "${ART}/ask.unreachable" ]]; then
+    echo "ask unreachable ($(cat "${ART}/ask.unreachable"))"
+  elif [[ -f "${ART}/ask.http" ]]; then
+    echo "ask.http $(cat "${ART}/ask.http")"
+    echo "ask.exit $(cat "${ART}/ask.exit")"
+  fi
+  if [[ -f "${ART}/ask.openai.unverified" ]]; then
+    echo "ask openai unverified ($(cat "${ART}/ask.openai.unverified"))"
+  elif [[ -f "${ART}/ask.openai.http" ]]; then
+    echo "ask.openai.http $(cat "${ART}/ask.openai.http")"
   fi
   if [[ -f "${ART}/quote-sanity.skipped" ]]; then
     echo "quote-sanity skipped ($(cat "${ART}/quote-sanity.skipped"))"

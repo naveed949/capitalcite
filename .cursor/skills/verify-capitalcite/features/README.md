@@ -52,8 +52,9 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Golden Q&A set](./golden.md) covers `capitalcite golden validate`.
 - [Hybrid search](./search.md) covers `POST /search`, `capitalcite index --help`, and the quote-index recall sanity.
 - [Retrieval eval](./eval.md) covers `capitalcite eval --suite golden` and the `--small` CI path.
+- [Structured answers](./ask.md) covers `POST /ask`.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
 
 ## Extending the map
 
-New endpoints (`POST /ask`) and commands (`eval`, `audit verify`) each get their own feature file in this directory, a row in the list above, and a step in `scripts/verify.sh`. See the parent skill's **Extending this skill** section.
+New endpoints and commands (`capitalcite audit verify`) each get their own feature file in this directory, a row in the list above, and a step in `scripts/verify.sh`. See the parent skill's **Extending this skill** section.

@@ -52,7 +52,7 @@ flowchart LR
 | Chunking experiments | Compares fixed, recursive, and section-aware (10-K Item boundaries) chunking | 🟡 `capitalcite chunk --chunker fixed\|recursive\|section` |
 | Embedding comparison | Local FastEmbed `bge-small` (`BAAI/bge-small-en-v1.5`) and `minilm`, plus `openai-small` when `OPENAI_API_KEY` is set. The committed matrix uses `bge-small`. `minilm` is UNVERIFIED. | 🟡 `bge-small` measured; other models UNVERIFIED |
 | Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with reciprocal rank fusion. `capitalcite index` builds it. `POST /search` returns scores and citations. Cross-encoder rerank waits for a measured eval. | 🟡 `capitalcite index`, `POST /search` |
-| Structured answers | Pydantic schemas: `answer`, `citations[]`, `confidence`, `refusal_reason` | ⬜ planned |
+| Structured answers | `POST /ask` returns an answer whose citations are copied from retrieved chunks, or a refusal. The model supplies a hit index and a quote. The server copies `doc_id`, `start`, `end`, `section`, and `source_url` only when that quote is a verbatim substring of the chunk. `ASK_MODEL=fake` quotes the first hit and does not read `OPENAI_API_KEY`. | 🟡 `POST /ask` |
 | Agent | Plan-then-act loop (LangGraph or PydanticAI) for multi-step questions, e.g. "compare CET1 ratios across JPM and BAC FY2025" | ⬜ planned |
 | Tools | XBRL company-facts lookup, FDIC BankFind lookup, safe calculator | ⬜ planned |
 | Fail-closed gate | Allow-list policy per tool, argument validation, budget limits; anything not explicitly allowed is denied | ⬜ planned |
@@ -124,12 +124,14 @@ curl -s localhost:8000/health
 `data/raw/edgar/` (gitignored) with sidecar metadata. `capitalcite chunk` parses
 those files and writes cited chunks under `data/parsed/edgar/`. `capitalcite index`
 embeds `chunks.jsonl` into Qdrant. `POST /search` returns ranked citations.
-`/ask` and eval land in later issues.
+`POST /ask` returns a grounded answer or a refusal. `capitalcite eval` scores retrieval.
 
 `EMBEDDER` selects the dense model. `bge-small` is the default and runs locally
 with FastEmbed. `minilm` is the other local model. `openai-small` calls OpenAI
-and reads `OPENAI_API_KEY`. That variable is the secret for the paid embedder.
-Leave it empty when you use the local models.
+and reads `OPENAI_API_KEY`. `ASK_MODEL` selects the chat model for `POST /ask`.
+`openai` is the default and reads the same key. `fake` quotes a retrieved chunk
+and does not read the key. `ASK_OPENAI_MODEL` defaults to `gpt-4o-mini`.
+Leave `OPENAI_API_KEY` empty for the local embedders and for `ASK_MODEL=fake`.
 
 Without Docker, set `QDRANT_PATH` to a directory (or `QDRANT_URL=:memory:` in
 one process). Index and `POST /search` must share that path. Compose Qdrant
@@ -141,6 +143,8 @@ uv run capitalcite chunk --chunker section
 uv run capitalcite index --chunker section --embedder bge-small
 curl -s localhost:8000/search -H 'content-type: application/json' \
   -d '{"query":"What was JPMorgan CET1 ratio at year-end 2023?","mode":"hybrid","k":8,"ticker":"JPM","form":"10-K","period":"2023"}'
+curl -s localhost:8000/ask -H 'content-type: application/json' \
+  -d '{"question":"What was JPMorgan CET1 ratio at year-end 2023?","ticker":"JPM","form":"10-K","period":"2023","model":"fake"}'
 uv run capitalcite eval --suite golden   # writes evals/results/<sha12>.json
 uv run capitalcite eval --suite golden --small   # FakeEmbedder, fixture corpus, no download
 ```
@@ -149,6 +153,7 @@ Ingest design: [docs/decisions/0002-edgar-ingester.md](docs/decisions/0002-edgar
 Parse and chunk design: [docs/decisions/0003-parse-and-chunk.md](docs/decisions/0003-parse-and-chunk.md).
 Golden set: [docs/decisions/0004-golden-set.md](docs/decisions/0004-golden-set.md).
 Hybrid retrieval: [docs/decisions/0005-hybrid-retrieval.md](docs/decisions/0005-hybrid-retrieval.md).
+Structured answers: [docs/decisions/0007-structured-ask.md](docs/decisions/0007-structured-ask.md).
 
 Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langfuse Cloud.
 
@@ -183,7 +188,7 @@ Everything below is public. Each link was checked on 2026-10-16.
 ## Layout
 
 ```
-src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval
+src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask
 tests/               pytest (recorded fixtures; no live network)
 docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records
