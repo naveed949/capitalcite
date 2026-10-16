@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,13 +27,37 @@ def test_dockerignore_keeps_secrets_out_of_build_context() -> None:
 
 def test_bicep_keeps_qdrant_private_and_api_https() -> None:
     text = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
+    bootstrap = (ROOT / "infra" / "bootstrap.bicep").read_text(encoding="utf-8")
     assert "external: false" in text
     assert "allowInsecure: false" in text
-    assert "adminUserEnabled: false" in text
-    assert "enableRbacAuthorization: true" in text
     assert "param apiMinReplicas int = 0" in text
-    assert "Microsoft.KeyVault/vaults" in text
-    assert "federatedIdentityCredentials" in text
+    assert "adminUserEnabled: false" in bootstrap
+    assert "enableRbacAuthorization: true" in bootstrap
+    assert "federatedIdentityCredentials" in bootstrap
+    assert "Microsoft.KeyVault/vaults" in bootstrap
+    assert "Microsoft.Authorization/roleAssignments" in bootstrap
+
+
+def test_compiled_main_json_has_no_role_assignments() -> None:
+    source = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
+    assert "Microsoft.Authorization/roleAssignments" not in source
+
+    bicep = shutil.which("bicep")
+    if bicep is None:
+        pytest.skip("bicep CLI is not installed")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "main.json"
+        subprocess.run(
+            [bicep, "build", str(ROOT / "infra" / "main.bicep"), "--outfile", str(out)],
+            check=True,
+        )
+        compiled_text = out.read_text(encoding="utf-8")
+        compiled = json.loads(compiled_text)
+
+    assert "Microsoft.Authorization/roleAssignments" not in compiled_text
+    types = [r.get("type", "") for r in compiled.get("resources", [])]
+    assert "Microsoft.Authorization/roleAssignments" not in types
 
 
 def test_deploy_workflow_skips_without_secrets() -> None:
@@ -37,6 +67,13 @@ def test_deploy_workflow_skips_without_secrets() -> None:
     assert "UNVERIFIED" in text
     assert "skip=true" in text
     assert "pull_request:" not in text
+    assert "v0.48.1" in text
+    assert "apiImage=" in text
+    assert "az containerapp update" not in text
+    assert "releases/latest" not in text
+    image_at = text.index("docker build")
+    deploy_at = text.index("--template-file infra/main.bicep")
+    assert image_at < deploy_at
 
 
 def test_infra_workflow_does_not_login_to_azure() -> None:
@@ -45,11 +82,13 @@ def test_infra_workflow_does_not_login_to_azure() -> None:
     assert "bicep" in text
     assert "gitleaks" in text
     assert "docker build" in text
+    assert "v0.48.1" in text
+    assert "releases/latest" not in text
 
 
 def test_gitleaks_allowlist_covers_azure_role_ids() -> None:
     text = (ROOT / ".gitleaks.toml").read_text(encoding="utf-8")
-    bicep = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
+    bicep = (ROOT / "infra" / "bootstrap.bicep").read_text(encoding="utf-8")
     for role_id in (
         "7f951dda-4ed3-4680-a7ca-43fe172d538d",
         "8311e382-0749-4cb8-b69d-38feb7eb23f0",
@@ -58,3 +97,4 @@ def test_gitleaks_allowlist_covers_azure_role_ids() -> None:
     ):
         assert role_id in bicep
         assert role_id in text
+        assert role_id not in (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")

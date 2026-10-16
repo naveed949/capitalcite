@@ -14,7 +14,6 @@ unverified() {
 }
 
 RG="${AZURE_RESOURCE_GROUP:-rg-capitalcite}"
-LOCATION="${AZURE_LOCATION:-eastus}"
 PARAMS="${PARAMS_FILE:-infra/parameters/demo.json}"
 
 if ! command -v az >/dev/null 2>&1; then
@@ -34,12 +33,15 @@ if ! command -v bicep >/dev/null 2>&1 && ! az bicep version >/dev/null 2>&1; the
   unverified "bicep is not available to the logged-in az CLI."
 fi
 
-log "what-if on ${RG} using ${PARAMS}"
 if ! az group show --name "${RG}" >/dev/null 2>&1; then
-  log "creating resource group ${RG} in ${LOCATION}"
-  az group create --name "${RG}" --location "${LOCATION}" --output none
+  unverified "resource group ${RG} is missing. Apply infra/bootstrap.bicep as Owner first (make bootstrap)."
 fi
 
+if ! az deployment group show --resource-group "${RG}" --name bootstrap >/dev/null 2>&1; then
+  unverified "deployment 'bootstrap' is missing. Apply infra/bootstrap.bicep as Owner first (make bootstrap)."
+fi
+
+log "what-if on ${RG} using ${PARAMS}"
 WHAT_IF_ARGS=(
   group what-if
   --resource-group "${RG}"
@@ -51,6 +53,6 @@ if [[ -n "${API_IMAGE:-}" ]]; then
 fi
 
 az "${WHAT_IF_ARGS[@]}"
-log "what-if finished. apply is a second, explicit command:"
-log "  az deployment group create --resource-group ${RG} --template-file infra/main.bicep --parameters ${PARAMS}"
+log "what-if finished. Push the image, then apply main.bicep with that tag:"
+log "  az deployment group create --name capitalcite --resource-group ${RG} --template-file infra/main.bicep --parameters ${PARAMS} --parameters apiImage=<acr>/capitalcite:<sha>"
 log "Live /health on Azure is still UNVERIFIED until you curl the apiFqdn output."

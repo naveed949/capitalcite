@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       resource_group:
-        description: Resource group to create or update
+        description: Resource group that already has bootstrap.bicep applied
         required: false
         default: rg-capitalcite
       location:
-        description: Azure region
+        description: Azure region (unused unless the group already exists)
         required: false
         default: eastus
       parameters:
-        description: Bicep parameters file
+        description: Bicep parameters file for main.bicep
         required: false
         default: infra/parameters/demo.json
 
@@ -40,7 +40,7 @@ jobs:
         run: |
           if [ -z "${AZURE_CLIENT_ID}" ] || [ -z "${AZURE_TENANT_ID}" ] || [ -z "${AZURE_SUBSCRIPTION_ID}" ]; then
             echo "UNVERIFIED: AZURE_CLIENT_ID, AZURE_TENANT_ID, or AZURE_SUBSCRIPTION_ID is empty."
-            echo "Create GitHub environment azure, federate the deploy identity, and store those three secrets."
+            echo "Create GitHub environment azure, apply infra/bootstrap.bicep as Owner, and store those three secrets."
             echo "Live Azure apply and public /health stay UNVERIFIED."
             echo "skip=true" >> "${GITHUB_OUTPUT}"
             exit 0
@@ -63,7 +63,7 @@ jobs:
       - name: Install Bicep
         run: |
           curl -sSL -o "${RUNNER_TEMP}/bicep" \
-            https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
+            https://github.com/Azure/bicep/releases/download/v0.48.1/bicep-linux-x64
           chmod +x "${RUNNER_TEMP}/bicep"
           echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
 
@@ -74,19 +74,19 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Ensure resource group
+      - name: Require bootstrap
         run: |
+          set -euo pipefail
           if ! az group show --name "${AZURE_RESOURCE_GROUP}" >/dev/null 2>&1; then
-            az group create --name "${AZURE_RESOURCE_GROUP}" --location "${AZURE_LOCATION}" --output none
+            echo "Resource group ${AZURE_RESOURCE_GROUP} is missing."
+            echo "Create it and apply infra/bootstrap.bicep as Owner / User Access Administrator first."
+            exit 1
           fi
-
-      - name: Deploy Bicep
-        run: |
-          az deployment group create \
-            --name capitalcite \
-            --resource-group "${AZURE_RESOURCE_GROUP}" \
-            --template-file infra/main.bicep \
-            --parameters "${PARAMS_FILE}"
+          if ! az deployment group show --resource-group "${AZURE_RESOURCE_GROUP}" --name bootstrap >/dev/null 2>&1; then
+            echo "Deployment 'bootstrap' is missing on ${AZURE_RESOURCE_GROUP}."
+            echo "Apply infra/bootstrap.bicep once as Owner / User Access Administrator."
+            exit 1
+          fi
 
       - name: Build and push API image
         id: image
@@ -94,29 +94,26 @@ jobs:
           set -euo pipefail
           ACR="$(az deployment group show \
             --resource-group "${AZURE_RESOURCE_GROUP}" \
-            --name capitalcite \
+            --name bootstrap \
             --query properties.outputs.acrName.value -o tsv)"
           SERVER="$(az deployment group show \
             --resource-group "${AZURE_RESOURCE_GROUP}" \
-            --name capitalcite \
+            --name bootstrap \
             --query properties.outputs.acrLoginServer.value -o tsv)"
-          APP="$(az deployment group show \
-            --resource-group "${AZURE_RESOURCE_GROUP}" \
-            --name capitalcite \
-            --query properties.outputs.apiAppName.value -o tsv)"
           IMAGE="${SERVER}/capitalcite:${GITHUB_SHA}"
           docker build -t "${IMAGE}" .
           az acr login --name "${ACR}"
           docker push "${IMAGE}"
           echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
-          echo "app=${APP}" >> "${GITHUB_OUTPUT}"
 
-      - name: Point API at the pushed image
+      - name: Deploy Bicep
         run: |
-          az containerapp update \
-            --name "${{ steps.image.outputs.app }}" \
+          az deployment group create \
+            --name capitalcite \
             --resource-group "${AZURE_RESOURCE_GROUP}" \
-            --image "${{ steps.image.outputs.image }}"
+            --template-file infra/main.bicep \
+            --parameters "${PARAMS_FILE}" \
+            --parameters "apiImage=${{ steps.image.outputs.image }}"
 
       - name: Public /health
         run: |

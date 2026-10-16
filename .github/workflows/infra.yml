@@ -22,7 +22,7 @@ jobs:
       - name: Install Bicep
         run: |
           curl -sSL -o "${RUNNER_TEMP}/bicep" \
-            https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
+            https://github.com/Azure/bicep/releases/download/v0.48.1/bicep-linux-x64
           chmod +x "${RUNNER_TEMP}/bicep"
           echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
 

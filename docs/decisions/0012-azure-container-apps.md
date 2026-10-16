@@ -12,8 +12,9 @@ credentials, no spend, no live deploy. A skipped cloud step is UNVERIFIED,
 never passed.
 
 This record is why the compute is Container Apps, why Qdrant is a second
-app with internal ingress, why Langfuse stays off Azure, and why Bicep is
-the template language.
+app with internal ingress, why Langfuse stays off Azure, why Bicep is
+the template language, and why identities plus every role assignment live
+in a one-shot bootstrap template instead of the GitHub deploy.
 
 ## Container Apps, not App Service, not AKS
 
@@ -49,9 +50,16 @@ survives, and the first request would pay both cold starts. Two apps let
 the API sleep and keep Qdrant at `minReplicas` 1 with an Azure Files
 share at `/qdrant/storage`.
 
-Qdrant ingress is `external: false`. Other apps in the environment reach
-it at `http://<qdrant-app>:6333`. There is no public 6333. Compose on a
-laptop still binds `127.0.0.1:6333`. That local path is unchanged.
+Qdrant ingress is `external: false` and `allowInsecure: true`. Other apps
+in the environment reach it at `http://<qdrant-app>:6333`. ACA internal
+HTTP is not TLS. There is no public 6333. Compose on a laptop still binds
+`127.0.0.1:6333`. That local path is unchanged.
+
+Qdrant has no API key. Reach is environment-internal: the API talks to
+the internal FQDN on the same Container Apps environment. An API key
+would be a second secret to mint, store, and rotate for a hop that never
+leaves the env. `QDRANT_PATH` must stay unset on ACA so the client uses
+`QDRANT_URL` instead of a local disk.
 
 Qdrant Cloud would also work. It is another vendor and another secret.
 An ACA app keeps the vector store inside the same identity and network
@@ -71,26 +79,77 @@ The cloud is Azure only. Bicep compiles with the standalone CLI and no
 login (`bicep build`). Terraform would need a provider init and a state
 backend. Those are real for a multi-cloud shop and extra for this repo.
 
-The domain model is the resource graph in `infra/main.bicep`. Parameters
-files are the two tiers (`demo.json`, `prod.json`). Secret *values* are
-not parameters. Optional Key Vault URIs are. Empty URIs omit the env vars
-so a first apply does not wait on secrets that do not exist yet.
+CI and the deploy workflow pin Bicep **v0.48.1**. `releases/latest` would
+let a compiler bump change compiled JSON without a review.
 
-Two identities: a runtime identity the apps use (AcrPull, Key Vault
-Secrets User) and a deploy identity GitHub OIDC uses (AcrPush, Contributor
-on the group). A leaked runtime identity cannot push images. Federated
-credentials cover `environment:azure` and `ref:refs/heads/main`.
+## Bootstrap vs main: Contributor cannot write role assignments
 
-ACR admin user is off. Key Vault uses RBAC, not access policies. Storage
-is TLS 1.2 only and public blob access is off.
+The deploy identity GitHub OIDC uses is **Contributor** on the resource
+group. Contributor cannot create or update
+`Microsoft.Authorization/roleAssignments`. That needs Owner or User
+Access Administrator. A template that still contains those resources
+fails `az deployment group create` with `AuthorizationFailed` even when
+the assignments already exist. Putting identities, federated credentials,
+and RBAC in `main.bicep` therefore broke "GH Action deploys from
+scratch."
+
+`infra/bootstrap.bicep` is the identity plane. A human with Owner / User
+Access Administrator applies it once (`az deployment group create --name
+bootstrap`). It creates the runtime identity, the deploy identity, GitHub
+federated credentials (`environment:azure` and `ref:refs/heads/main`),
+ACR, Key Vault, and **every** role assignment (AcrPull and Key Vault
+Secrets User on the runtime identity; AcrPush and resource-group
+Contributor on the deploy identity).
+
+`infra/main.bicep` is the compute plane. It looks up the bootstrap
+identities, ACR, and Key Vault by the same
+`uniqueString(resourceGroup().id)` name formula. It creates Log
+Analytics, Azure Files, the Container Apps environment, Qdrant, and the
+API. It contains no role assignments. Compiled `main.json` must not
+mention `Microsoft.Authorization/roleAssignments`.
+
+Secret *values* are not parameters. Optional Key Vault URIs are. Empty
+URIs omit the env vars so a first apply does not wait on secrets that do
+not exist yet.
+
+A leaked runtime identity cannot push images. ACR admin user is off. Key
+Vault uses RBAC, not access policies. Storage is TLS 1.2 only and public
+blob access is off.
+
+## Public network access, private endpoints later
+
+Key Vault, ACR, and storage set `publicNetworkAccess: 'Enabled'`. This
+demo has no VNet, no private endpoints, and no private DNS. The GitHub
+hosted runner needs a public ACR login to push. The human who sets vault
+secrets needs a public Key Vault data plane. Private endpoints plus
+disabled public access are the production step, once a VNet and a
+self-hosted runner (or ACR Tasks) exist. Until then, RBAC and "admin
+user off" are the controls.
+
+## Image then Bicep, one write to the app
+
+The default `apiImage` is `mcr.microsoft.com/k8se/quickstart:latest`.
+That image is not capitalcite. Deploying `main.bicep` first, then
+`az containerapp update --image`, left the live revision on a tag the
+template did not declare. The next Bicep apply would revert to
+quickstart.
+
+The Deploy Azure workflow builds and pushes
+`<acr>/capitalcite:${GITHUB_SHA}` first, then `az deployment group
+create` of `main.bicep` with `apiImage` set to that tag. There is no
+separate `az containerapp update --image`. The template is the only
+writer of the running image.
 
 ## One deploy path, skip without secrets
 
-`scripts/deploy.sh` is what `make deploy` runs. The Deploy Azure workflow
-is the same apply, with a guard job that exits 0 and prints UNVERIFIED
-when the three OIDC secrets are empty. The guard job does not use a
-GitHub Environment, so a missing `azure` environment cannot block the
-skip path. The apply job is skipped, not failed.
+`scripts/bootstrap.sh` what-ifs the identity plane. `scripts/deploy.sh`
+is what `make deploy` runs: what-if of `main.bicep`, and UNVERIFIED if
+the group or the `bootstrap` deployment is missing. The Deploy Azure
+workflow is the image-then-Bicep apply, with a guard job that exits 0
+and prints UNVERIFIED when the three OIDC secrets are empty. The guard
+job does not use a GitHub Environment, so a missing `azure` environment
+cannot block the skip path. The apply job is skipped, not failed. The
+apply job does not create the resource group.
 
 CI never calls `az login`. `.github/workflows/infra.yml` runs `bicep
 build`, `docker build`, and gitleaks. That workflow does not touch
@@ -105,7 +164,8 @@ The image default `ASK_MODEL=fake` so the process boots without
 
 It does not apply the template. It does not curl a public Azure FQDN. It
 does not put Langfuse or Neo4j on Azure. It does not change the Python
-Settings contract. Live `/health` on Azure is UNVERIFIED until someone
-opts in, applies, and curls the output FQDN.
+Settings contract. It does not attach private endpoints. Live `/health`
+on Azure is UNVERIFIED until someone opts in, applies bootstrap as
+Owner, applies main via Actions, and curls the output FQDN.
 
 If issue #12 lands first and takes 0012, rebase this record to 0013.

@@ -212,9 +212,12 @@ allowlist. Question text is masked and truncated. Sampling is
 
 Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langfuse Cloud.
 
-Azure is opt-in. `make infra-validate` compiles the Bicep. `make deploy` and the
-Deploy Azure workflow skip with UNVERIFIED when `az` or OIDC secrets are
-missing. Cost, roles, and secrets: [infra/README.md](infra/README.md). Design:
+Azure is opt-in. `make infra-validate` compiles bootstrap and main Bicep.
+`make bootstrap` is a one-shot Owner apply (identities, federated
+credentials, every role assignment). `make deploy` and the Deploy Azure
+workflow skip with UNVERIFIED when `az` or OIDC secrets are missing, and
+the workflow never writes RBAC. Cost, roles, and secrets:
+[infra/README.md](infra/README.md). Design:
 [docs/decisions/0012-azure-container-apps.md](docs/decisions/0012-azure-container-apps.md).
 
 Design choices for this scaffold: [docs/decisions/0001-scaffold.md](docs/decisions/0001-scaffold.md).
@@ -256,7 +259,7 @@ evals/               golden set and results (issues #5 / #6)
 data/                raw and parsed filings (gitignored contents)
 docker-compose.yml   Qdrant + self-hosted Langfuse
 Dockerfile           multi-stage API image (`ASK_MODEL=fake` by default)
-infra/               Bicep for Azure Container Apps, Key Vault, ACR
+infra/               bootstrap.bicep (identities + RBAC) and main.bicep (apps)
 ```
 
 Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR. A second

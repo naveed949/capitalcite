@@ -1,4 +1,4 @@
-.PHONY: help sync lint format typecheck test ci up down health eval-report infra-validate image deploy
+.PHONY: help sync lint format typecheck test ci up down health eval-report infra-validate image bootstrap deploy
 
 UV ?= uv
 PYTEST ?= $(UV) run pytest
@@ -16,9 +16,10 @@ help:
 	@echo "down       docker compose down"
 	@echo "health     GET /health against a running local API"
 	@echo "eval-report  Rewrite the README retrieval table from evals/results"
-	@echo "infra-validate  bicep build (+ docker build if Docker exists)"
+	@echo "infra-validate  bicep format + build of bootstrap and main (+ docker build if Docker exists)"
 	@echo "image      docker build of the API image (UNVERIFIED without Docker)"
-	@echo "deploy     opt-in Azure apply; UNVERIFIED without az login"
+	@echo "bootstrap  what-if of infra/bootstrap.bicep; UNVERIFIED without az login"
+	@echo "deploy     what-if of infra/main.bicep; UNVERIFIED without az login or bootstrap"
 
 sync:
 	$(UV) sync --all-groups
@@ -54,6 +55,9 @@ infra-validate:
 
 image:
 	@if command -v docker >/dev/null 2>&1; then docker build -t capitalcite:local .; else echo "UNVERIFIED: docker is not installed"; fi
+
+bootstrap:
+	./scripts/bootstrap.sh
 
 deploy:
 	./scripts/deploy.sh

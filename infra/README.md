@@ -2,42 +2,62 @@
 
 IaC for issue #13. This directory is the source of truth for secrets, roles, and cost. The root README links here.
 
-There is no live Azure apply in CI. `make deploy` and the Deploy Azure workflow skip with **UNVERIFIED** when `az` or OIDC secrets are missing. A skipped cloud step is never a pass.
+There is no live Azure apply in CI. `make bootstrap`, `make deploy`, and the Deploy Azure workflow skip with **UNVERIFIED** when `az` or OIDC secrets are missing. A skipped cloud step is never a pass.
 
-## What it creates
+Two templates:
 
-Consumption Container Apps for the API (scale to zero) and Qdrant (internal ingress, default min replicas 1 so the index is not emptied). User-assigned identities, ACR Basic with the admin user off, Key Vault with RBAC, Log Analytics, and an Azure Files share for Qdrant storage.
+| File | Who applies it | What it creates |
+| --- | --- | --- |
+| `infra/bootstrap.bicep` | A human with **Owner** or **User Access Administrator**, once | Identities, GitHub federated credentials, ACR, Key Vault, **every** role assignment |
+| `infra/main.bicep` | The GitHub deploy identity (Contributor on the group) | Log Analytics, Azure Files, Container Apps environment, Qdrant, API. **No** role assignments |
+
+`main.bicep` looks up the bootstrap identities, ACR, and Key Vault by the same `uniqueString(resourceGroup().id)` name formula. It does not create them.
 
 Langfuse is not an Azure resource. Point `LANGFUSE_HOST` at Langfuse Cloud or leave the keys empty (ADR 0010: missing keys are a no-op).
 
 ## Offline checks
 
 ```bash
-make infra-validate    # bicep format + build. docker build if Docker exists.
-make deploy            # UNVERIFIED without az login. Does not pretend to pass.
+make infra-validate    # bicep format + build of bootstrap and main. docker build if Docker exists.
+make bootstrap         # UNVERIFIED without az login. what-if only.
+make deploy            # UNVERIFIED without az login or a bootstrap deployment. what-if only.
 ```
 
-## Opt-in apply
+## Chicken and egg
 
-1. Create a resource group or let `scripts/deploy.sh` create `rg-capitalcite`.
-2. `az login` locally, or create GitHub environment `azure` and federate the deploy identity (see Roles).
-3. Store GitHub secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` (identity client id, tenant, subscription). No other secrets belong in GitHub.
-4. Put `OPENAI_API_KEY` in Key Vault after the first apply if you want `ASK_MODEL=openai`. Pass `openaiSecretUri` on the next deploy.
-5. Run **Actions → Deploy Azure** or `make deploy`.
+The GitHub deploy identity is Contributor on the resource group. Contributor cannot write `Microsoft.Authorization/roleAssignments`. `az deployment group create` of a template that contains those resources fails with `AuthorizationFailed` even when the assignments already exist. That broke a from-scratch Actions deploy when identities, federated credentials, and RBAC lived in `main.bicep`.
 
-The first apply uses the default API image (`mcr.microsoft.com/k8se/quickstart:latest`). That image is not capitalcite. Push the repo Dockerfile to ACR, then redeploy with `apiImage=<acr>.azurecr.io/capitalcite:<tag>`. Public `/health` on Azure stays **UNVERIFIED** until you curl `https://<apiFqdn>/health` yourself.
+Fix: a human with Owner / User Access Administrator applies `infra/bootstrap.bicep` once. The workflow never writes RBAC.
+
+1. Create the resource group as yourself (`az group create --name rg-capitalcite --location eastus`).
+2. Apply bootstrap as Owner / User Access Administrator:
+
+   ```bash
+   az deployment group create \
+     --name bootstrap \
+     --resource-group rg-capitalcite \
+     --template-file infra/bootstrap.bicep \
+     --parameters infra/parameters/bootstrap.json
+   ```
+
+   The deployment **must** be named `bootstrap`. The workflow reads ACR outputs from that name.
+3. Create GitHub Environment `azure`. Copy bootstrap output `deployIdentityClientId` into secret `AZURE_CLIENT_ID`, plus `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`. No other secrets belong in GitHub.
+4. Put `OPENAI_API_KEY` in Key Vault after bootstrap if you want `ASK_MODEL=openai`. Pass `openaiSecretUri` on the next `main.bicep` deploy.
+5. Run **Actions → Deploy Azure** or `make deploy`. The workflow builds and pushes `capitalcite:${GITHUB_SHA}` to ACR, then applies `main.bicep` with `apiImage=<acr>/capitalcite:${GITHUB_SHA}`. It does not run `az containerapp update --image`.
+
+The first `main.bicep` apply still needs an image in ACR. The workflow pushes before it deploys, so a from-scratch Actions run does not land the default `mcr.microsoft.com/k8se/quickstart:latest` and then drift the live app with a second image write. Public `/health` on Azure stays **UNVERIFIED** until you curl `https://<apiFqdn>/health` yourself.
+
+The workflow does not create the resource group. Missing group or missing `bootstrap` deployment fails the apply job.
 
 ## Required GitHub secrets
 
 | Secret | What it is |
 | --- | --- |
-| `AZURE_CLIENT_ID` | Client id of the user-assigned **deploy** identity |
+| `AZURE_CLIENT_ID` | Client id of the user-assigned **deploy** identity (bootstrap output `deployIdentityClientId`) |
 | `AZURE_TENANT_ID` | Directory (tenant) id |
 | `AZURE_SUBSCRIPTION_ID` | Subscription id |
 
-OIDC subject: `repo:naveed949/capitalcite:environment:azure`. The Bicep federated credential uses that subject. Create the GitHub Environment named `azure` before the workflow can mint a token.
-
-Chicken and egg: the first identity is created by a local `az deployment` (or a Cloud Shell apply) under your user. Then you copy `deployIdentityClientId` into GitHub. After that, the workflow can apply.
+OIDC subject: `repo:naveed949/capitalcite:environment:azure`. Bootstrap federated credentials use that subject and `ref:refs/heads/main`. Create the GitHub Environment named `azure` before the workflow can mint a token.
 
 ## Key Vault secrets (optional, not in Git)
 
@@ -50,6 +70,8 @@ Chicken and egg: the first identity is created by a local `az deployment` (or a 
 `SEC_USER_AGENT` is a Bicep parameter, not a vault secret. It must contain `@`.
 
 ## Roles
+
+All of these are in `infra/bootstrap.bicep`. `infra/main.bicep` contains none.
 
 | Identity | Role | Scope |
 | --- | --- | --- |
@@ -74,8 +96,8 @@ API min replicas 0, 0.25 vCPU, 0.5 Gi. Qdrant min replicas 1, same size.
 | --- | --- | --- |
 | API Container App | ~$0 | Scaled to zero. Traffic bills consumption after the free grant. |
 | Qdrant Container App, min 1, mostly idle | ~$4–8 | Idle vCPU 0.25 × $0.000003/s × 2.6e6 s ≈ $2; memory 0.5 Gi ≈ $4; minus free grant if this is the only app in the subscription. |
-| ACR Basic | ~$5 | Billed even with no pushes. |
-| Key Vault Standard | ~$0.03 / 10k operations | A handful of secret reads is cents. |
+| ACR Basic | ~$5 | Billed even with no pushes. Created by bootstrap. |
+| Key Vault Standard | ~$0.03 / 10k operations | A handful of secret reads is cents. Created by bootstrap. |
 | Log Analytics, 30-day retention | ~$0–5 | Quiet demo stays near zero. |
 | Storage Files 10 Gi, LRS | ~$2 | Qdrant volume quota. |
 | Langfuse Cloud | $0 if omitted | Not deployed. |

@@ -3,13 +3,9 @@
   "contentVersion": "1.0.0.0",
   "parameters": {
     "prefix": { "value": "ccite" },
-    "githubOrg": { "value": "naveed949" },
-    "githubRepo": { "value": "capitalcite" },
-    "githubEnvironment": { "value": "azure" },
     "apiMinReplicas": { "value": 1 },
     "apiMaxReplicas": { "value": 3 },
     "qdrantMinReplicas": { "value": 1 },
     "askModel": { "value": "openai" },
     "secUserAgent": { "value": "capitalcite-azure noreply@example.com" }
   }
-}
