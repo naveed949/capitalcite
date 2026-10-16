@@ -212,9 +212,7 @@ def test_committed_nightly_baseline_matches_published_matrix() -> None:
     gated = gated.model_copy(
         update={
             "arms": tuple(
-                arm
-                for arm in gated.arms
-                if arm.chunker == "section" and arm.mode == "hybrid"
+                arm for arm in gated.arms if arm.chunker == "section" and arm.mode == "hybrid"
             )
         }
     )
