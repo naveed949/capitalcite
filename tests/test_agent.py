@@ -369,8 +369,23 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
         assert ObservationKind.GENERATE in kinds
         records = exporter.finished()
         ask_span = next(record for record in records if record.kind is ObservationKind.ASK)
-        tool_span = next(record for record in records if record.kind is ObservationKind.TOOL)
-        assert tool_span.trace_id == ask_span.trace_id
+        agent_span = next(record for record in records if record.kind is ObservationKind.AGENT)
+        assert agent_span.parent_id == ask_span.span_id
+        assert agent_span.trace_id == ask_span.trace_id
+        tools = [record for record in records if record.kind is ObservationKind.TOOL]
+        assert tools
+        assert all(record.parent_id == agent_span.span_id for record in tools)
+        assert {record.attributes["capitalcite.tool"] for record in tools} == {"search_filings"}
+        tool_ids = {record.span_id for record in tools}
+        retrieves = [record for record in records if record.kind is ObservationKind.RETRIEVE]
+        assert retrieves
+        assert all(record.parent_id in tool_ids for record in retrieves)
+        plans = [record for record in records if record.name == "plan"]
+        completes = [record for record in records if record.name == "complete"]
+        assert plans and completes
+        generated = plans + completes
+        assert all(record.parent_id == agent_span.span_id for record in generated)
+        assert all(record.attributes["gen_ai.request.model"] == "fake" for record in generated)
     finally:
         reset_for_tests()
     if body.kind == "answered":

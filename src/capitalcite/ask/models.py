@@ -148,11 +148,7 @@ def _usage_tokens(payload: object) -> tuple[int | None, int | None]:
     usage = payload.get("usage")
     if not isinstance(usage, dict):
         return None, None
-    prompt = usage.get("prompt_tokens")
-    completion = usage.get("completion_tokens")
-    input_tokens = prompt if _token_count(prompt) else None
-    output_tokens = completion if _token_count(completion) else None
-    return input_tokens, output_tokens
+    return _token_count(usage.get("prompt_tokens")), _token_count(usage.get("completion_tokens"))
 
 
 def build_structured_model(

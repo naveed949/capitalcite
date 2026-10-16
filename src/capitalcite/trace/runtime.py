@@ -7,10 +7,10 @@ import random
 import subprocess
 import time
 import uuid
-from functools import lru_cache
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Protocol
 

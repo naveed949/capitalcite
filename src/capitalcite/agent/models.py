@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from capitalcite.agent.types import PlannerDecision, ToolCall, TraceStep
 from capitalcite.ask.guard import tickers_named, years_named
-from capitalcite.ask.models import OpenAIStructuredModel, StructuredModel
+from capitalcite.ask.models import OpenAIStructuredModel, StructuredModel, _usage_tokens
 from capitalcite.ask.types import (
     AskModelName,
     DraftCite,
@@ -108,7 +108,7 @@ class FakeAgentModel:
         self.complete_calls += 1
         if self._synthesizer is not None:
             return await self._synthesizer.complete(question, hits)
-        with observation("generate", ObservationKind.GENERATE, **generation_attrs(model="fake")):
+        with observation("complete", ObservationKind.GENERATE, **generation_attrs(model="fake")):
             if self._draft is not None:
                 return self._draft
             chosen = _hits_for_question(question, hits)
@@ -196,16 +196,7 @@ class OpenAIAgentModel:
             except json.JSONDecodeError as exc:
                 raise ModelUnavailable("openai chat completion response was not JSON") from exc
             content = _message_content(payload)
-            usage = payload.get("usage") if isinstance(payload, dict) else None
-            input_tokens = None
-            output_tokens = None
-            if isinstance(usage, dict):
-                prompt = usage.get("prompt_tokens")
-                completion = usage.get("completion_tokens")
-                if isinstance(prompt, int) and not isinstance(prompt, bool) and prompt >= 0:
-                    input_tokens = prompt
-                if isinstance(completion, int) and not isinstance(completion, bool) and completion >= 0:
-                    output_tokens = completion
+            input_tokens, output_tokens = _usage_tokens(payload)
             span.set(
                 **generation_attrs(
                     model=self._model,

@@ -367,7 +367,11 @@ def test_post_ask_emits_nested_retrieve_and_generate_spans(tmp_path: Path) -> No
         with TestClient(application) as http:
             response = http.post(
                 "/ask",
-                json={"question": "tier one capital", "ticker": "JPM", "model": "fake"},
+                json={
+                    "question": "tier one capital ada@example.com",
+                    "ticker": "JPM",
+                    "model": "fake",
+                },
             )
         assert response.status_code == 200
         names = [record.name for record in exporter.finished()]
@@ -381,8 +385,11 @@ def test_post_ask_emits_nested_retrieve_and_generate_spans(tmp_path: Path) -> No
         assert by_name["generate"].trace_id == by_name["ask"].trace_id
         hit_count = by_name["retrieve"].attributes["capitalcite.hit_count"]
         assert isinstance(hit_count, int) and hit_count >= 1
-        values = " ".join(str(value) for value in by_name["retrieve"].attributes.values())
-        assert "tier one capital buffer" not in values
+        blob = " ".join(record.model_dump_json() for record in exporter.finished())
+        assert "tier one capital buffer" not in blob
+        assert "ada@example.com" not in blob
+        assert "[REDACTED EMAIL]" in str(by_name["ask"].attributes["capitalcite.question"])
+        assert by_name["ask"].attributes["capitalcite.git_sha"]
         assert by_name["ask"].attributes["capitalcite.outcome"] == "answered"
         assert by_name["ask"].duration_ms >= 0
     finally:
