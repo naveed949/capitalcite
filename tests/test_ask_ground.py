@@ -133,6 +133,54 @@ def test_ground_accepts_when_answer_figure_is_in_the_quote() -> None:
     assert answer.citations[0].quote_end == answer.citations[0].quote_start + len(quote)
 
 
+def test_ground_accepts_billions_rounded_from_millions_table() -> None:
+    hits = [_hit("doc-wfc", "Wells Fargo net income | 21,338", start=10, end=80)]
+    quote = "Wells Fargo net income | 21,338"
+    draft = ModelDraft(
+        kind="answered",
+        answer="Net income was $21.3 billion.",
+        citations=(DraftCite(index=1, quote=quote),),
+    )
+    answer = ground(draft, hits)
+    assert isinstance(answer, Answered)
+
+
+def test_ground_refuses_billions_that_do_not_round_from_the_table() -> None:
+    hits = [_hit("doc-wfc", "Wells Fargo net income | 21,338", start=10, end=80)]
+    quote = "Wells Fargo net income | 21,338"
+    draft = ModelDraft(
+        kind="answered",
+        answer="Net income was $22 billion.",
+        citations=(DraftCite(index=1, quote=quote),),
+    )
+    answer = ground(draft, hits)
+    assert isinstance(answer, Refused)
+    assert answer.refusal_reason == "answer contains a figure not present in the cited quotes"
+
+
+def test_ground_accepts_millions_table_as_billions() -> None:
+    hits = [_hit("doc-jpm", "Net income | | $ | 49,552", start=10, end=80)]
+    quote = "Net income | | $ | 49,552"
+    draft = ModelDraft(
+        kind="answered",
+        answer="Net income was $49.552 billion.",
+        citations=(DraftCite(index=1, quote=quote),),
+    )
+    answer = ground(draft, hits)
+    assert isinstance(answer, Answered)
+
+
+def test_ground_does_not_scale_a_percent() -> None:
+    hits = [_hit("doc-jpm", _RATIO_TEXT)]
+    draft = ModelDraft(
+        kind="answered",
+        answer="The ratio was 15.7 million.",
+        citations=(DraftCite(index=1, quote="CET1 ratios were 15.7%"),),
+    )
+    answer = ground(draft, hits)
+    assert isinstance(answer, Refused)
+
+
 def test_ground_exempts_years_and_figures_already_in_the_question() -> None:
     hits = [_hit("doc-jpm", _RATIO_TEXT)]
     draft = ModelDraft(

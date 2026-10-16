@@ -9,6 +9,8 @@ from capitalcite.eval.models import ArmResult, EvalReport, ItemScore
 
 BEGIN_MARK = "<!-- BEGIN RETRIEVAL EVAL -->"
 END_MARK = "<!-- END RETRIEVAL EVAL -->"
+AGENT_BEGIN_MARK = "<!-- BEGIN AGENT RAG EVAL -->"
+AGENT_END_MARK = "<!-- END AGENT RAG EVAL -->"
 
 
 def render_markdown(report: EvalReport) -> str:
@@ -60,6 +62,7 @@ def render_markdown(report: EvalReport) -> str:
             else "n=0 so a one-item move is undefined.",
             "RAGAS context precision/recall and hybrid+rerank are UNVERIFIED.",
             _probe_line(report),
+            *_agent_vs_rag_lines(report),
         ]
     )
     return "\n".join(lines) + "\n"
@@ -95,7 +98,17 @@ def update_readme(readme: Path, report: EvalReport) -> None:
     pre, rest = text.split(BEGIN_MARK, 1)
     _, post = rest.split(END_MARK, 1)
     table = _readme_table(report)
-    atomic_write_text(readme, f"{pre}{BEGIN_MARK}\n\n{table}\n{END_MARK}{post}")
+    text = f"{pre}{BEGIN_MARK}\n\n{table}\n{END_MARK}{post}"
+    if (
+        report.agent_vs_rag is not None
+        and not report.small
+        and AGENT_BEGIN_MARK in text
+        and AGENT_END_MARK in text
+    ):
+        pre, rest = text.split(AGENT_BEGIN_MARK, 1)
+        _, post = rest.split(AGENT_END_MARK, 1)
+        text = f"{pre}{AGENT_BEGIN_MARK}\n\n{_agent_readme_table(report)}\n{AGENT_END_MARK}{post}"
+    atomic_write_text(readme, text)
 
 
 def _readme_table(report: EvalReport) -> str:
@@ -141,6 +154,45 @@ def _readme_table(report: EvalReport) -> str:
         "minilm is UNVERIFIED (a second full embed is not cheap on this corpus)."
     )
     return "\n".join(lines) + "\n"
+
+
+def _agent_vs_rag_lines(report: EvalReport) -> list[str]:
+    row = report.agent_vs_rag
+    if row is None:
+        return []
+    return [
+        "",
+        "Agent vs RAG retrieval on comparison and multi-hop items "
+        f"(n={row.n}, {row.chunker.value}/{row.mode.value}, {row.label}).",
+        f"Plain RAG Recall@5={row.rag_recall_at_5:.3f} Recall@10={row.rag_recall_at_10:.3f}.",
+        f"Agent Recall@5={row.agent_recall_at_5:.3f} Recall@10={row.agent_recall_at_10:.3f}.",
+        "Answer quality stays UNVERIFIED.",
+    ]
+
+
+def _agent_readme_table(report: EvalReport) -> str:
+    row = report.agent_vs_rag
+    if row is None:
+        return (
+            "| System | n | Recall@5 | Recall@10 | Planner |\n"
+            "|---|---:|---:|---:|---|\n"
+            "| Plain RAG (section/hybrid) | — | UNVERIFIED | UNVERIFIED | — |\n"
+            "| Agent | — | UNVERIFIED | UNVERIFIED | fake/heuristic planner |\n"
+            "\n"
+            "Comparison and multi-hop handwritten items only. "
+            "Answer quality stays UNVERIFIED.\n"
+        )
+    return (
+        "| System | n | Recall@5 | Recall@10 | Planner |\n"
+        "|---|---:|---:|---:|---|\n"
+        f"| Plain RAG ({row.chunker.value}/{row.mode.value}) | {row.n} | "
+        f"{row.rag_recall_at_5:.3f} | {row.rag_recall_at_10:.3f} | — |\n"
+        f"| Agent | {row.n} | {row.agent_recall_at_5:.3f} | "
+        f"{row.agent_recall_at_10:.3f} | {row.label} |\n"
+        "\n"
+        "Comparison and multi-hop handwritten items only. "
+        "Answer quality stays UNVERIFIED.\n"
+    )
 
 
 def _stem(report: EvalReport) -> str:

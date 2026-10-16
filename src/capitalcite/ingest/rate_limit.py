@@ -38,3 +38,14 @@ class RateLimiter:
                 await self._sleep(wait)
                 now = self._clock()
             self._last = now
+
+
+_SHARED: RateLimiter | None = None
+
+
+def shared_limiter() -> RateLimiter:
+    """Process-wide SEC fair-access spacing. Ingest and xbrl_fact share this."""
+    global _SHARED
+    if _SHARED is None:
+        _SHARED = RateLimiter()
+    return _SHARED

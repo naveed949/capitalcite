@@ -53,8 +53,8 @@ flowchart LR
 | Embedding comparison | Local FastEmbed `bge-small` (`BAAI/bge-small-en-v1.5`) and `minilm`, plus `openai-small` when `OPENAI_API_KEY` is set. The committed matrix uses `bge-small`. `minilm` is UNVERIFIED. | 🟡 `bge-small` measured; other models UNVERIFIED |
 | Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with reciprocal rank fusion. `capitalcite index` builds it. `POST /search` returns scores and citations. Cross-encoder rerank waits for a measured eval. | 🟡 `capitalcite index`, `POST /search` |
 | Structured answers | `POST /ask` returns an answer whose citations are copied from retrieved chunks, or a refusal. The model supplies a hit index and a quote. The server copies `doc_id`, `start`, `end`, `quote_start`, `quote_end`, `section`, and `source_url` only when that quote is a verbatim, non-trivial substring of the chunk and every answer figure appears in a cited quote. Weak retrieval or a named entity missing from the hits refuses before the model. `ASK_MODEL=fake` quotes the first hit and does not read `OPENAI_API_KEY`. | 🟡 `POST /ask` |
-| Agent | Plan-then-act loop (LangGraph or PydanticAI) for multi-step questions, e.g. "compare CET1 ratios across JPM and BAC FY2025" | ⬜ planned |
-| Tools | XBRL company-facts lookup, FDIC BankFind lookup, safe calculator | ⬜ planned |
+| Agent | `POST /ask` with `path=agent` runs a LangGraph plan → tools → synthesizer loop. The synthesizer is still `ask()` / `ground()` / `guard`. The plan and tool trace are on the response. Step and token budgets refuse instead of guessing. | 🟡 `POST /ask` `path=agent` |
+| Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, and `calculator`. Unknown names are denied. HTTP tools take an injected client so tests stay offline. | 🟡 agent tools |
 | Fail-closed gate | Allow-list policy per tool, argument validation, budget limits; anything not explicitly allowed is denied | ⬜ planned |
 | Audit log | Append-only, hash-chained JSONL of every tool call, decision, and input/output digest | ⬜ planned |
 | Observability | Langfuse traces for retrieval, LLM calls, tool calls, and latency/cost | ⬜ planned |
@@ -91,6 +91,23 @@ Generated from `evals/results/8b63d12acd50.json` (sha `8b63d12acd50`, embedder `
 |---|---|---|---|---|---|
 | Plain RAG | TBD | TBD | TBD | TBD | TBD |
 | Agent (plan-then-act) | TBD | TBD | TBD | TBD | TBD |
+
+Faithfulness, relevancy, numeric exact-match, and citation accuracy stay UNVERIFIED until a live LLM eval writes them.
+
+### Agent vs RAG (retrieval)
+
+Comparison and multi-hop handwritten items. The agent row is the fake planner that searches each named ticker and year. It is not a live LLM.
+
+<!-- BEGIN AGENT RAG EVAL -->
+
+| System | n | Recall@5 | Recall@10 | Planner |
+|---|---:|---:|---:|---|
+| Plain RAG (section/hybrid) | 15 | 0.267 | 0.333 | — |
+| Agent | 15 | 0.400 | 0.600 | fake/heuristic planner |
+
+Comparison and multi-hop handwritten items only. Answer quality stays UNVERIFIED.
+
+<!-- END AGENT RAG EVAL -->
 
 ### Gate & safety
 
@@ -145,6 +162,8 @@ curl -s localhost:8000/search -H 'content-type: application/json' \
   -d '{"query":"What was JPMorgan CET1 ratio at year-end 2023?","mode":"hybrid","k":8,"ticker":"JPM","form":"10-K","period":"2023"}'
 curl -s localhost:8000/ask -H 'content-type: application/json' \
   -d '{"question":"What was JPMorgan CET1 ratio at year-end 2023?","ticker":"JPM","form":"10-K","period":"2023","model":"fake"}'
+curl -s localhost:8000/ask -H 'content-type: application/json' \
+  -d '{"question":"Which bank had the higher Standardized CET1 at year-end 2024, JPMorgan or Bank of America?","path":"agent","model":"fake"}'
 uv run capitalcite eval --suite golden   # writes evals/results/<sha12>.json
 uv run capitalcite eval --suite golden --small   # FakeEmbedder, fixture corpus, no download
 ```
@@ -154,6 +173,7 @@ Parse and chunk design: [docs/decisions/0003-parse-and-chunk.md](docs/decisions/
 Golden set: [docs/decisions/0004-golden-set.md](docs/decisions/0004-golden-set.md).
 Hybrid retrieval: [docs/decisions/0005-hybrid-retrieval.md](docs/decisions/0005-hybrid-retrieval.md).
 Structured answers: [docs/decisions/0007-structured-ask.md](docs/decisions/0007-structured-ask.md).
+Plan-then-act agent: [docs/decisions/0008-plan-then-act-agent.md](docs/decisions/0008-plan-then-act-agent.md).
 
 Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langfuse Cloud.
 
@@ -188,7 +208,7 @@ Everything below is public. Each link was checked on 2026-10-16.
 ## Layout
 
 ```
-src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask
+src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask, agent, ask
 tests/               pytest (recorded fixtures; no live network)
 docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records

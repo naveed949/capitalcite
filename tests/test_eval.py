@@ -11,7 +11,12 @@ from capitalcite.cli import app
 from capitalcite.eval.diagnose import rare_token_examples
 from capitalcite.eval.judge import relevant_ranks, score_item
 from capitalcite.eval.models import AggregateScore, EvalReport, ItemScore, dcg, idcg
-from capitalcite.eval.report import BEGIN_MARK, END_MARK, render_markdown, update_readme
+from capitalcite.eval.report import (
+    BEGIN_MARK,
+    END_MARK,
+    render_markdown,
+    update_readme,
+)
 from capitalcite.golden.models import Evidence, EvidenceRole, GoldenItem, ItemSource, QuestionType
 from capitalcite.retrieval.hashing import tokens
 from capitalcite.retrieval.types import Hit, RetrievalMode
@@ -90,6 +95,16 @@ def test_relevant_ranks_use_span_overlap() -> None:
     scored = score_item(item, hits)
     assert scored.covered_at == (2,)
     assert scored.first_rank == 2
+
+
+def test_hop_items_are_comparison_and_multi_hop() -> None:
+    from capitalcite.eval.agent_compare import hop_items
+    from capitalcite.eval.judge import recall_items
+    from capitalcite.golden.store import load_golden_set
+
+    hops = hop_items(recall_items(load_golden_set(Path("evals/golden")).items))
+    assert len(hops) == 15
+    assert {item.type for item in hops} <= {QuestionType.COMPARISON, QuestionType.MULTI_HOP}
 
 
 def test_cli_help_lists_eval() -> None:
@@ -189,6 +204,67 @@ def test_render_markdown_names_probe() -> None:
     assert "fastembed=absent" in table
     assert "qdrant-client=absent" in table
     assert "sparse=absent" in table
+    assert "fake/heuristic planner" not in table
+
+
+def test_render_markdown_includes_agent_vs_rag() -> None:
+    from capitalcite.eval.models import AgentVsRag
+
+    report = load_report_from_text(_sample_report_json())
+    filled = report.model_copy(
+        update={
+            "agent_vs_rag": AgentVsRag(
+                n=15,
+                chunker=ChunkerName.SECTION,
+                mode=RetrievalMode.HYBRID,
+                rag_recall_at_5=0.267,
+                rag_recall_at_10=0.333,
+                agent_recall_at_5=0.4,
+                agent_recall_at_10=0.467,
+                item_ids=("cc-h-055",),
+            )
+        }
+    )
+    table = render_markdown(filled)
+    assert "fake/heuristic planner" in table
+    assert "Plain RAG Recall@5=0.267" in table
+    assert "Agent Recall@5=0.400" in table
+    assert "Answer quality stays UNVERIFIED." in table
+
+
+def test_update_readme_fills_agent_vs_rag_markers(tmp_path: Path) -> None:
+    from capitalcite.eval.models import AgentVsRag
+    from capitalcite.eval.report import AGENT_BEGIN_MARK, AGENT_END_MARK, load_report
+
+    json_path = tmp_path / "matrix.json"
+    report = load_report_from_text(_sample_report_json()).model_copy(
+        update={
+            "agent_vs_rag": AgentVsRag(
+                n=15,
+                chunker=ChunkerName.SECTION,
+                mode=RetrievalMode.HYBRID,
+                rag_recall_at_5=0.267,
+                rag_recall_at_10=0.333,
+                agent_recall_at_5=0.4,
+                agent_recall_at_10=0.467,
+            )
+        }
+    )
+    json_path.write_text(report.model_dump_json(), encoding="utf-8")
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        f"{BEGIN_MARK}\nOLD\n{END_MARK}\n{AGENT_BEGIN_MARK}\nOLD AGENT\n{AGENT_END_MARK}\n",
+        encoding="utf-8",
+    )
+    update_readme(readme, load_report(json_path))
+    text = readme.read_text(encoding="utf-8")
+    assert "OLD AGENT" not in text
+    assert "fake/heuristic planner" in text
+    assert "0.267" in text
+    assert "0.400" in text
+    section = text.split(AGENT_BEGIN_MARK, 1)[1].split(AGENT_END_MARK, 1)[0]
+    assert "Answer quality stays UNVERIFIED." in section
+    assert "| — | UNVERIFIED" not in section
 
 
 def load_report_from_text(raw: str) -> EvalReport:

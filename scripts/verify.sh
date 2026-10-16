@@ -629,8 +629,10 @@ post_ask() {
 if [[ -f "${ART}/ingest.unreachable" ]]; then
   write search.unreachable "live ingest unreachable; embedded index needs JPM FY24 and WFC FY25 chunks"
   write ask.unreachable "POST /search was unverified; POST /ask needs the same index"
+  write agent.unreachable "POST /search was unverified; POST /ask path=agent needs the same index"
   log "verify: POST /search UNVERIFIED (no ingested corpus)"
   log "verify: POST /ask UNVERIFIED (no ingested corpus)"
+  log "verify: POST /ask path=agent UNVERIFIED (no ingested corpus)"
 else
   INDEX_CORPUS="${ART}/index-corpus"
   mkdir -p \
@@ -1024,6 +1026,122 @@ PY
     log "verify: POST /ask openai returned a grounded response"
   fi
   log "verify: POST /ask fake path ok"
+
+  AGENT055='{"question":"Which bank had the higher Standardized CET1 ratio at year-end 2024, JPMorgan or Bank of America?","k":10,"path":"agent","model":"fake"}'
+  AGENT061='{"question":"Did JPMorgan'\''s year-end 2024 Standardized CET1 ratio exceed its 12.3% requirement including buffers?","k":10,"path":"agent","model":"fake"}'
+  log "verify: POST /ask path=agent cc-h-055 model=fake"
+  post_ask agent.cc-h-055 "${AGENT055}"
+  log "verify: POST /ask path=agent cc-h-061 model=fake"
+  post_ask agent.cc-h-061 "${AGENT061}"
+
+  AGENT_OPENAI='{"question":"Which bank had the higher Standardized CET1 ratio at year-end 2024, JPMorgan or Bank of America?","k":10,"path":"agent","model":"openai"}'
+  write agent.openai.key "${KEY_PRESENT}"
+  printf '%s\n' "${AGENT_OPENAI}" >"${ART}/agent.openai.request.json"
+  log "verify: POST /ask path=agent cc-h-055 model=openai (key ${KEY_PRESENT})"
+  set +e
+  agent_openai_http="$(
+    curl -sS --max-time 180 \
+      -D "${ART}/agent.openai.headers" \
+      -o "${ART}/agent.openai.body.json" \
+      -w "%{http_code}" \
+      -H 'content-type: application/json' \
+      -d "${AGENT_OPENAI}" \
+      "http://127.0.0.1:${PORT}/ask"
+  )"
+  agent_openai_rc=$?
+  set -e
+  write agent.openai.exit "${agent_openai_rc}"
+  write agent.openai.http "${agent_openai_http}"
+
+  uv run python - "${ART}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+art = Path(sys.argv[1])
+errors: list[str] = []
+
+
+def load(name: str) -> dict:
+    return json.loads((art / f"{name}.body.json").read_text(encoding="utf-8"))
+
+
+def schema(name: str, body: dict) -> None:
+    if body.get("path") != "agent":
+        errors.append(f"{name}: path={body.get('path')!r}")
+    kind = body.get("kind")
+    if kind not in ("answered", "refused"):
+        errors.append(f"{name}: kind={kind!r}")
+    plan = body.get("plan")
+    traces = body.get("traces")
+    if not isinstance(plan, list) or not plan:
+        errors.append(f"{name}: plan missing")
+        return
+    if not isinstance(traces, list) or not traces:
+        errors.append(f"{name}: traces missing")
+    steps = body.get("steps_used")
+    if not isinstance(steps, int) or steps < 2:
+        errors.append(f"{name}: steps_used={steps!r}")
+    tools = [step.get("tool") for step in plan if isinstance(step, dict)]
+    if "search_filings" not in tools:
+        errors.append(f"{name}: plan did not search filings")
+
+
+comparison = load("agent.cc-h-055")
+schema("agent.cc-h-055", comparison)
+searches = [
+    step
+    for step in comparison.get("plan") or []
+    if isinstance(step, dict) and step.get("tool") == "search_filings"
+]
+tickers = {str((step.get("args") or {}).get("ticker") or "") for step in searches}
+if len(searches) < 2:
+    errors.append(f"agent.cc-h-055: expected at least two search_filings, got {len(searches)}")
+if not {"JPM", "BAC"} <= tickers:
+    errors.append(f"agent.cc-h-055: plan tickers={tickers!r}")
+
+multihop = load("agent.cc-h-061")
+schema("agent.cc-h-061", multihop)
+
+key = (art / "agent.openai.key").read_text(encoding="utf-8").strip()
+status = (art / "agent.openai.http").read_text(encoding="utf-8").strip()
+if key == "no":
+    if status != "503":
+        errors.append(f"agent openai without a key returned HTTP {status}, expected 503")
+    else:
+        (art / "agent.openai.unverified").write_text(
+            "OPENAI_API_KEY is empty. POST /ask path=agent with model openai returned HTTP 503. "
+            "Live generation was not run.\n",
+            encoding="utf-8",
+        )
+elif status != "200":
+    (art / "agent.openai.unverified").write_text(
+        f"OPENAI_API_KEY is set. POST /ask path=agent with model openai returned HTTP {status}. "
+        "Live generation is UNVERIFIED.\n",
+        encoding="utf-8",
+    )
+
+if errors:
+    sys.stderr.write("verify: agent checks failed:\n  " + "\n  ".join(errors) + "\n")
+    sys.exit(1)
+print(
+    "agent cc-h-055 kind="
+    f"{comparison.get('kind')} plan={len(comparison.get('plan') or [])} "
+    f"traces={len(comparison.get('traces') or [])}"
+)
+print(
+    "agent cc-h-061 kind="
+    f"{multihop.get('kind')} plan={len(multihop.get('plan') or [])} "
+    f"traces={len(multihop.get('traces') or [])}"
+)
+PY
+  if [[ -f "${ART}/agent.openai.unverified" ]]; then
+    log "verify: POST /ask path=agent openai UNVERIFIED"
+    cat "${ART}/agent.openai.unverified"
+  else
+    log "verify: POST /ask path=agent openai returned a response"
+  fi
+  log "verify: POST /ask path=agent fake path ok"
 fi
 
 log "verify: quote-index sanity"
@@ -1248,6 +1366,17 @@ fi
     echo "ask openai unverified ($(cat "${ART}/ask.openai.unverified"))"
   elif [[ -f "${ART}/ask.openai.http" ]]; then
     echo "ask.openai.http $(cat "${ART}/ask.openai.http")"
+  fi
+  if [[ -f "${ART}/agent.unreachable" ]]; then
+    echo "agent unreachable ($(cat "${ART}/agent.unreachable"))"
+  elif [[ -f "${ART}/agent.cc-h-055.http" ]]; then
+    echo "agent.cc-h-055.http $(cat "${ART}/agent.cc-h-055.http")"
+    echo "agent.cc-h-061.http $(cat "${ART}/agent.cc-h-061.http")"
+  fi
+  if [[ -f "${ART}/agent.openai.unverified" ]]; then
+    echo "agent openai unverified ($(cat "${ART}/agent.openai.unverified"))"
+  elif [[ -f "${ART}/agent.openai.http" ]]; then
+    echo "agent.openai.http $(cat "${ART}/agent.openai.http")"
   fi
   if [[ -f "${ART}/quote-sanity.skipped" ]]; then
     echo "quote-sanity skipped ($(cat "${ART}/quote-sanity.skipped"))"

@@ -105,6 +105,21 @@ class ArmResult(BaseModel):
     item_scores: tuple[ItemScore, ...]
 
 
+class AgentVsRag(BaseModel):
+    """Retrieval recall on comparison and multi-hop items. Not answer quality."""
+
+    model_config = ConfigDict(frozen=True)
+    label: str = "fake/heuristic planner"
+    n: int = Field(ge=0)
+    chunker: ChunkerName
+    mode: RetrievalMode
+    rag_recall_at_5: float
+    rag_recall_at_10: float
+    agent_recall_at_5: float
+    agent_recall_at_10: float
+    item_ids: tuple[str, ...] = ()
+
+
 class EvalReport(BaseModel):
     """Whole matrix. Written to evals/results/<sha12>.json."""
 
@@ -120,6 +135,7 @@ class EvalReport(BaseModel):
     fastembed_version: str = ""
     qdrant_client_version: str = ""
     arms: tuple[ArmResult, ...]
+    agent_vs_rag: AgentVsRag | None = None
 
 
 def dcg(ranks: tuple[int, ...], k: int) -> float:

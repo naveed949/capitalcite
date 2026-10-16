@@ -7,6 +7,19 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from capitalcite.agent import (
+    AgentResult,
+    AskPath,
+    Budgets,
+    PlanStep,
+    TraceStep,
+    build_agent_model,
+    default_registry,
+    run_agent,
+)
+from capitalcite.agent.fdic import FakeFdicClient, FdicClient
+from capitalcite.agent.http import HttpxJsonClient
+from capitalcite.agent.xbrl import FakeXbrlClient, XbrlClient
 from capitalcite.api.routes.search import get_setup
 from capitalcite.ask.models import FakeStructuredModel, StructuredModel, build_structured_model
 from capitalcite.ask.service import ask
@@ -19,17 +32,20 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.config import Settings, get_settings
+from capitalcite.ingest.rate_limit import shared_limiter
 from capitalcite.retrieval import (
     IndexNotBuilt,
     IndexUnavailable,
     RetrievalMode,
     RetrievalSetup,
+    SearchFilters,
     collection_name,
     config_hash,
     parse_filters,
     point_count,
     retrieve,
 )
+from capitalcite.retrieval.types import Hit
 
 router = APIRouter(tags=["ask"])
 
@@ -41,6 +57,7 @@ class AskRequest(BaseModel):
     form: str | None = None
     period: str | None = None
     model: AskModelName | None = None
+    path: AskPath = "rag"
 
     @field_validator("question")
     @classmethod
@@ -60,6 +77,11 @@ class AskResponse(BaseModel):
     config_hash: str
     collection_name: str
     point_count: int = Field(ge=0)
+    path: AskPath = "rag"
+    plan: list[PlanStep] = Field(default_factory=list)
+    traces: list[TraceStep] = Field(default_factory=list)
+    steps_used: int = Field(default=0, ge=0)
+    tokens_used: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def legal_shape(self) -> AskResponse:
@@ -88,9 +110,21 @@ async def post_ask(
 ) -> AskResponse:
     """Return a grounded answer or a refusal. Both are HTTP 200."""
     try:
+        count = await point_count(setup)
+        if body.path == "agent":
+            result = await _run_agent(body, setup, settings)
+            return _flatten(
+                result.answer,
+                setup,
+                count,
+                path="agent",
+                plan=list(result.plan),
+                traces=list(result.traces),
+                steps_used=result.steps_used,
+                tokens_used=result.tokens_used,
+            )
         filters = parse_filters(ticker=body.ticker, form=body.form, period=body.period)
         limit = body.k if body.k is not None else setup.search_k
-        count = await point_count(setup)
         hits = await retrieve(
             setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters
         )
@@ -107,6 +141,50 @@ async def post_ask(
     return _flatten(answer, setup, count)
 
 
+async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings) -> AgentResult:
+    selected = body.model if body.model is not None else settings.ask_model
+    model = build_agent_model(
+        selected,
+        api_key=settings.openai_api_key,
+        openai_model=settings.ask_openai_model,
+    )
+    search_k = body.k if body.k is not None else setup.search_k
+
+    async def search(
+        query: str,
+        *,
+        k: int | None = None,
+        filters: SearchFilters | None = None,
+    ) -> list[Hit]:
+        return await retrieve(
+            setup,
+            query,
+            mode=RetrievalMode.HYBRID,
+            k=k if k is not None else search_k,
+            filters=filters,
+        )
+
+    sec_client = HttpxJsonClient(
+        user_agent=settings.sec_user_agent,
+        limiter=shared_limiter(),
+    )
+    fdic_client = HttpxJsonClient(user_agent=settings.sec_user_agent)
+    if selected == "fake":
+        xbrl = FakeXbrlClient().fact
+        fdic = FakeFdicClient().lookup
+    else:
+        xbrl = XbrlClient(sec_client).fact
+        fdic = FdicClient(fdic_client).lookup
+    tools = default_registry(search=search, xbrl=xbrl, fdic=fdic)
+    return await run_agent(
+        body.question,
+        model,
+        tools,
+        Budgets(max_steps=settings.ask_max_steps, max_tokens=settings.ask_max_tokens),
+        min_score=settings.ask_min_hit_score,
+    )
+
+
 def _model_for(body: AskRequest, settings: Settings, *, hits_exist: bool) -> StructuredModel:
     """Empty hits never construct the OpenAI client, so a missing key stays a refusal."""
     if not hits_exist:
@@ -119,7 +197,17 @@ def _model_for(body: AskRequest, settings: Settings, *, hits_exist: bool) -> Str
     )
 
 
-def _flatten(answer: Answer, setup: RetrievalSetup, count: int) -> AskResponse:
+def _flatten(
+    answer: Answer,
+    setup: RetrievalSetup,
+    count: int,
+    *,
+    path: AskPath = "rag",
+    plan: list[PlanStep] | None = None,
+    traces: list[TraceStep] | None = None,
+    steps_used: int = 0,
+    tokens_used: int = 0,
+) -> AskResponse:
     digest = config_hash(setup.config)
     name = collection_name(setup.config)
     if isinstance(answer, Answered):
@@ -132,6 +220,11 @@ def _flatten(answer: Answer, setup: RetrievalSetup, count: int) -> AskResponse:
             config_hash=digest,
             collection_name=name,
             point_count=count,
+            path=path,
+            plan=plan or [],
+            traces=traces or [],
+            steps_used=steps_used,
+            tokens_used=tokens_used,
         )
     return AskResponse(
         kind="refused",
@@ -142,4 +235,9 @@ def _flatten(answer: Answer, setup: RetrievalSetup, count: int) -> AskResponse:
         config_hash=digest,
         collection_name=name,
         point_count=count,
+        path=path,
+        plan=plan or [],
+        traces=traces or [],
+        steps_used=steps_used,
+        tokens_used=tokens_used,
     )

@@ -14,9 +14,10 @@ from capitalcite.atomic import atomic_write_text
 from capitalcite.chunking.models import ChunkerName
 from capitalcite.chunking.service import run_chunk
 from capitalcite.config import Settings
+from capitalcite.eval.agent_compare import compare_agent_vs_rag, hop_items
 from capitalcite.eval.diagnose import diagnose_bm25, items_for_probe
 from capitalcite.eval.judge import recall_items, score_item
-from capitalcite.eval.models import AggregateScore, ArmResult, EvalReport
+from capitalcite.eval.models import AgentVsRag, AggregateScore, ArmResult, EvalReport
 from capitalcite.golden.store import ValidationError, load_golden_set
 from capitalcite.ingest.store import FilingStore
 from capitalcite.retrieval import (
@@ -98,6 +99,8 @@ async def run_suite(
     sparse_id = ""
     diagnostics: list[str] = []
     probe_items = items_for_probe(items)
+    hops = hop_items(items)
+    agent_vs_rag: AgentVsRag | None = None
 
     with tempfile.TemporaryDirectory(prefix="capitalcite-eval-") as tmp:
         work_root = Path(tmp)
@@ -153,6 +156,14 @@ async def run_suite(
                             item_scores=tuple(scores),
                         )
                     )
+                if hops and chunker == ChunkerName.SECTION and RetrievalMode.HYBRID in modes:
+                    agent_vs_rag = await compare_agent_vs_rag(
+                        setup,
+                        hops,
+                        chunker=chunker,
+                        mode=RetrievalMode.HYBRID,
+                        retrieve_k=retrieve_k,
+                    )
             except RetrievalError as exc:
                 raise EvalUnverified(str(exc)) from exc
             finally:
@@ -169,6 +180,7 @@ async def run_suite(
         fastembed_version=_package_version("fastembed"),
         qdrant_client_version=_package_version("qdrant-client"),
         arms=tuple(arms),
+        agent_vs_rag=agent_vs_rag,
     )
     if write:
         from capitalcite.eval.report import write_report
