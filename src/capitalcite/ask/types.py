@@ -36,7 +36,6 @@ class ModelDraft(BaseModel):
     kind: Literal["answered", "refused"]
     answer: str = ""
     refusal_reason: str = ""
-    confidence: float = 0.0
     citations: tuple[DraftCite, ...] = ()
 
     @model_validator(mode="after")
@@ -48,13 +47,16 @@ class ModelDraft(BaseModel):
 
 
 class Citation(BaseModel):
-    """A grounded citation. start and end are the chunk span, not the quote span."""
+    """A grounded citation. start and end are the chunk span. quote_start and
+    quote_end are the quote's offsets in the document."""
 
     model_config = ConfigDict(frozen=True)
     doc_id: str = Field(min_length=1)
     start: int = Field(ge=0)
     end: int = Field(ge=0)
     quote: str = Field(min_length=1)
+    quote_start: int = Field(ge=0)
+    quote_end: int = Field(ge=0)
     section: str = Field(min_length=1)
     source_url: str = Field(min_length=1)
 
@@ -64,14 +66,14 @@ class Answered(BaseModel):
     kind: Literal["answered"] = "answered"
     answer: str = Field(min_length=1)
     citations: tuple[Citation, ...] = Field(min_length=1)
-    confidence: float
+    retrieval_score: float
 
 
 class Refused(BaseModel):
     model_config = ConfigDict(frozen=True)
     kind: Literal["refused"] = "refused"
     refusal_reason: str = Field(min_length=1)
-    confidence: float = 0.0
+    retrieval_score: float = 0.0
 
 
 Answer = Annotated[Answered | Refused, Field(discriminator="kind")]

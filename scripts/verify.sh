@@ -899,8 +899,8 @@ def schema(name: str, body: dict) -> None:
     if kind not in ("answered", "refused"):
         errors.append(f"{name}: kind={kind!r}")
         return
-    if not isinstance(body.get("confidence"), (int, float)):
-        errors.append(f"{name}: confidence={body.get('confidence')!r}")
+    if not isinstance(body.get("retrieval_score"), (int, float)):
+        errors.append(f"{name}: retrieval_score={body.get('retrieval_score')!r}")
     if not isinstance(body.get("config_hash"), str) or len(body["config_hash"]) != 64:
         errors.append(f"{name}: config_hash missing")
     if not isinstance(body.get("collection_name"), str) or not body["collection_name"]:
@@ -957,6 +957,12 @@ def ground(name: str, body: dict, search: dict) -> None:
             errors.append(f"{name}: section does not match the hit")
         if cite.get("source_url") != chunk.get("source_url"):
             errors.append(f"{name}: source_url does not match the hit")
+        quote_start = cite.get("quote_start")
+        quote_end = cite.get("quote_end")
+        if not isinstance(quote_start, int) or not isinstance(quote_end, int):
+            errors.append(f"{name}: quote_start/quote_end missing")
+        elif quote_end < quote_start:
+            errors.append(f"{name}: quote_end is before quote_start")
 
 
 answered = load("ask.cc-h-013")
@@ -973,6 +979,8 @@ unanswerable = load("ask.cc-u-001")
 unanswerable_search = load("search.cc-u-001.hybrid-wfc")
 schema("ask.cc-u-001", unanswerable)
 same_index("ask.cc-u-001", unanswerable, unanswerable_search)
+if unanswerable.get("kind") != "refused":
+    errors.append("ask.cc-u-001: expected refused with the fake model")
 if unanswerable.get("citations"):
     ground("ask.cc-u-001", unanswerable, unanswerable_search)
 

@@ -78,6 +78,14 @@ class Settings(BaseSettings):
         min_length=1,
         description="OpenAI chat model used when ASK_MODEL=openai.",
     )
+    ask_min_hit_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Refuse POST /ask before the model when the top hit score is below this floor. "
+            "Hybrid RRF scores are typically near 0.03. 0 disables the floor."
+        ),
+    )
     search_k: int = Field(default=8, ge=1, le=50, description="Default number of hits for search.")
     rrf_k: int = Field(
         default=60,

@@ -55,7 +55,7 @@ class AskResponse(BaseModel):
     kind: Literal["answered", "refused"]
     answer: str | None = None
     citations: list[Citation]
-    confidence: float
+    retrieval_score: float
     refusal_reason: str | None = None
     config_hash: str
     collection_name: str
@@ -94,7 +94,12 @@ async def post_ask(
         hits = await retrieve(
             setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters
         )
-        answer = await ask(hits, body.question, _model_for(body, settings, hits_exist=bool(hits)))
+        answer = await ask(
+            hits,
+            body.question,
+            _model_for(body, settings, hits_exist=bool(hits)),
+            min_score=settings.ask_min_hit_score,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (IndexUnavailable, IndexNotBuilt, ModelNotConfigured, ModelUnavailable) as exc:
@@ -122,7 +127,7 @@ def _flatten(answer: Answer, setup: RetrievalSetup, count: int) -> AskResponse:
             kind="answered",
             answer=answer.answer,
             citations=list(answer.citations),
-            confidence=answer.confidence,
+            retrieval_score=answer.retrieval_score,
             refusal_reason=None,
             config_hash=digest,
             collection_name=name,
@@ -132,7 +137,7 @@ def _flatten(answer: Answer, setup: RetrievalSetup, count: int) -> AskResponse:
         kind="refused",
         answer=None,
         citations=[],
-        confidence=answer.confidence,
+        retrieval_score=answer.retrieval_score,
         refusal_reason=answer.refusal_reason,
         config_hash=digest,
         collection_name=name,

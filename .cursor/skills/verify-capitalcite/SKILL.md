@@ -87,7 +87,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite golden validate --against-raw <data_dir>` | exit 0 + `aligned=` / `recall=handwritten-only` after ingest+chunk |
 | CLI | `capitalcite index --help` | exit 0; lists `--embedder` |
 | HTTP | `POST /search` | 200 + citation fields + gold span overlap on `cc-h-013` / `cc-h-063`; UNVERIFIED only when ingest could not run |
-| HTTP | `POST /ask` | 200 + grounded citations on `cc-h-013` with `model` `fake`; `cc-u-001` schema; live `model` `openai` is UNVERIFIED without `OPENAI_API_KEY` |
+| HTTP | `POST /ask` | 200 + grounded citations on `cc-h-013` with `model` `fake`; `cc-u-001` refused; live `model` `openai` is UNVERIFIED without `OPENAI_API_KEY` |
 | CLI | `capitalcite eval --suite golden --small` | exit 0 + Recall@5 table; FakeEmbedder, no download |
 | CLI | `capitalcite eval --suite golden` | exit 0 + six-row dense/bm25/hybrid × section/fixed table on the twelve 10-Ks; UNVERIFIED only when ingest could not run |
 | Compose (optional) | `docker compose config` | exit 0 |

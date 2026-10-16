@@ -1,6 +1,7 @@
 """Structured answers over retrieved hits."""
 
 from capitalcite.ask.ground import ground
+from capitalcite.ask.guard import retrieval_refusal
 from capitalcite.ask.models import (
     FakeStructuredModel,
     OpenAIStructuredModel,
@@ -40,4 +41,5 @@ __all__ = [
     "build_structured_model",
     "draft_problem",
     "ground",
+    "retrieval_refusal",
 ]

@@ -25,6 +25,7 @@ from capitalcite.ask import (
     Refused,
     ask,
     build_structured_model,
+    retrieval_refusal,
 )
 from capitalcite.ask.types import AskModelName
 from capitalcite.chunking.models import Chunk, ChunkerName
@@ -49,6 +50,43 @@ async def test_ask_empty_hits_does_not_call_the_model() -> None:
     assert isinstance(answer, Refused)
     assert answer.refusal_reason == "no passages were retrieved"
     assert model.calls == 0
+
+
+async def test_ask_low_hit_score_does_not_call_the_model() -> None:
+    model = FakeStructuredModel()
+    hit = _hit(score=0.01)
+    answer = await ask([hit], "What buffer did JPM describe?", model, min_score=0.5)
+    assert isinstance(answer, Refused)
+    assert answer.refusal_reason == "top hit score is below the retrieval floor"
+    assert model.calls == 0
+
+
+async def test_ask_ticker_mismatch_does_not_call_the_model() -> None:
+    model = FakeStructuredModel()
+    answer = await ask([_hit()], "What CET1 ratio did Wells Fargo report?", model)
+    assert isinstance(answer, Refused)
+    assert "entity" in answer.refusal_reason
+    assert model.calls == 0
+
+
+async def test_ask_year_mismatch_does_not_call_the_model() -> None:
+    model = FakeStructuredModel()
+    answer = await ask(
+        [_hit(ticker="WFC", period="2025-12-31")],
+        "What CET1 ratio did Wells Fargo disclose for year-end 2026?",
+        model,
+    )
+    assert isinstance(answer, Refused)
+    assert "entity" in answer.refusal_reason
+    assert model.calls == 0
+
+
+async def test_ask_matching_bank_and_year_calls_the_model() -> None:
+    model = FakeStructuredModel()
+    hit = _hit(period="2024-12-31")
+    answer = await ask([hit], "What buffer did JPMorgan describe at year-end 2024?", model)
+    assert isinstance(answer, Answered)
+    assert model.calls == 1
 
 
 async def test_ask_default_fake_quotes_the_first_hit() -> None:
@@ -81,7 +119,7 @@ async def test_ask_refuses_when_any_citation_is_ungrounded() -> None:
         kind="answered",
         answer="Both passages.",
         citations=(
-            DraftCite(index=1, quote="tier one"),
+            DraftCite(index=1, quote="tier one capital"),
             DraftCite(index=2, quote="not in the second passage"),
         ),
     )
@@ -95,7 +133,6 @@ async def test_ask_refuses_an_invalid_scripted_draft() -> None:
         kind="answered",
         answer="The ratio was 15.7%.",
         refusal_reason="",
-        confidence=0.9,
         citations=(),
     )
     answer = await ask([_hit()], "What was CET1?", FakeStructuredModel(script))
@@ -131,8 +168,7 @@ async def test_openai_retries_invalid_json_once() -> None:
                 {
                     "kind": "answered",
                     "answer": "tier one capital buffer",
-                    "confidence": 0.5,
-                    "citations": [{"index": 1, "quote": "tier one"}],
+                    "citations": [{"index": 1, "quote": "tier one capital"}],
                 }
             )
         return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
@@ -140,13 +176,14 @@ async def test_openai_retries_invalid_json_once() -> None:
     model = OpenAIStructuredModel("test-key", "gpt-4o-mini", transport=httpx.MockTransport(handler))
     draft = await model.complete("What buffer is described?", [_hit()])
     assert draft.kind == "answered"
-    assert draft.citations[0].quote == "tier one"
+    assert draft.citations[0].quote == "tier one capital"
     assert len(seen) == 2
     second = json.loads(seen[1].content)
     blob = json.dumps(second["messages"])
     assert "non-empty answer" in blob
     assert "tier one capital buffer" in blob
-    assert "Passage 1" in blob
+    assert "<passage n=" in blob
+    assert "untrusted" in blob
     assert "JSON" in blob
     assert "doc_id=" not in blob
     assert second["response_format"] == {"type": "json_object"}
@@ -192,7 +229,6 @@ async def test_grounding_failure_does_not_retry_openai() -> None:
             {
                 "kind": "answered",
                 "answer": "The ratio was 15.7%.",
-                "confidence": 0.4,
                 "citations": [{"index": 1, "quote": "15.7%"}],
             }
         )
@@ -234,13 +270,16 @@ def test_post_ask_answered_quotes_the_indexed_chunk(tmp_path: Path) -> None:
     assert cite.section == chunk.section
     assert cite.source_url == chunk.source_url
     assert cite.quote in chunk.text
+    assert cite.quote_start == chunk.start
+    assert cite.quote_end == chunk.start + len(cite.quote)
+    assert body.retrieval_score > 0
 
 
 def test_post_ask_scripted_refusal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     application, setup = _indexed_app(tmp_path, [_chunk()])
     _script(
         monkeypatch,
-        ModelDraft(kind="refused", refusal_reason="not in the filing", confidence=0.1),
+        ModelDraft(kind="refused", refusal_reason="not in the filing"),
     )
     with TestClient(application) as http:
         response = http.post("/ask", json={"question": "What was CET1?", "model": "fake"})
@@ -250,7 +289,7 @@ def test_post_ask_scripted_refusal(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert body.answer is None
     assert body.citations == []
     assert body.refusal_reason == "not in the filing"
-    assert body.confidence == 0.0
+    assert body.retrieval_score == 0.0
     assert body.point_count == 1
     assert body.config_hash == config_hash(setup.config)
 
@@ -369,6 +408,7 @@ def _settings(**overrides: object) -> Settings:
         "openai_api_key": None,
         "ask_model": "fake",
         "ask_openai_model": "gpt-4o-mini",
+        "ask_min_hit_score": 0.0,
     }
     values.update(overrides)
     return Settings.model_validate(values)
@@ -396,8 +436,20 @@ def _hit(
     *,
     doc_id: str = "doc-jpm",
     text: str = "tier one capital buffer",
+    ticker: str = "JPM",
+    period: str = "2023-12-31",
+    score: float = 1.0,
 ) -> Hit:
-    return Hit(score=1.0, chunk=_chunk().model_copy(update={"doc_id": doc_id, "text": text}))
+    return Hit(
+        score=score,
+        chunk=_chunk().model_copy(
+            update={"doc_id": doc_id, "text": text, "ticker": ticker, "period": period}
+        ),
+    )
+
+
+def test_retrieval_refusal_allows_matching_hits() -> None:
+    assert retrieval_refusal([_hit()], "What buffer did JPM describe?", min_score=0.0) is None
 
 
 def _write_chunks(root: Path, chunks: list[Chunk]) -> None:
