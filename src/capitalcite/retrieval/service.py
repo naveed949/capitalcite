@@ -71,7 +71,11 @@ class RetrievalSetup:
         rrf_k: int,
         search_k: int,
     ) -> None:
-        if embedder.id != config.embedder_id or embedder.dense_size != config.dense_size:
+        if (
+            embedder.id != config.embedder_id
+            or embedder.dense_size != config.dense_size
+            or embedder.sparse_id != config.sparse_id
+        ):
             raise ValueError("embedder does not match index config")
         self.config = config
         self.embedder = embedder
@@ -105,6 +109,7 @@ def setup_retrieval(
     config = IndexConfig(
         embedder_id=embedder.id,
         dense_size=embedder.dense_size,
+        sparse_id=embedder.sparse_id,
         chunker=settings.chunker,
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,

@@ -18,7 +18,8 @@ score and the `Chunk` that was stored. `year` on the hit is computed from
 year.
 
 The thing that gets stored is an `IndexConfig`. It records the embedder id,
-the dense width, the chunker, the chunk size, the overlap, the collection
+the dense width, the sparse encoder id (`fastembed:Qdrant/bm25` plus k1, b,
+and avgdl), the chunker, the chunk size, the overlap, the collection
 prefix, and the fixed schema `cosine`, `dense`, `bm25`, `idf`. `config_hash`
 is the SHA-256 of that record as compact JSON with sorted keys. The Qdrant
 collection name is `{prefix}-{config_hash}`. `QDRANT_COLLECTION` stays the
@@ -58,8 +59,8 @@ The default is FastEmbed `BAAI/bge-small-en-v1.5`, selected by
 `EMBEDDER=bge-small`. It is an English model, 384 dimensions, and it runs
 on the machine that indexes. No API key is required. The model was trained
 with a query instruction, so `embed_query` prepends that sentence to the
-dense vector only. The sparse vector is counted from the raw query, so the
-instruction words do not become terms.
+dense vector only. The sparse vector is FastEmbed `query_embed()` of the
+raw query (`Qdrant/bm25`), so the instruction words do not become terms.
 
 `minilm` is `sentence-transformers/all-MiniLM-L6-v2`, also local and also
 384 dimensions, without that instruction. It exists so a later eval can
@@ -69,9 +70,10 @@ apart.
 `openai-small` is `text-embedding-3-small`, 1536 dimensions. It is built
 only when `OPENAI_API_KEY` is set. That variable is the secret for the paid
 embedder. The repo does not contain a key. FastEmbed is the free local
-default. Pytest uses `FakeEmbedder`, dense width 8, and the same term
-counter as production. It does not download a model and it does not open a
-socket. The test client is `AsyncQdrantClient(":memory:")`.
+default. Pytest uses `FakeEmbedder`, dense width 8, and the same BM25 formula
+(k1=1.2, b=0.75, avgdl=256, stopwords removed, query weight 1). It does
+not download FastEmbed and it does not open a socket. The test client is
+`AsyncQdrantClient(":memory:")`.
 
 ## BM25 and dense search answer different misses
 
@@ -83,14 +85,16 @@ the walk never visits that point, or because the point sits far from the
 query in the embedding space.
 
 BM25 does the opposite. It scores a chunk by how often the query's terms
-appear in it, and by how rare those terms are in the collection. A term
-that shows up in every 10-K is worth little. A term that shows up in one
-filing is worth a lot. We store raw term counts, not precomputed weights.
-The token is lowercased and hashed with blake2s to a 32-bit index, so there
-is no vocabulary file to keep in sync with the points. Two different tokens
-can land on the same index. Qdrant applies `Modifier.IDF` at query time,
-using document frequency in the collection. That is the BM25 leg. It will
-not find a paraphrase that shares no tokens.
+appear in it, how rare those terms are, and how long the chunk is.
+Production calls FastEmbed `SparseTextEmbedding("Qdrant/bm25")`:
+`embed()` on `Chunk.text` writes the Robertson TF
+`tf * (k1+1) / (tf + k1 * (1 - b + b * dl/avgdl))` with k1=1.2, b=0.75,
+avgdl=256, English stemming, and stopwords removed. `query_embed()` on
+the raw question writes weight 1 per unique remaining term. Qdrant
+`Modifier.IDF` supplies IDF at query time. Raw term counts without
+saturation or length norm are TF-IDF, not BM25; that encoder is gone.
+`sparse_id` is inside `IndexConfig` so a hashed-count collection cannot
+be searched as BM25. It will not find a paraphrase that shares no tokens.
 
 Hybrid search runs both and fuses them. The milestone asked for that shape.
 ADR 0001 already chose Qdrant because it can hold both vectors and fuse
@@ -153,7 +157,7 @@ at their defaults. Choosing `ef` is an eval question, not a guess.
 The result is approximate nearest neighbor under cosine distance. That is
 why a dense hit can miss a chunk BM25 still finds, and why a hybrid query
 asks both legs before fusion. The BM25 leg is an inverted index over the
-sparse counts, not an HNSW graph.
+BM25 sparse weights, not an HNSW graph.
 
 ## Section labels on fixed and recursive chunks
 

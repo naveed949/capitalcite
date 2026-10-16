@@ -51,7 +51,7 @@ class CorruptChunks(RetrievalError):
 
 
 class SparseTermVector(BaseModel):
-    """Token indices and raw term counts. Qdrant Modifier.IDF supplies IDF."""
+    """Hashed token indices and BM25 weights. Qdrant Modifier.IDF supplies IDF."""
 
     model_config = ConfigDict(frozen=True)
     indices: tuple[int, ...]
@@ -65,17 +65,22 @@ class TextEmbedding(BaseModel):
 
 
 class Embedder(Protocol):
-    """Text in, dense vector and sparse counts out. No Qdrant types."""
+    """Text in, dense vector and BM25 sparse weights out. No Qdrant types."""
 
     id: str
     dense_size: int
+    sparse_id: str
 
     async def embed_documents(self, texts: list[str]) -> list[TextEmbedding]:
-        """Embed Chunk.text. No query prefix on the dense vector."""
+        """Embed Chunk.text. Sparse side is BM25 embed(), not raw counts."""
         ...
 
     async def embed_query(self, text: str) -> TextEmbedding:
-        """Dense vector may use a query prefix. Sparse vector must not."""
+        """Dense vector may use a query prefix. Sparse side is query_embed()."""
+        ...
+
+    def sparse_query_terms(self, text: str) -> tuple[str, ...]:
+        """Unique terms that enter the BM25 query vector, after stopwords."""
         ...
 
 
@@ -88,6 +93,7 @@ class IndexConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     embedder_id: str = Field(min_length=1)
     dense_size: int = Field(ge=1)
+    sparse_id: str = Field(min_length=1)
     chunker: ChunkerName
     chunk_size: int = Field(ge=1)
     chunk_overlap: int = Field(ge=0)

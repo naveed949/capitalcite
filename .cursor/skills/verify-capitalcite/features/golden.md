@@ -33,5 +33,5 @@ Preconditions:
 
 - This command is offline. A missing passage file is a product bug, not `UNVERIFIED`.
 - Live ingest is a different feature. Do not require EDGAR 200s to call the set valid.
-- `capitalcite eval --suite golden` is issue #6. A missing `eval` subcommand is expected.
+- `capitalcite eval --suite golden` is a different feature. This command only validates the set.
 - `CliRunner().invoke(...)` in pytest is not this feature.

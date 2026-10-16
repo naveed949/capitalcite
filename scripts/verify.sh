@@ -843,6 +843,91 @@ else
   cat "${ART}/quote-sanity.out"
 fi
 
+log "verify: capitalcite eval --help"
+set +e
+uv run capitalcite eval --help >"${ART}/eval.help.out" 2>"${ART}/eval.help.err"
+eval_help_rc=$?
+set -e
+write eval.help.exit "${eval_help_rc}"
+if [[ "${eval_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite eval --help failed"
+  cat "${ART}/eval.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/eval.help.out" | grep -q -- "--suite" \
+  || ! plain "${ART}/eval.help.out" | grep -q -- "--small"; then
+  log "verify: eval --help missing --suite or --small"
+  cat "${ART}/eval.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite eval --help ok"
+
+log "verify: capitalcite eval --suite golden --small"
+set +e
+uv run capitalcite eval --suite golden --small --out "${ART}/eval-small" \
+  >"${ART}/eval-small.out" 2>"${ART}/eval-small.err"
+eval_small_rc=$?
+set -e
+write eval-small.exit "${eval_small_rc}"
+if [[ "${eval_small_rc}" -ne 0 ]]; then
+  log "verify: capitalcite eval --small failed"
+  cat "${ART}/eval-small.out" >&2 || true
+  cat "${ART}/eval-small.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "Recall@5" "${ART}/eval-small.out" \
+  || ! grep -q "items=" "${ART}/eval-small.out"; then
+  log "verify: eval --small stdout missing Recall@5 table"
+  cat "${ART}/eval-small.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite eval --small ok"
+cat "${ART}/eval-small.out"
+
+if [[ -f "${ART}/ingest.unreachable" ]]; then
+  write eval.skipped "live ingest unreachable; corpus eval needs the twelve 10-Ks"
+  log "verify: corpus eval UNVERIFIED (no live corpus)"
+else
+  EVAL_OUT="${ART}/eval"
+  mkdir -p "${EVAL_OUT}"
+  EVAL_CMD=(
+    uv run capitalcite eval --suite golden
+    --input-dir "${INGEST_DIR}"
+    --out "${EVAL_OUT}"
+    --chunker section
+    --chunker fixed
+    --embedder bge-small
+    --k 5
+  )
+  printf '%s\n' "${EVAL_CMD[*]}" >"${ART}/eval.cmd"
+  log "verify: ${EVAL_CMD[*]}"
+  set +e
+  "${EVAL_CMD[@]}" >"${ART}/eval.out" 2>"${ART}/eval.err"
+  eval_rc=$?
+  set -e
+  write eval.exit "${eval_rc}"
+  if [[ "${eval_rc}" -eq 2 ]]; then
+    write eval.skipped "corpus eval unverified (exit 2). command: ${EVAL_CMD[*]}"
+    log "verify: corpus eval UNVERIFIED (exit 2)"
+    cat "${ART}/eval.err" >&2 || true
+  elif [[ "${eval_rc}" -ne 0 ]]; then
+    log "verify: capitalcite eval failed with exit ${eval_rc}"
+    cat "${ART}/eval.out" >&2 || true
+    cat "${ART}/eval.err" >&2 || true
+    exit 1
+  else
+    if ! grep -q "Recall@5" "${ART}/eval.out" \
+      || ! grep -q "cc-h-013" "${ART}/eval.out"; then
+      log "verify: corpus eval stdout missing Recall@5 or cc-h-013 probe"
+      cat "${ART}/eval.out" >&2 || true
+      exit 1
+    fi
+    cp "${ART}/eval.out" "${ART}/eval.table.md"
+    log "verify: corpus eval ok"
+    cat "${ART}/eval.out"
+  fi
+fi
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   log "verify: docker compose config"
   set +e
@@ -949,6 +1034,13 @@ fi
     echo "quote-sanity skipped ($(cat "${ART}/quote-sanity.skipped"))"
   else
     echo "quote-sanity.exit $(cat "${ART}/quote-sanity.exit")"
+  fi
+  echo "eval.help.exit $(cat "${ART}/eval.help.exit")"
+  echo "eval-small.exit $(cat "${ART}/eval-small.exit")"
+  if [[ -f "${ART}/eval.skipped" ]]; then
+    echo "eval skipped ($(cat "${ART}/eval.skipped"))"
+  else
+    echo "eval.exit $(cat "${ART}/eval.exit")"
   fi
   if [[ -f "${ART}/compose.config.exit" ]]; then
     echo "compose.config.exit $(cat "${ART}/compose.config.exit")"

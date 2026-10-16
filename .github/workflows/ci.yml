@@ -41,3 +41,6 @@ jobs:
 
       - name: Tests
         run: uv run pytest
+
+      - name: Retrieval eval (small)
+        run: uv run capitalcite eval --suite golden --small --out "${RUNNER_TEMP}/eval-small"

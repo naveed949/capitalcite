@@ -87,6 +87,8 @@ Stable handles (do not invent others):
 | CLI | `capitalcite golden validate --against-raw <data_dir>` | exit 0 + `aligned=` / `recall=handwritten-only` after ingest+chunk |
 | CLI | `capitalcite index --help` | exit 0; lists `--embedder` |
 | HTTP | `POST /search` | 200 + citation fields + gold span overlap on `cc-h-013` / `cc-h-063`; UNVERIFIED only when ingest could not run |
+| CLI | `capitalcite eval --suite golden --small` | exit 0 + Recall@5 table; FakeEmbedder, no download |
+| CLI | `capitalcite eval --suite golden` | exit 0 + six-row dense/bm25/hybrid × section/fixed table on the twelve 10-Ks; UNVERIFIED only when ingest could not run |
 | Compose (optional) | `docker compose config` | exit 0 |
 | Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
 
@@ -131,6 +133,9 @@ Each run of `scripts/verify.sh` writes at least:
 | `index.1.out` / `index.2.out` **or** `search.unreachable` | Two `capitalcite index` runs on the ingested corpus, or UNVERIFIED when ingest could not run |
 | `search.top5.txt` / `search.*.body.json` / `search.http` **or** `search.unreachable` | Live `POST /search` on embedded Qdrant, or UNVERIFIED when ingest could not run |
 | `quote-sanity.out` / `quote-sanity.exit` **or** `quote-sanity.skipped` | Quote-index recall sanity, not the 12-filing corpus eval |
+| `eval.help.out` / `eval.help.exit` | `capitalcite eval --help` (must list `--suite` and `--small`) |
+| `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |
+| `eval.out` / `eval.exit` / `eval.table.md` **or** `eval.skipped` | Real-corpus eval with embedded Qdrant + bge-small, or UNVERIFIED if ingest was unreachable |
 | `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
 | `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |
 
@@ -185,11 +190,11 @@ Expected later handles (do not add empty stubs now):
 | #3 chunking | `capitalcite chunk --chunker section` (landed) |
 | #4 retrieval | `POST /search` (landed) |
 | #5 golden set | `capitalcite golden validate` (landed) |
-| #6 evals | `capitalcite eval --suite golden` |
+| #6 evals | `capitalcite eval --suite golden` (landed) |
 | #7 answers | `POST /ask` |
 | #10 audit | `capitalcite audit verify` |
 
-When #6 lands, grow this skill in that same PR so `./scripts/verify.sh` runs the retrieval eval. That means `capitalcite eval --suite golden` and the recall@k / MRR matrix the issue commits. Until that run exists, retrieval quality is `UNVERIFIED`.
+`./scripts/verify.sh` runs `capitalcite eval --suite golden --small` always, and the twelve-filing bge-small matrix when ingest succeeded. A missing corpus is `UNVERIFIED`, not a pass.
 
 ## Offer the maintenance loop
 
