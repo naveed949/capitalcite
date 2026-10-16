@@ -20,6 +20,7 @@ from capitalcite.eval.report import (
 from capitalcite.golden.models import Evidence, EvidenceRole, GoldenItem, ItemSource, QuestionType
 from capitalcite.retrieval.hashing import tokens
 from capitalcite.retrieval.types import Hit, RetrievalMode
+from capitalcite.trace import MemoryExporter, ObservationKind, configure_for_tests, reset_for_tests
 
 runner = CliRunner()
 
@@ -159,39 +160,56 @@ def test_update_readme_replaces_markers(tmp_path: Path) -> None:
 
 
 def test_small_bm25_writes_json(tmp_path: Path) -> None:
-    result = runner.invoke(
-        app,
-        [
-            "eval",
-            "--suite",
-            "golden",
-            "--small",
-            "--chunker",
-            "section",
-            "--mode",
-            "bm25",
-            "--out",
-            str(tmp_path),
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert "Recall@5" in result.stdout
-    files = list(tmp_path.glob("*-small.json"))
-    assert len(files) == 1
-    body = json.loads(files[0].read_text(encoding="utf-8"))
-    assert body["small"] is True
-    assert body["n_items"] >= 1
-    assert body["arms"][0]["config_hash"]
-    assert body["arms"][0]["mode"] == "bm25"
-    assert "fastembed_version" in body
-    assert "qdrant_client_version" in body
-    diagnose_files = list(tmp_path.glob("*-bm25-diagnose.md"))
-    assert len(diagnose_files) == 1
-    text = diagnose_files[0].read_text(encoding="utf-8")
-    assert "idf_modifier=IDF" in text
-    assert "query_embed" in text
-    assert "query_values_all_ones=true" in text
-    assert "sparse_id=" in text
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "eval",
+                "--suite",
+                "golden",
+                "--small",
+                "--chunker",
+                "section",
+                "--mode",
+                "bm25",
+                "--out",
+                str(tmp_path),
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Recall@5" in result.stdout
+        files = list(tmp_path.glob("*-small.json"))
+        assert len(files) == 1
+        body = json.loads(files[0].read_text(encoding="utf-8"))
+        assert body["small"] is True
+        assert body["n_items"] >= 1
+        assert body["arms"][0]["config_hash"]
+        assert body["arms"][0]["mode"] == "bm25"
+        assert "fastembed_version" in body
+        assert "qdrant_client_version" in body
+        diagnose_files = list(tmp_path.glob("*-bm25-diagnose.md"))
+        assert len(diagnose_files) == 1
+        text = diagnose_files[0].read_text(encoding="utf-8")
+        assert "idf_modifier=IDF" in text
+        assert "query_embed" in text
+        assert "query_values_all_ones=true" in text
+        assert "sparse_id=" in text
+        eval_spans = [
+            record for record in exporter.finished() if record.kind is ObservationKind.EVAL
+        ]
+        assert len(eval_spans) == 1
+        assert eval_spans[0].attributes["capitalcite.git_sha"] == body["git_sha"]
+        assert eval_spans[0].attributes["capitalcite.config_hash"] == body["arms"][0]["config_hash"]
+        assert eval_spans[0].attributes["capitalcite.suite"] == "golden"
+        retrieve_spans = [
+            record for record in exporter.finished() if record.kind is ObservationKind.RETRIEVE
+        ]
+        assert retrieve_spans
+        assert retrieve_spans[0].trace_id == eval_spans[0].trace_id
+    finally:
+        reset_for_tests()
 
 
 def test_render_markdown_names_probe() -> None:
