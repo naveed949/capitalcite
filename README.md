@@ -74,14 +74,14 @@ Golden set: **112** questions (v1). Handwritten items over the twelve ingested 1
 | Chunking | Embedding | Retrieval | n | Recall@5 | MRR@5 | nDCG@5 | Recall@10 | MRR@10 | nDCG@10 |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|
 | section | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | 0.078 | 0.043 | 0.047 | 0.156 | 0.053 | 0.070 |
-| section | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.000 | 0.000 | 0.000 | 0.039 | 0.005 | 0.011 |
-| section | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.065 | 0.020 | 0.029 | 0.117 | 0.027 | 0.049 |
+| section | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.182 | 0.089 | 0.103 | 0.286 | 0.101 | 0.133 |
+| section | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.169 | 0.096 | 0.098 | 0.299 | 0.114 | 0.140 |
 | fixed | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | 0.169 | 0.118 | 0.103 | 0.208 | 0.124 | 0.118 |
-| fixed | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.026 | 0.016 | 0.018 | 0.065 | 0.021 | 0.029 |
-| fixed | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.065 | 0.048 | 0.044 | 0.117 | 0.055 | 0.056 |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.130 | 0.071 | 0.080 | 0.195 | 0.079 | 0.097 |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.195 | 0.114 | 0.114 | 0.234 | 0.120 | 0.127 |
 | section | — | hybrid + rerank | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
 
-Generated from `evals/results/aceba4024177.json` (sha `aceba4024177`, embedder `fastembed:BAAI/bge-small-en-v1.5`, fastembed `0.8.1`, qdrant-client `1.19.1`). Noise floor: n=77, one item is 0.013 recall. RAGAS context precision/recall is UNVERIFIED (no LLM key). minilm is UNVERIFIED (a second full embed is not cheap on this corpus).
+Generated from `evals/results/8b63d12acd50.json` (sha `8b63d12acd50`, embedder `fastembed:BAAI/bge-small-en-v1.5`, sparse `fastembed:Qdrant/bm25:k1=1.2:b=0.75:avgdl=256.0`, fastembed `0.8.1`, qdrant-client `1.19.1`). Noise floor: n=77, one item is 0.013 recall. RAGAS context precision/recall is UNVERIFIED (no LLM key). minilm is UNVERIFIED (a second full embed is not cheap on this corpus).
 
 <!-- END RETRIEVAL EVAL -->
 

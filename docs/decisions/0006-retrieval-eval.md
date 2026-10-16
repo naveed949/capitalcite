@@ -108,6 +108,9 @@ formula and does not download FastEmbed. The eval writes a BM25 probe
 for those three items next to the matrix JSON.
 
 minilm is UNVERIFIED: a second full embed of 12k–17k chunks is not
-cheap on this corpus. The numbers for corrected BM25 and hybrid live
-in `evals/results/<sha12>.json` and the README table. They are not
-typed here.
+cheap on this corpus. On the corrected encoder, section BM25
+Recall@5 is 0.182 (was 0.000 under TF-IDF) and hybrid beats dense on
+both chunkers. The gold Item 7 sentence for a JPM CET1 question can
+still sit past rank 10 because that sentence names CET1 once and the
+filing often says "the Firm"; JPM capital tables now lead those
+queries. The full table lives in `evals/results/<sha12>.json`.
