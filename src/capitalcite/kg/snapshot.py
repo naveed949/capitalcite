@@ -1,5 +1,3 @@
-"""Load a committed GraphSnapshot JSON object."""
-
 from __future__ import annotations
 
 from pathlib import Path

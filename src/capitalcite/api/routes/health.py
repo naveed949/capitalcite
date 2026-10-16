@@ -1,4 +1,4 @@
-"""Liveness probe. Does not talk to Qdrant, Langfuse, or Neo4j.
+"""Liveness probe. Does not talk to Qdrant or Langfuse.
 
 Readiness checks against those services belong on a later /ready route once
 retrieval is wired. /health staying process-local keeps CI and `uvicorn`

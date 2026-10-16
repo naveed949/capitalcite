@@ -1,5 +1,3 @@
-"""Optional entity graph. Memory is the test store. Neo4j is optional Bolt."""
-
 from capitalcite.config import Settings
 from capitalcite.kg.memory import MemoryGraphStore
 from capitalcite.kg.neo4j_store import Neo4jGraphStore
@@ -41,7 +39,6 @@ __all__ = [
 
 
 def open_store(settings: Settings) -> GraphStore | None:
-    """None when NEO4J_URI is blank. Does not open a socket."""
     uri = settings.neo4j_uri
     if uri is None or not uri.strip():
         return None

@@ -1,5 +1,3 @@
-"""Bank holding company graph. MERGE keys live on the node types."""
-
 from __future__ import annotations
 
 from enum import StrEnum

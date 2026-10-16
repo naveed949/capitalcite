@@ -1,5 +1,3 @@
-"""In-process graph. Tests and eval --suite graph use this. No Bolt."""
-
 from __future__ import annotations
 
 from collections import defaultdict, deque
@@ -28,8 +26,6 @@ def _metric_key(metric: MetricNode) -> tuple[str, str, str]:
 
 
 class MemoryGraphStore:
-    """MERGE by RSSD, accession, and metric key. A second load does not duplicate."""
-
     def __init__(self) -> None:
         self._banks: dict[str, Bank] = {}
         self._edges: set[tuple[str, str]] = set()

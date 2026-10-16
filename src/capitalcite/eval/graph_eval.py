@@ -1,5 +1,3 @@
-"""Graph vs hybrid on questions that need entity traversal. Offline."""
-
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,5 +1,3 @@
-"""Optional Bolt backend. Connecting happens on first load or query."""
-
 from __future__ import annotations
 
 from typing import Any
