@@ -86,6 +86,16 @@ class Settings(BaseSettings):
             "Hybrid RRF scores are typically near 0.03. 0 disables the floor."
         ),
     )
+    ask_max_steps: int = Field(
+        default=8,
+        ge=1,
+        description="Agent graph stops after this many plan and tool steps.",
+    )
+    ask_max_tokens: int = Field(
+        default=8000,
+        ge=1,
+        description="Agent graph stops when the estimated token use reaches this.",
+    )
     search_k: int = Field(default=8, ge=1, le=50, description="Default number of hits for search.")
     rrf_k: int = Field(
         default=60,
