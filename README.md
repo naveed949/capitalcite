@@ -81,7 +81,7 @@ Golden set: **112** questions (v1). Handwritten items over the twelve ingested 1
 | fixed | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.065 | 0.048 | 0.044 | 0.117 | 0.055 | 0.056 |
 | section | — | hybrid + rerank | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
 
-Generated from `evals/results/4d472e1c3922.json` (sha `4d472e1c3922`, embedder `fastembed:BAAI/bge-small-en-v1.5`). RAGAS context precision/recall is UNVERIFIED (no LLM key).
+Generated from `evals/results/aceba4024177.json` (sha `aceba4024177`, embedder `fastembed:BAAI/bge-small-en-v1.5`, fastembed `0.8.1`, qdrant-client `1.19.1`). Noise floor: n=77, one item is 0.013 recall. RAGAS context precision/recall is UNVERIFIED (no LLM key). minilm is UNVERIFIED (a second full embed is not cheap on this corpus).
 
 <!-- END RETRIEVAL EVAL -->
 
