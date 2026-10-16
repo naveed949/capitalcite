@@ -79,6 +79,9 @@ class RetrievalSetup:
         self.rrf_k = rrf_k
         self.search_k = search_k
 
+    async def aclose(self) -> None:
+        await self._client.close()
+
 
 _PAYLOAD_INDEXES: tuple[tuple[str, PayloadSchemaType], ...] = (
     ("ticker", PayloadSchemaType.KEYWORD),

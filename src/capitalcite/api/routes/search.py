@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -42,12 +43,18 @@ class SearchResponse(BaseModel):
     hits: list[Hit]
 
 
-def get_setup(settings: Annotated[Settings, Depends(get_settings)]) -> RetrievalSetup:
+async def get_setup(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AsyncIterator[RetrievalSetup]:
     """Build a setup for this request. Lifespan does not call this."""
     try:
-        return create_retrieval_setup(settings)
+        setup = create_retrieval_setup(settings)
     except EmbedderNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        yield setup
+    finally:
+        await setup.aclose()
 
 
 @router.post("/search", response_model=SearchResponse)

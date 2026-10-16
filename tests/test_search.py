@@ -88,6 +88,28 @@ def test_post_search_rejects_bad_period() -> None:
     assert response.json()["detail"] == "period must be YYYY-MM-DD or a 4-digit year"
 
 
+def test_post_search_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = AsyncQdrantClient(":memory:")
+    closed = {"count": 0}
+    original = client.close
+
+    async def close() -> None:
+        closed["count"] += 1
+        await original()
+
+    client.close = close  # type: ignore[method-assign]
+    setup = setup_retrieval(_settings(), client=client, embedder=FakeEmbedder())
+    monkeypatch.setattr(
+        "capitalcite.api.routes.search.create_retrieval_setup",
+        lambda _settings: setup,
+    )
+    application = create_app()
+    with TestClient(application) as http:
+        response = http.post("/search", json={"query": "cet1"})
+    assert response.status_code == 503
+    assert closed["count"] == 1
+
+
 def test_post_search_503_when_qdrant_is_down() -> None:
     client = AsyncQdrantClient(url="http://127.0.0.1:1", timeout=1, check_compatibility=False)
     setup = setup_retrieval(_settings(), client=client, embedder=FakeEmbedder())
@@ -96,6 +118,21 @@ def test_post_search_503_when_qdrant_is_down() -> None:
     with TestClient(application) as http:
         response = http.post("/search", json={"query": "cet1"})
     assert response.status_code == 503
+
+
+def test_api_and_cli_do_not_import_store_clients() -> None:
+    root = Path("src/capitalcite")
+    files = (
+        root / "cli.py",
+        root / "api" / "app.py",
+        root / "api" / "routes" / "search.py",
+        root / "api" / "routes" / "health.py",
+    )
+    banned = ("qdrant_client", "fastembed")
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        for needle in banned:
+            assert needle not in text, f"{path} mentions {needle}"
 
 
 def test_health_does_not_construct_qdrant(monkeypatch: pytest.MonkeyPatch) -> None:

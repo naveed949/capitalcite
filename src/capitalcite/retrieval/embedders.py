@@ -138,6 +138,10 @@ class FastEmbedEmbedder:
         return loaded
 
 
+_LOCAL: dict[EmbedderName, FastEmbedEmbedder] = {}
+_LOCAL_LOCK = threading.Lock()
+
+
 class OpenAIEmbedder:
     """text-embedding-3-small over httpx. Sparse counts stay local."""
 
@@ -184,7 +188,13 @@ def build_embedder(settings_embedder: EmbedderName, api_key: str | None) -> Embe
         if not key:
             raise EmbedderNotConfigured("EMBEDDER=openai-small requires OPENAI_API_KEY")
         return OpenAIEmbedder(spec, key)
-    return FastEmbedEmbedder(spec)
+    with _LOCAL_LOCK:
+        cached = _LOCAL.get(settings_embedder)
+        if cached is not None:
+            return cached
+        embedder = FastEmbedEmbedder(spec)
+        _LOCAL[settings_embedder] = embedder
+        return embedder
 
 
 def _embed_fake(text: str, size: int) -> TextEmbedding:

@@ -25,6 +25,7 @@ from capitalcite.ingest.store import FilingStore
 from capitalcite.logging import configure_logging
 from capitalcite.retrieval import (
     EmbedderName,
+    IndexReceipt,
     IndexUnavailable,
     RetrievalError,
     build_index,
@@ -334,8 +335,15 @@ def index_cmd(
         }
     )
     try:
-        setup = create_retrieval_setup(chosen)
-        receipt = asyncio.run(build_index(setup, root))
+
+        async def _run() -> IndexReceipt:
+            setup = create_retrieval_setup(chosen)
+            try:
+                return await build_index(setup, root)
+            finally:
+                await setup.aclose()
+
+        receipt = asyncio.run(_run())
     except IndexUnavailable as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=2) from exc

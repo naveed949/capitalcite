@@ -160,6 +160,16 @@ def test_embedder_names_match_settings() -> None:
         )
 
 
+def test_local_embedder_is_cached() -> None:
+    from capitalcite.retrieval.embedders import build_embedder
+
+    first = build_embedder(EmbedderName.BGE_SMALL, None)
+    second = build_embedder(EmbedderName.BGE_SMALL, None)
+    other = build_embedder(EmbedderName.MINILM, None)
+    assert first is second
+    assert other is not first
+
+
 def test_openai_embedder_requires_key() -> None:
     settings = _settings(embedder="openai-small", openai_api_key=None)
     with pytest.raises(EmbedderNotConfigured, match="OPENAI_API_KEY"):
