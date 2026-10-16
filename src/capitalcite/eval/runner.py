@@ -5,13 +5,16 @@ from __future__ import annotations
 import subprocess
 import tempfile
 from collections.abc import Sequence
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from qdrant_client import AsyncQdrantClient
 
+from capitalcite.atomic import atomic_write_text
 from capitalcite.chunking.models import ChunkerName
 from capitalcite.chunking.service import run_chunk
 from capitalcite.config import Settings
+from capitalcite.eval.diagnose import diagnose_bm25, items_for_probe
 from capitalcite.eval.judge import recall_items, score_item
 from capitalcite.eval.models import AggregateScore, ArmResult, EvalReport
 from capitalcite.golden.store import ValidationError, load_golden_set
@@ -92,6 +95,8 @@ async def run_suite(
     retrieve_k = max(k, _RETRIEVE_K)
     arms: list[ArmResult] = []
     embedder_id = "fake:deterministic" if small else ""
+    diagnostics: list[str] = []
+    probe_items = items_for_probe(items)
 
     with tempfile.TemporaryDirectory(prefix="capitalcite-eval-") as tmp:
         work_root = Path(tmp)
@@ -123,6 +128,8 @@ async def run_suite(
             embedder_id = setup.config.embedder_id
             try:
                 receipt = await build_index(setup, work)
+                if probe_items:
+                    diagnostics.append(await diagnose_bm25(setup, probe_items))
                 for mode in modes:
                     scores = []
                     for item in items:
@@ -156,12 +163,19 @@ async def run_suite(
         k=k,
         n_items=len(items),
         embedder_id=embedder_id,
+        fastembed_version=_package_version("fastembed"),
+        qdrant_client_version=_package_version("qdrant-client"),
         arms=tuple(arms),
     )
     if write:
         from capitalcite.eval.report import write_report
 
-        write_report(report, out_dir)
+        json_path, _ = write_report(report, out_dir)
+        if diagnostics:
+            atomic_write_text(
+                json_path.with_name(f"{json_path.stem}-bm25-diagnose.md"),
+                "\n".join(diagnostics),
+            )
     return report
 
 
@@ -201,3 +215,10 @@ def _git_sha() -> str:
     if result.returncode != 0 or not sha:
         return "unknown"
     return sha
+
+
+def _package_version(name: str) -> str:
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return ""

@@ -8,10 +8,12 @@ from typer.testing import CliRunner
 
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.cli import app
+from capitalcite.eval.diagnose import rare_token_examples
 from capitalcite.eval.judge import relevant_ranks, score_item
 from capitalcite.eval.models import AggregateScore, EvalReport, ItemScore, dcg, idcg
 from capitalcite.eval.report import BEGIN_MARK, END_MARK, render_markdown, update_readme
 from capitalcite.golden.models import Evidence, EvidenceRole, GoldenItem, ItemSource, QuestionType
+from capitalcite.retrieval.hashing import tokens
 from capitalcite.retrieval.types import Hit, RetrievalMode
 
 runner = CliRunner()
@@ -56,6 +58,26 @@ def test_binary_ndcg_one_hit_covering_two_spans() -> None:
     score = ItemScore(item_id="two-gold", gold_spans=2, covered_at=(1,))
     assert score.ndcg_at(5) == dcg((1,), 5) / idcg(2)
     assert idcg(2) == 1.0 + 1 / math.log2(3)
+
+
+def test_cet1_and_named_rare_tokens_survive() -> None:
+    assert tokens("CET1 Wells Fargo SLR 2025") == ["cet1", "wells", "fargo", "slr", "2025"]
+    assert rare_token_examples() == ("cet1", "wells", "fargo", "slr", "2025")
+
+
+def test_ndcg_one_gold_two_overlapping_hits_is_one() -> None:
+    item = _item()
+    hits = [
+        Hit(score=1.0, chunk=_chunk(doc_id=_DOC, start=487800, end=487850)),
+        Hit(score=0.9, chunk=_chunk(doc_id=_DOC, start=487840, end=487900)),
+    ]
+    scored = score_item(item, hits)
+    assert scored.gold_spans == 1
+    assert scored.covered_at == (1,)
+    assert scored.ndcg_at(5) == 1.0
+    leftover = ItemScore(item_id="dup", gold_spans=1, covered_at=(1, 2))
+    assert leftover.ndcg_at(5) == 1.0
+    assert leftover.ndcg_at(5) <= 1.0
 
 
 def test_relevant_ranks_use_span_overlap() -> None:
@@ -146,6 +168,13 @@ def test_small_bm25_writes_json(tmp_path: Path) -> None:
     assert body["n_items"] >= 1
     assert body["arms"][0]["config_hash"]
     assert body["arms"][0]["mode"] == "bm25"
+    assert "fastembed_version" in body
+    assert "qdrant_client_version" in body
+    diagnose_files = list(tmp_path.glob("*-bm25-diagnose.md"))
+    assert len(diagnose_files) == 1
+    text = diagnose_files[0].read_text(encoding="utf-8")
+    assert "idf_modifier=IDF" in text
+    assert "CET1 -> cet1" in text
 
 
 def test_render_markdown_names_probe() -> None:
@@ -153,6 +182,10 @@ def test_render_markdown_names_probe() -> None:
     table = render_markdown(report)
     assert "cc-h-013 rank 8" in table
     assert "config_hash" in table
+    assert "credits each gold span once" in table
+    assert "Noise floor: n=2, one item is 0.500 recall." in table
+    assert "fastembed=absent" in table
+    assert "qdrant-client=absent" in table
 
 
 def load_report_from_text(raw: str) -> EvalReport:

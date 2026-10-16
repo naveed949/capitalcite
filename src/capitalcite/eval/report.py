@@ -14,7 +14,9 @@ END_MARK = "<!-- END RETRIEVAL EVAL -->"
 def render_markdown(report: EvalReport) -> str:
     lines = [
         f"suite={report.suite} sha={report.git_sha} small={str(report.small).lower()} "
-        f"items={report.n_items} k={report.k} embedder={report.embedder_id}",
+        f"items={report.n_items} k={report.k} embedder={report.embedder_id} "
+        f"fastembed={report.fastembed_version or 'absent'} "
+        f"qdrant-client={report.qdrant_client_version or 'absent'}",
         "",
         "| config_hash | chunker | embedder | mode | n | Recall@5 | MRR@5 | nDCG@5 "
         "| Recall@10 | MRR@10 | nDCG@10 | misses@5 |",
@@ -51,8 +53,8 @@ def render_markdown(report: EvalReport) -> str:
             "A hit is relevant when chunk.doc_id matches and the half-open spans overlap.",
             "Recall@k is the fraction of items with any relevant hit in the top k.",
             "MRR@k is the mean of 1/rank of the first relevant hit (0 if past k).",
-            "nDCG@k is binary DCG / IDCG(min(k, gold_span_count)).",
-            f"One item moves recall by {1 / report.n_items:.3f} at n={report.n_items}."
+            "nDCG@k credits each gold span once, at its first covering hit, and is clamped at 1.",
+            f"Noise floor: n={report.n_items}, one item is {1 / report.n_items:.3f} recall."
             if report.n_items
             else "n=0 so a one-item move is undefined.",
             "RAGAS context precision/recall and hybrid+rerank are UNVERIFIED.",
@@ -128,8 +130,13 @@ def _readme_table(report: EvalReport) -> str:
     lines.append("")
     lines.append(
         f"Generated from `evals/results/{_stem(report)}.json` "
-        f"(sha `{report.git_sha[:12]}`, embedder `{report.embedder_id}`). "
-        "RAGAS context precision/recall is UNVERIFIED (no LLM key)."
+        f"(sha `{report.git_sha[:12]}`, embedder `{report.embedder_id}`, "
+        f"fastembed `{report.fastembed_version or 'absent'}`, "
+        f"qdrant-client `{report.qdrant_client_version or 'absent'}`). "
+        f"Noise floor: n={report.n_items}, one item is "
+        f"{(1 / report.n_items) if report.n_items else 0:.3f} recall. "
+        "RAGAS context precision/recall is UNVERIFIED (no LLM key). "
+        "minilm is UNVERIFIED (a second full embed is not cheap on this corpus)."
     )
     return "\n".join(lines) + "\n"
 

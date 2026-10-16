@@ -40,10 +40,11 @@ class ItemScore(BaseModel):
     def ndcg_at(self, k: int) -> float:
         if k < 1:
             raise ValueError("k must be at least 1")
+        credited = self.covered_at[: self.gold_spans]
         ideal = idcg(min(k, self.gold_spans))
         if ideal == 0.0:
             return 0.0
-        return dcg(self.covered_at, k) / ideal
+        return min(1.0, dcg(credited, k) / ideal)
 
 
 class AggregateScore(BaseModel):
@@ -115,6 +116,8 @@ class EvalReport(BaseModel):
     k: int = Field(ge=1)
     n_items: int = Field(ge=0)
     embedder_id: str
+    fastembed_version: str = ""
+    qdrant_client_version: str = ""
     arms: tuple[ArmResult, ...]
 
 

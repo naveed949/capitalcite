@@ -18,12 +18,20 @@ def recall_items(items: Sequence[GoldenItem]) -> tuple[GoldenItem, ...]:
 
 
 def relevant_ranks(hits: Sequence[Hit], evidence: Sequence[Evidence]) -> tuple[int, ...]:
-    """1-based ranks of hits whose chunk overlaps any spanned evidence row."""
+    """1-based first-cover ranks, one per gold span, in hit order."""
     gold = [row for row in evidence if _spanned(row)]
+    uncovered = list(range(len(gold)))
     ranks: list[int] = []
     for index, hit in enumerate(hits, start=1):
-        if any(span_overlap(hit.chunk, row) for row in gold):
-            ranks.append(index)
+        still: list[int] = []
+        for item_index in uncovered:
+            if span_overlap(hit.chunk, gold[item_index]):
+                ranks.append(index)
+            else:
+                still.append(item_index)
+        uncovered = still
+        if not uncovered:
+            break
     return tuple(ranks)
 
 

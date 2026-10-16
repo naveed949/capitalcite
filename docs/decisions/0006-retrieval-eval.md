@@ -40,12 +40,11 @@ It does not care whether gold is first or fifth.
 MRR@k is the mean of `1/rank` of the first relevant hit. A miss past k
 is 0. It rewards putting gold first.
 
-nDCG@k is binary discounted cumulative gain over the relevant ranks,
-divided by the ideal DCG of `min(k, gold_span_count)` documents at the
-top. A rank-2 hit scores `1 / log2(3)`, not 0.5. One retrieved chunk
-that covers two gold spans still contributes one gain. The ideal still
-counts both spans. That is the binary definition. There is no graded
-relevance.
+nDCG@k credits each gold span once, at the first hit that covers it,
+then divides by the ideal DCG of `min(k, gold_span_count)` documents at
+the top, then clamps at 1. Two overlapping hits on one span do not add
+a second gain. A rank-2 first cover scores `1 / log2(3)`, not 0.5.
+There is no graded relevance.
 
 The published cutoff is k=5, the window the #24 baseline talked about.
 Retrieve still walks 10 so a rank-8 miss such as `cc-h-013` is visible
