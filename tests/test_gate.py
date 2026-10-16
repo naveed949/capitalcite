@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from capitalcite.agent.tools import ToolRegistry
 from capitalcite.agent.types import TOOL_NAMES, ToolResult
 from capitalcite.cli import app
+from capitalcite.config import get_settings
 from capitalcite.gate import (
     BrokenPolicy,
     DenyReason,
@@ -20,6 +21,7 @@ from capitalcite.gate import (
     run_redteam,
 )
 from capitalcite.gate.policy import Policy
+from capitalcite.trace import MemoryExporter, ObservationKind, configure_for_tests, reset_for_tests
 
 runner = CliRunner()
 
@@ -97,6 +99,53 @@ async def test_allow_calls_the_runner() -> None:
     result = await gate.execute("calculator", {"expression": "1+1"})
     assert result.ok is True
     assert result.value == "2"
+
+
+def test_decide_records_allow_and_deny_spans() -> None:
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    try:
+        gate = Gate(load_policy(None), ToolRegistry({}))
+        denied = gate.decide("shell", {"cmd": "ls"})
+        allowed = gate.decide("calculator", {"expression": "1+1"})
+        assert denied.kind == "deny"
+        assert allowed.kind == "allow"
+        records = [row for row in exporter.finished() if row.kind is ObservationKind.GATE]
+        assert len(records) == 2
+        deny, allow = records
+        assert deny.attributes["capitalcite.tool"] == "shell"
+        assert deny.attributes["capitalcite.gate.decision"] == "deny"
+        assert deny.attributes["capitalcite.gate.reason"] == "unknown_tool"
+        assert allow.attributes["capitalcite.tool"] == "calculator"
+        assert allow.attributes["capitalcite.gate.decision"] == "allow"
+        assert allow.attributes["capitalcite.gate.reason"] == "allow"
+    finally:
+        reset_for_tests()
+
+
+async def test_execute_deny_records_gate_without_running_the_tool() -> None:
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    calls: list[str] = []
+
+    async def boom(args: Mapping[str, object]) -> ToolResult:
+        calls.append("ran")
+        return ToolResult(ok=True, tool="calculator", args=dict(args), detail="boom")
+
+    try:
+        gate = Gate(load_policy(None), ToolRegistry({"calculator": boom}))
+        result = await gate.execute("shell", {"cmd": "ls"})
+        assert result.ok is False
+        assert calls == []
+        kinds = [row.kind for row in exporter.finished()]
+        assert ObservationKind.GATE in kinds
+        assert ObservationKind.TOOL not in kinds
+        (record,) = [row for row in exporter.finished() if row.kind is ObservationKind.GATE]
+        assert record.attributes["capitalcite.gate.decision"] == "deny"
+        assert record.attributes["capitalcite.gate.reason"] == "unknown_tool"
+        assert record.attributes["capitalcite.tool"] == "shell"
+    finally:
+        reset_for_tests()
 
 
 def test_missing_policy_file_denies(tmp_path: Path) -> None:
@@ -268,6 +317,32 @@ def test_cli_decide_unknown_tool() -> None:
     assert body["kind"] == "deny"
     assert body["reason"] == "unknown_tool"
     assert body["detail"] == "unknown tool"
+
+
+def test_cli_decide_writes_a_gate_span(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "spans.jsonl"
+    monkeypatch.setenv("CAPITALCITE_TRACE_FILE", str(path))
+    get_settings.cache_clear()
+    try:
+        result = runner.invoke(
+            app,
+            ["gate", "decide", "--tool", "shell", "--args", '{"cmd":"ls"}'],
+        )
+        assert result.exit_code == 0
+        rows = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        assert len(rows) == 1
+        assert rows[0]["name"] == "gate"
+        attrs = rows[0]["attributes"]
+        assert attrs["capitalcite.tool"] == "shell"
+        assert attrs["capitalcite.gate.decision"] == "deny"
+        assert attrs["capitalcite.gate.reason"] == "unknown_tool"
+    finally:
+        get_settings.cache_clear()
+        reset_for_tests()
 
 
 def test_cli_decide_invalid_args() -> None:

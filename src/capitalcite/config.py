@@ -124,13 +124,32 @@ class Settings(BaseSettings):
     langfuse_host: str = "http://localhost:3000"
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
+    langfuse_tracing_enabled: bool = Field(
+        default=True,
+        description=(
+            "When false, the Langfuse SDK is not opened. Missing keys are still a no-op. "
+            "Tests set LANGFUSE_TRACING_ENABLED=false so a developer .env cannot dial :3000."
+        ),
+    )
+    langfuse_sample_rate: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Client-side trace sampling. 0 exports nothing. 1 keeps every root.",
+    )
+    capitalcite_trace_file: Path | None = Field(
+        default=None,
+        description=(
+            "JSONL of finished spans. verify.sh sets this. Does not require Langfuse keys."
+        ),
+    )
 
     @field_validator("qdrant_url")
     @classmethod
     def qdrant_url_stripped(cls, value: str) -> str:
         return value.strip()
 
-    @field_validator("qdrant_path", "gate_policy", mode="before")
+    @field_validator("qdrant_path", "gate_policy", "capitalcite_trace_file", mode="before")
     @classmethod
     def blank_path_is_none(cls, value: object) -> object:
         if value is None:

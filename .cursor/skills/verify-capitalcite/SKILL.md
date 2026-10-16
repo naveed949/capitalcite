@@ -92,6 +92,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite gate decide --tool shell --args '{"cmd":"ls"}'` | exit 0 + JSON `kind` `deny`; unknown tool, invalid args, and a broken policy file each deny |
 | CLI | `capitalcite gate redteam` | exit 0 + `failed` 0; injection text cannot run a denied tool |
 | CLI | `capitalcite gate bench` | exit 0 + `p95_ms`; no network |
+| File | `CAPITALCITE_TRACE_FILE` JSONL | after `capitalcite gate decide`, JSONL has deny spans with tool and reason; after fake `POST /ask`, JSONL has `ask` + `retrieve`; after `eval --small`, an `eval` span has `git_sha` and `config_hash`. Live Langfuse `:3000` is UNVERIFIED when down |
 | CLI | `capitalcite eval --suite golden --small` | exit 0 + Recall@5 table; FakeEmbedder, no download |
 | CLI | `capitalcite eval --suite golden` | exit 0 + six-row dense/bm25/hybrid × section/fixed table on the twelve 10-Ks plus an Agent vs RAG recall@k line on comparison/multi-hop items (`fake/heuristic planner`); UNVERIFIED only when ingest could not run |
 | Compose (optional) | `docker compose config` | exit 0 |
@@ -140,6 +141,8 @@ Each run of `scripts/verify.sh` writes at least:
 | `ask.body.json` / `ask.http` / `ask.cc-u-001.body.json` **or** `ask.unreachable` | Live `POST /ask` with `ASK_MODEL=fake` on that same index. `ask.openai.unverified` when live OpenAI was not run |
 | `gate.help.out` / `gate.validate.out` / `gate.decide.*.body.json` / `gate.redteam.body.json` / `gate.bench.body.json` | Offline fail-closed gate: shipped policy loads, unknown/invalid/broken deny, red-team `failed` is 0, `p95_ms` is recorded |
 | `agent.cc-h-055.body.json` / `agent.cc-h-061.body.json` **or** `agent.unreachable` | Live `POST /ask` `path=agent` with the fake model on comparison and multi-hop items. `agent.openai.unverified` when live OpenAI was not run |
+| `spans.jsonl` **or** `spans.skipped` | File-exporter JSONL of ask/retrieve (and eval) spans. Proof of the tree without Langfuse |
+| `langfuse.skipped` | Live Langfuse UI on `:3000` was not reachable. UNVERIFIED, not a pass |
 | `quote-sanity.out` / `quote-sanity.exit` **or** `quote-sanity.skipped` | Quote-index recall sanity, not the 12-filing corpus eval |
 | `eval.help.out` / `eval.help.exit` | `capitalcite eval --help` (must list `--suite` and `--small`) |
 | `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |
@@ -202,6 +205,7 @@ Expected later handles (do not add empty stubs now):
 | #7 answers | `POST /ask` (landed) |
 | #8 agent | `POST /ask` `path=agent` (landed) |
 | #9 gate | `capitalcite gate decide` (landed) |
+| #11 tracing | `CAPITALCITE_TRACE_FILE` JSONL after `/ask` (landed). Live Langfuse UI is UNVERIFIED without `:3000` |
 | #10 audit | `capitalcite audit verify` |
 
 `./scripts/verify.sh` runs `capitalcite eval --suite golden --small` always, and the twelve-filing bge-small matrix when ingest succeeded. A missing corpus is `UNVERIFIED`, not a pass.

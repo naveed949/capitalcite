@@ -36,6 +36,7 @@ from capitalcite.retrieval import (
     build_index,
     create_retrieval_setup,
 )
+from capitalcite.trace import configure_settings, shutdown
 
 app = typer.Typer(
     name="capitalcite",
@@ -112,7 +113,11 @@ def gate_decide(
         typer.echo("error: --args must be a JSON object", err=True)
         raise typer.Exit(code=1)
     gate = Gate(load_policy(policy), ToolRegistry({}))
-    typer.echo(gate.decide(tool, parsed).model_dump_json())
+    configure_settings(get_settings())
+    try:
+        typer.echo(gate.decide(tool, parsed).model_dump_json())
+    finally:
+        shutdown()
 
 
 @gate_app.command("redteam")
@@ -501,11 +506,11 @@ def eval_cmd(
         except (OSError, ValueError) as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
-        for report in reports:
-            typer.echo(render_markdown(report), nl=False)
+        for stored in reports:
+            typer.echo(render_markdown(stored), nl=False)
             if readme is not None:
                 try:
-                    update_readme(readme, report)
+                    update_readme(readme, stored)
                 except ValueError as exc:
                     typer.echo(f"error: {exc}", err=True)
                     raise typer.Exit(code=1) from exc
@@ -513,14 +518,15 @@ def eval_cmd(
 
     settings = _eval_settings(small)
     configure_logging(settings.log_level)
+    configure_settings(settings)
     chunkers = tuple(chunker) if chunker else (ChunkerName.SECTION, ChunkerName.FIXED)
+    report: EvalReport | None = None
     try:
-        modes = _parse_modes(mode)
-    except ValueError as exc:
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
-
-    try:
+        try:
+            modes = _parse_modes(mode)
+        except ValueError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
 
         async def _run() -> EvalReport:
             return await run_suite(
@@ -543,6 +549,10 @@ def eval_cmd(
     except EvalUnverified as exc:
         typer.echo(f"unverified: {exc}", err=True)
         raise typer.Exit(code=2) from exc
+    finally:
+        shutdown()
+    if report is None:
+        raise typer.Exit(code=1)
 
     typer.echo(
         "eval "

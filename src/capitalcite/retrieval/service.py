@@ -51,6 +51,7 @@ from capitalcite.retrieval.types import (
     TextEmbedding,
     YearPeriod,
 )
+from capitalcite.trace import ObservationKind, Span, observation, retrieval_attrs
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,32 @@ async def retrieve(
     if limit < 1:
         raise ValueError("k must be at least 1")
     name = collection_name(setup.config)
+    with observation(
+        "retrieve",
+        ObservationKind.RETRIEVE,
+        **{"capitalcite.mode": mode.value, "capitalcite.collection": name},
+    ) as span:
+        return await _retrieve_body(
+            setup,
+            query,
+            mode=mode,
+            limit=limit,
+            filters=filters,
+            name=name,
+            span=span,
+        )
+
+
+async def _retrieve_body(
+    setup: RetrievalSetup,
+    query: str,
+    *,
+    mode: RetrievalMode,
+    limit: int,
+    filters: SearchFilters | None,
+    name: str,
+    span: Span,
+) -> list[Hit]:
     client = setup._client
     if not await _collection_ready(client, name):
         raise IndexNotBuilt(name)
@@ -295,7 +322,9 @@ async def retrieve(
         )
     else:
         assert_never(mode)
-    return _hits(response.points)[:limit]
+    hits = _hits(response.points)[:limit]
+    span.set(**retrieval_attrs(hits, mode=mode.value, collection=name, k=limit))
+    return hits
 
 
 def _read_chunks(input_dir: Path, expected: ChunkerName) -> list[Chunk]:

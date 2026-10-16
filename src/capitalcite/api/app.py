@@ -12,13 +12,18 @@ from capitalcite.api.routes.health import router as health_router
 from capitalcite.api.routes.search import router as search_router
 from capitalcite.config import get_settings
 from capitalcite.logging import configure_logging
+from capitalcite.trace import configure_settings, shutdown
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.log_level)
-    yield
+    configure_settings(settings)
+    try:
+        yield
+    finally:
+        shutdown()
 
 
 def create_app() -> FastAPI:

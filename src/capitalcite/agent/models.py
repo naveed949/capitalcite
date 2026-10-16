@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from capitalcite.agent.types import PlannerDecision, ToolCall, TraceStep
 from capitalcite.ask.guard import tickers_named, years_named
-from capitalcite.ask.models import OpenAIStructuredModel, StructuredModel
+from capitalcite.ask.models import OpenAIStructuredModel, StructuredModel, _usage_tokens
 from capitalcite.ask.types import (
     AskModelName,
     DraftCite,
@@ -20,6 +20,7 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.retrieval.types import Hit
+from capitalcite.trace import ObservationKind, generation_attrs, observation
 
 _CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -60,6 +61,15 @@ class FakeAgentModel:
         hits: Sequence[Hit],
     ) -> PlannerDecision:
         self.plan_calls += 1
+        with observation("plan", ObservationKind.GENERATE, **generation_attrs(model="fake")):
+            return self._plan(question, traces, hits)
+
+    def _plan(
+        self,
+        question: str,
+        traces: Sequence[TraceStep],
+        hits: Sequence[Hit],
+    ) -> PlannerDecision:
         _ = hits
         if self._plan_script is not None:
             return self._plan_script
@@ -96,16 +106,17 @@ class FakeAgentModel:
 
     async def complete(self, question: str, hits: Sequence[Hit]) -> ModelDraft:
         self.complete_calls += 1
-        if self._draft is not None:
-            return self._draft
         if self._synthesizer is not None:
             return await self._synthesizer.complete(question, hits)
-        chosen = _hits_for_question(question, hits)
-        if not chosen:
-            return ModelDraft(kind="refused", refusal_reason="no passages were retrieved")
-        citations = tuple(DraftCite(index=index, quote=hit.chunk.text) for index, hit in chosen)
-        answer = " ".join(hit.chunk.text for _index, hit in chosen)
-        return ModelDraft(kind="answered", answer=answer, citations=citations)
+        with observation("complete", ObservationKind.GENERATE, **generation_attrs(model="fake")):
+            if self._draft is not None:
+                return self._draft
+            chosen = _hits_for_question(question, hits)
+            if not chosen:
+                return ModelDraft(kind="refused", refusal_reason="no passages were retrieved")
+            citations = tuple(DraftCite(index=index, quote=hit.chunk.text) for index, hit in chosen)
+            answer = " ".join(hit.chunk.text for _index, hit in chosen)
+            return ModelDraft(kind="answered", answer=answer, citations=citations)
 
 
 class OpenAIAgentModel:
@@ -160,26 +171,40 @@ class OpenAIAgentModel:
         return await self._inner.complete(question, hits)
 
     async def _post(self, messages: list[dict[str, str]]) -> str:
-        try:
-            async with httpx.AsyncClient(timeout=30.0, transport=self._transport) as client:
-                response = await client.post(
-                    _CHAT_URL,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={
-                        "model": self._model,
-                        "response_format": {"type": "json_object"},
-                        "messages": messages,
-                    },
+        with observation(
+            "plan",
+            ObservationKind.GENERATE,
+            **generation_attrs(model=self._model),
+        ) as span:
+            try:
+                async with httpx.AsyncClient(timeout=30.0, transport=self._transport) as client:
+                    response = await client.post(
+                        _CHAT_URL,
+                        headers={"Authorization": f"Bearer {self._api_key}"},
+                        json={
+                            "model": self._model,
+                            "response_format": {"type": "json_object"},
+                            "messages": messages,
+                        },
+                    )
+            except httpx.HTTPError as exc:
+                raise ModelUnavailable("openai chat completion request failed") from exc
+            if response.status_code != 200:
+                raise ModelUnavailable(f"openai chat completion HTTP {response.status_code}")
+            try:
+                payload = response.json()
+            except json.JSONDecodeError as exc:
+                raise ModelUnavailable("openai chat completion response was not JSON") from exc
+            content = _message_content(payload)
+            input_tokens, output_tokens = _usage_tokens(payload)
+            span.set(
+                **generation_attrs(
+                    model=self._model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
-        except httpx.HTTPError as exc:
-            raise ModelUnavailable("openai chat completion request failed") from exc
-        if response.status_code != 200:
-            raise ModelUnavailable(f"openai chat completion HTTP {response.status_code}")
-        try:
-            payload = response.json()
-        except json.JSONDecodeError as exc:
-            raise ModelUnavailable("openai chat completion response was not JSON") from exc
-        return _message_content(payload)
+            )
+            return content
 
 
 def build_agent_model(

@@ -31,6 +31,7 @@ from capitalcite.retrieval import (
     retrieve,
     setup_retrieval,
 )
+from capitalcite.trace import ObservationKind, eval_attrs, observation
 
 
 class EvalFailed(Exception):
@@ -101,87 +102,109 @@ async def run_suite(
     probe_items = items_for_probe(items)
     hops = hop_items(items)
     agent_vs_rag: AgentVsRag | None = None
+    git_sha = _git_sha()
 
-    with tempfile.TemporaryDirectory(prefix="capitalcite-eval-") as tmp:
-        work_root = Path(tmp)
-        qdrant_dir = work_root / "qdrant"
-        qdrant_dir.mkdir()
-        for chunker in chunkers:
-            work = work_root / chunker.value
-            summary = run_chunk(
-                input_root=source,
-                output=FilingStore(work),
-                chunker=chunker,
-                size=settings.chunk_size,
-                overlap=settings.chunk_overlap,
-            )
-            if summary.failed:
-                reasons = "; ".join(f"{path}: {reason}" for path, reason in summary.failed)
-                raise EvalFailed(f"chunk failed: {reasons}")
-            if summary.files == 0:
-                raise EvalUnverified(f"no filings to chunk under {source}")
+    with observation(
+        "eval",
+        ObservationKind.EVAL,
+        **eval_attrs(git_sha=git_sha, suite=suite, small=small),
+    ) as span:
+        with tempfile.TemporaryDirectory(prefix="capitalcite-eval-") as tmp:
+            work_root = Path(tmp)
+            qdrant_dir = work_root / "qdrant"
+            qdrant_dir.mkdir()
+            for chunker in chunkers:
+                work = work_root / chunker.value
+                summary = run_chunk(
+                    input_root=source,
+                    output=FilingStore(work),
+                    chunker=chunker,
+                    size=settings.chunk_size,
+                    overlap=settings.chunk_overlap,
+                )
+                if summary.failed:
+                    reasons = "; ".join(f"{path}: {reason}" for path, reason in summary.failed)
+                    raise EvalFailed(f"chunk failed: {reasons}")
+                if summary.files == 0:
+                    raise EvalUnverified(f"no filings to chunk under {source}")
 
-            setup = _setup(
-                settings,
-                chunker=chunker,
-                embedder=chosen_embedder,
-                small=small,
-                qdrant_dir=qdrant_dir,
-                search_k=retrieve_k,
-            )
-            embedder_id = setup.config.embedder_id
-            sparse_id = setup.config.sparse_id
-            try:
-                receipt = await build_index(setup, work)
-                if probe_items:
-                    diagnostics.append(await diagnose_bm25(setup, probe_items))
-                for mode in modes:
-                    scores = []
-                    for item in items:
-                        hits = await retrieve(setup, item.question, mode=mode, k=retrieve_k)
-                        scores.append(score_item(item, hits))
-                    arms.append(
-                        ArmResult(
-                            config_hash=receipt.config_hash,
-                            collection_name=receipt.collection_name,
-                            embedder_id=receipt.embedder_id,
-                            chunker=chunker,
-                            chunk_size=setup.config.chunk_size,
-                            chunk_overlap=setup.config.chunk_overlap,
-                            mode=mode,
-                            k=k,
-                            rrf_k=setup.rrf_k,
-                            point_count=receipt.point_count,
-                            metrics=AggregateScore.from_items(scores),
-                            item_scores=tuple(scores),
+                setup = _setup(
+                    settings,
+                    chunker=chunker,
+                    embedder=chosen_embedder,
+                    small=small,
+                    qdrant_dir=qdrant_dir,
+                    search_k=retrieve_k,
+                )
+                embedder_id = setup.config.embedder_id
+                sparse_id = setup.config.sparse_id
+                try:
+                    receipt = await build_index(setup, work)
+                    if probe_items:
+                        diagnostics.append(await diagnose_bm25(setup, probe_items))
+                    for mode in modes:
+                        with observation(
+                            "eval-arm",
+                            ObservationKind.EVAL,
+                            **eval_attrs(
+                                git_sha=git_sha,
+                                suite=suite,
+                                small=small,
+                                config_hash=receipt.config_hash,
+                            ),
+                        ) as arm:
+                            arm.set(
+                                **{
+                                    "capitalcite.mode": mode.value,
+                                    "capitalcite.collection": receipt.collection_name,
+                                }
+                            )
+                            scores = []
+                            for item in items:
+                                hits = await retrieve(setup, item.question, mode=mode, k=retrieve_k)
+                                scores.append(score_item(item, hits))
+                        arms.append(
+                            ArmResult(
+                                config_hash=receipt.config_hash,
+                                collection_name=receipt.collection_name,
+                                embedder_id=receipt.embedder_id,
+                                chunker=chunker,
+                                chunk_size=setup.config.chunk_size,
+                                chunk_overlap=setup.config.chunk_overlap,
+                                mode=mode,
+                                k=k,
+                                rrf_k=setup.rrf_k,
+                                point_count=receipt.point_count,
+                                metrics=AggregateScore.from_items(scores),
+                                item_scores=tuple(scores),
+                            )
                         )
-                    )
-                if hops and chunker == ChunkerName.SECTION and RetrievalMode.HYBRID in modes:
-                    agent_vs_rag = await compare_agent_vs_rag(
-                        setup,
-                        hops,
-                        chunker=chunker,
-                        mode=RetrievalMode.HYBRID,
-                        retrieve_k=retrieve_k,
-                    )
-            except RetrievalError as exc:
-                raise EvalUnverified(str(exc)) from exc
-            finally:
-                await setup.aclose()
-
-    report = EvalReport(
-        git_sha=_git_sha(),
-        suite=suite,
-        small=small,
-        k=k,
-        n_items=len(items),
-        embedder_id=embedder_id,
-        sparse_id=sparse_id,
-        fastembed_version=_package_version("fastembed"),
-        qdrant_client_version=_package_version("qdrant-client"),
-        arms=tuple(arms),
-        agent_vs_rag=agent_vs_rag,
-    )
+                    if hops and chunker == ChunkerName.SECTION and RetrievalMode.HYBRID in modes:
+                        agent_vs_rag = await compare_agent_vs_rag(
+                            setup,
+                            hops,
+                            chunker=chunker,
+                            mode=RetrievalMode.HYBRID,
+                            retrieve_k=retrieve_k,
+                        )
+                except RetrievalError as exc:
+                    raise EvalUnverified(str(exc)) from exc
+                finally:
+                    await setup.aclose()
+        report = EvalReport(
+            git_sha=git_sha,
+            suite=suite,
+            small=small,
+            k=k,
+            n_items=len(items),
+            embedder_id=embedder_id,
+            sparse_id=sparse_id,
+            fastembed_version=_package_version("fastembed"),
+            qdrant_client_version=_package_version("qdrant-client"),
+            arms=tuple(arms),
+            agent_vs_rag=agent_vs_rag,
+        )
+        span.set(**tag_eval(report))
     if write:
         from capitalcite.eval.report import write_report
 
@@ -192,6 +215,18 @@ async def run_suite(
                 "\n".join(diagnostics),
             )
     return report
+
+
+def tag_eval(report: EvalReport) -> dict[str, str | int | float | bool]:
+    """Root attributes. A single shared config hash is included."""
+    hashes = {arm.config_hash for arm in report.arms}
+    config_hash = next(iter(hashes)) if len(hashes) == 1 else None
+    return eval_attrs(
+        git_sha=report.git_sha,
+        suite=report.suite,
+        small=report.small,
+        config_hash=config_hash,
+    )
 
 
 def _setup(

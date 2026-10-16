@@ -57,7 +57,7 @@ flowchart LR
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, and `calculator`. Unknown names are denied. HTTP tools take an injected client so tests stay offline. | 🟡 agent tools |
 | Fail-closed gate | JSON allow-list per tool with argument schemas and per-request budgets. Unknown names, invalid args, and a policy-load failure are denies. `capitalcite gate decide` prints the decision. Denied calls do not run. | 🟡 `capitalcite gate` |
 | Audit log | Append-only, hash-chained JSONL of every tool call, decision, and input/output digest | ⬜ planned |
-| Observability | Langfuse traces for retrieval, LLM calls, tool calls, and latency/cost | ⬜ planned |
+| Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
 | Evals in CI | RAGAS/DeepEval and behavioral contract tests; the PR fails on regression past a set threshold | ⬜ planned |
 | Deploy | Azure Container Apps | ⬜ planned |
 | MCP server (optional) | Exposes `search_filings` / `ask` as MCP tools | ⬜ optional |
@@ -177,6 +177,35 @@ Hybrid retrieval: [docs/decisions/0005-hybrid-retrieval.md](docs/decisions/0005-
 Structured answers: [docs/decisions/0007-structured-ask.md](docs/decisions/0007-structured-ask.md).
 Fail-closed tool gate: [docs/decisions/0009-fail-closed-tool-gate.md](docs/decisions/0009-fail-closed-tool-gate.md).
 Plan-then-act agent: [docs/decisions/0008-plan-then-act-agent.md](docs/decisions/0008-plan-then-act-agent.md).
+Langfuse tracing: [docs/decisions/0010-langfuse-tracing.md](docs/decisions/0010-langfuse-tracing.md).
+
+### Observability
+
+`POST /ask` and `capitalcite eval` emit a span tree when tracing is on.
+Missing Langfuse keys, or `LANGFUSE_TRACING_ENABLED=false`, is a no-op.
+The request still returns. Tests use an in-memory exporter. `verify.sh`
+writes the same tree to `spans.jsonl` via `CAPITALCITE_TRACE_FILE`.
+
+A live Langfuse UI screenshot needs compose on `:3000` or Langfuse Cloud.
+That path is UNVERIFIED on a VM without Docker. The tree below is from
+the in-memory exporter on `POST /ask` with `model` `fake`, not a Langfuse
+UI capture.
+
+```mermaid
+flowchart TD
+  ask["ask (chain)"] --> retrieve["retrieve (retriever)"]
+  ask --> generate["generate (generation)"]
+  ask --> agent["agent"]
+  agent --> gate["gate (guardrail)"]
+  agent --> tool["tool"]
+  retrieve --> hits["hit_count, scores, doc_id, ticker, section"]
+  generate --> usage["model, tokens when the provider sent usage, cost only then"]
+  gate --> decision["tool, allow or deny, reason"]
+```
+
+Do not send chunk text, chat messages, or secrets. Attribute keys are an
+allowlist. Question text is masked and truncated. Sampling is
+`LANGFUSE_SAMPLE_RATE` on the root. A dropped root drops every child.
 
 Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langfuse Cloud.
 

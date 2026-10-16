@@ -13,6 +13,7 @@ from capitalcite.agent.types import AgentResult, Budgets, PlanStep, TraceStep
 from capitalcite.ask.service import ask
 from capitalcite.ask.types import Answer, ModelDraft, Refused
 from capitalcite.retrieval.types import Hit
+from capitalcite.trace import ObservationKind, observation
 
 
 class GraphState(TypedDict):
@@ -60,23 +61,24 @@ async def run_agent(
 ) -> AgentResult:
     """Run planner → tools → synthesizer. The synthesizer is ask()/ground()/guard."""
     graph = _compile(model, tools, min_score)
-    raw = await graph.ainvoke(
-        {
-            "question": question,
-            "plan": [],
-            "traces": [],
-            "hits": [],
-            "cursor": 0,
-            "steps_used": 0,
-            "tokens_used": 0,
-            "max_steps": budgets.max_steps,
-            "max_tokens": budgets.max_tokens,
-            "synthesize_now": False,
-            "answer": None,
-            "stop_reason": None,
-        },
-        {"recursion_limit": budgets.max_steps + 6},
-    )
+    with observation("agent", ObservationKind.AGENT):
+        raw = await graph.ainvoke(
+            {
+                "question": question,
+                "plan": [],
+                "traces": [],
+                "hits": [],
+                "cursor": 0,
+                "steps_used": 0,
+                "tokens_used": 0,
+                "max_steps": budgets.max_steps,
+                "max_tokens": budgets.max_tokens,
+                "synthesize_now": False,
+                "answer": None,
+                "stop_reason": None,
+            },
+            {"recursion_limit": budgets.max_steps + 6},
+        )
     state = cast(GraphState, raw)
     answer = state["answer"]
     if answer is None:

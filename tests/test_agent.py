@@ -37,6 +37,7 @@ from capitalcite.retrieval import (
     build_index,
     setup_retrieval,
 )
+from capitalcite.trace import MemoryExporter, ObservationKind, configure_for_tests, reset_for_tests
 
 _JPM_URL = "https://www.sec.gov/Archives/edgar/data/19617/jpm.htm"
 _BAC_URL = "https://www.sec.gov/Archives/edgar/data/70858/bac.htm"
@@ -328,35 +329,72 @@ async def test_agent_synthesize_uses_ground_and_guard() -> None:
 
 
 def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
-    jpm = _chunk(ticker="JPM", text="the Standardized CET1 ratios were 15.7% and 15.8%")
-    bac = _chunk(
-        ticker="BAC",
-        text="CET1 capital ratio of 11.9 percent under the Standardized approach",
-        doc_id="doc-bac",
-        url=_BAC_URL,
-        period="2024-12-31",
-    )
-    application, _setup = _indexed_app(tmp_path, [jpm, bac])
-    with TestClient(application) as http:
-        response = http.post(
-            "/ask",
-            json={
-                "question": (
-                    "Which bank had the higher Standardized CET1 ratio at year-end 2024, "
-                    "JPMorgan or Bank of America?"
-                ),
-                "path": "agent",
-                "model": "fake",
-                "k": 8,
-            },
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    try:
+        jpm = _chunk(ticker="JPM", text="the Standardized CET1 ratios were 15.7% and 15.8%")
+        bac = _chunk(
+            ticker="BAC",
+            text="CET1 capital ratio of 11.9 percent under the Standardized approach",
+            doc_id="doc-bac",
+            url=_BAC_URL,
+            period="2024-12-31",
         )
-    assert response.status_code == 200
-    body = AskResponse.model_validate(response.json())
-    assert body.path == "agent"
-    assert len(body.plan) >= 2
-    assert {step.tool for step in body.plan} == {"search_filings"}
-    assert body.steps_used >= 2
-    assert body.kind in {"answered", "refused"}
+        application, _setup = _indexed_app(tmp_path, [jpm, bac])
+        with TestClient(application) as http:
+            response = http.post(
+                "/ask",
+                json={
+                    "question": (
+                        "Which bank had the higher Standardized CET1 ratio at year-end 2024, "
+                        "JPMorgan or Bank of America?"
+                    ),
+                    "path": "agent",
+                    "model": "fake",
+                    "k": 8,
+                },
+            )
+        assert response.status_code == 200
+        body = AskResponse.model_validate(response.json())
+        assert body.path == "agent"
+        assert len(body.plan) >= 2
+        assert {step.tool for step in body.plan} == {"search_filings"}
+        assert body.steps_used >= 2
+        assert body.kind in {"answered", "refused"}
+        kinds = {record.kind for record in exporter.finished()}
+        assert ObservationKind.ASK in kinds
+        assert ObservationKind.AGENT in kinds
+        assert ObservationKind.GATE in kinds
+        assert ObservationKind.TOOL in kinds
+        assert ObservationKind.RETRIEVE in kinds
+        assert ObservationKind.GENERATE in kinds
+        records = exporter.finished()
+        ask_span = next(record for record in records if record.kind is ObservationKind.ASK)
+        agent_span = next(record for record in records if record.kind is ObservationKind.AGENT)
+        assert agent_span.parent_id == ask_span.span_id
+        assert agent_span.trace_id == ask_span.trace_id
+        tools = [record for record in records if record.kind is ObservationKind.TOOL]
+        assert tools
+        assert all(record.parent_id == agent_span.span_id for record in tools)
+        assert {record.attributes["capitalcite.tool"] for record in tools} == {"search_filings"}
+        gates = [record for record in records if record.kind is ObservationKind.GATE]
+        assert gates
+        assert all(record.parent_id == agent_span.span_id for record in gates)
+        assert {record.attributes["capitalcite.tool"] for record in gates} == {"search_filings"}
+        assert all(record.attributes["capitalcite.gate.decision"] == "allow" for record in gates)
+        assert all(record.attributes["capitalcite.gate.reason"] == "allow" for record in gates)
+        tool_ids = {record.span_id for record in tools}
+        retrieves = [record for record in records if record.kind is ObservationKind.RETRIEVE]
+        assert retrieves
+        assert all(record.parent_id in tool_ids for record in retrieves)
+        plans = [record for record in records if record.name == "plan"]
+        completes = [record for record in records if record.name == "complete"]
+        assert plans and completes
+        generated = plans + completes
+        assert all(record.parent_id == agent_span.span_id for record in generated)
+        assert all(record.attributes["gen_ai.request.model"] == "fake" for record in generated)
+    finally:
+        reset_for_tests()
     if body.kind == "answered":
         assert body.citations
         assert body.refusal_reason is None
@@ -435,7 +473,7 @@ def test_post_ask_default_path_is_still_rag(tmp_path: Path) -> None:
 
 
 def test_ask_domain_still_avoids_agent_frameworks() -> None:
-    banned = ("fastapi", "qdrant_client", "fastembed", "pydantic_ai", "langgraph")
+    banned = ("fastapi", "qdrant_client", "fastembed", "pydantic_ai", "langgraph", "langfuse")
     root = Path("src/capitalcite/ask")
     for path in sorted(root.glob("*.py")):
         text = path.read_text(encoding="utf-8")

@@ -17,6 +17,7 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.retrieval.types import Hit
+from capitalcite.trace import ObservationKind, generation_attrs, observation
 
 _CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -38,16 +39,17 @@ class FakeStructuredModel:
 
     async def complete(self, question: str, hits: Sequence[Hit]) -> ModelDraft:
         self.calls += 1
-        if self._script is not None:
-            return self._script
-        if not hits:
-            return ModelDraft(kind="refused", refusal_reason="no passages were retrieved")
-        quote = hits[0].chunk.text
-        return ModelDraft(
-            kind="answered",
-            answer=quote,
-            citations=(DraftCite(index=1, quote=quote),),
-        )
+        with observation("generate", ObservationKind.GENERATE, **generation_attrs(model="fake")):
+            if self._script is not None:
+                return self._script
+            if not hits:
+                return ModelDraft(kind="refused", refusal_reason="no passages were retrieved")
+            quote = hits[0].chunk.text
+            return ModelDraft(
+                kind="answered",
+                answer=quote,
+                citations=(DraftCite(index=1, quote=quote),),
+            )
 
 
 class OpenAIStructuredModel:
@@ -98,26 +100,55 @@ class OpenAIStructuredModel:
         )
 
     async def _post(self, messages: list[dict[str, str]]) -> str:
-        try:
-            async with httpx.AsyncClient(timeout=30.0, transport=self._transport) as client:
-                response = await client.post(
-                    _CHAT_URL,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={
-                        "model": self._model,
-                        "response_format": {"type": "json_object"},
-                        "messages": messages,
-                    },
+        with observation(
+            "generate",
+            ObservationKind.GENERATE,
+            **generation_attrs(model=self._model),
+        ) as span:
+            try:
+                async with httpx.AsyncClient(timeout=30.0, transport=self._transport) as client:
+                    response = await client.post(
+                        _CHAT_URL,
+                        headers={"Authorization": f"Bearer {self._api_key}"},
+                        json={
+                            "model": self._model,
+                            "response_format": {"type": "json_object"},
+                            "messages": messages,
+                        },
+                    )
+            except httpx.HTTPError as exc:
+                raise ModelUnavailable("openai chat completion request failed") from exc
+            if response.status_code != 200:
+                raise ModelUnavailable(f"openai chat completion HTTP {response.status_code}")
+            try:
+                payload = response.json()
+            except json.JSONDecodeError as exc:
+                raise ModelUnavailable("openai chat completion response was not JSON") from exc
+            content = _message_content(payload)
+            input_tokens, output_tokens = _usage_tokens(payload)
+            span.set(
+                **generation_attrs(
+                    model=self._model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                 )
-        except httpx.HTTPError as exc:
-            raise ModelUnavailable("openai chat completion request failed") from exc
-        if response.status_code != 200:
-            raise ModelUnavailable(f"openai chat completion HTTP {response.status_code}")
-        try:
-            payload = response.json()
-        except json.JSONDecodeError as exc:
-            raise ModelUnavailable("openai chat completion response was not JSON") from exc
-        return _message_content(payload)
+            )
+            return content
+
+
+def _token_count(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _usage_tokens(payload: object) -> tuple[int | None, int | None]:
+    if not isinstance(payload, dict):
+        return None, None
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return None, None
+    return _token_count(usage.get("prompt_tokens")), _token_count(usage.get("completion_tokens"))
 
 
 def build_structured_model(
