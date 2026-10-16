@@ -483,6 +483,7 @@ def test_post_ask_default_path_is_still_rag(tmp_path: Path) -> None:
     assert body.path == "rag"
     assert body.plan == []
     assert body.kind == "answered"
+    assert not (tmp_path / "audit.jsonl").exists()
 
 
 def test_ask_domain_still_avoids_agent_frameworks() -> None:
