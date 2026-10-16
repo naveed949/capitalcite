@@ -75,8 +75,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     outputs:
-      cache-hit: ${{ steps.qdrant.outputs.cache-hit }}
-      cache-key: ${{ steps.cachekey.outputs.key }}
+      # Hyphens in needs.*.outputs.* are subtraction. Keep these identifiers.
+      cache_hit: ${{ steps.qdrant.outputs.cache-hit }}
+      cache_key: ${{ steps.cachekey.outputs.key }}
       unverified: ${{ steps.ingest.outputs.unverified }}
     env:
       SEC_USER_AGENT: capitalcite-ci ci@example.com
@@ -223,7 +224,7 @@ jobs:
   warm:
     name: twelve-filing section/hybrid (cache hit)
     needs: full
-    if: needs.full.result == 'success' && needs.full.outputs.unverified != 'true' && needs.full.outputs.cache-hit != 'true'
+    if: needs.full.result == 'success' && needs.full.outputs.unverified != 'true' && needs.full.outputs.cache_hit != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -279,7 +280,7 @@ jobs:
           set -euo pipefail
           key="$(uv run capitalcite eval --suite golden --print-cache-key \
             --input-dir data --chunker section --embedder bge-small | tail -n 1)"
-          expected="${{ needs.full.outputs.cache-key }}"
+          expected="${{ needs.full.outputs.cache_key }}"
           if [ "${key}" != "${expected}" ]; then
             echo "::error::cache key ${key} != cold job ${expected}"
             exit 1
