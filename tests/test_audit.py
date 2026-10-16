@@ -30,8 +30,11 @@ def test_record_chains_from_genesis(tmp_path: Path) -> None:
         tool="shell",
         args={"cmd": "ls"},
         decision="denied",
+        reason="unknown_tool",
         output="unknown tool",
     )
+    assert first.reason is None
+    assert second.reason == "unknown_tool"
     assert first.seq == 1
     assert first.prev_hash == GENESIS_HASH
     assert first.ts == "2026-10-16T12:00:00.000000Z"
@@ -73,7 +76,9 @@ def test_verify_detects_removed_record(tmp_path: Path) -> None:
     log = AuditLog(path, clock=lambda: _FIXED)
     log.record(trace_id="t", tool="a", args={}, decision="allowed", output="1")
     log.record(trace_id="t", tool="b", args={}, decision="allowed", output="2")
-    log.record(trace_id="t", tool="c", args={}, decision="denied", output="x")
+    log.record(
+        trace_id="t", tool="c", args={}, decision="denied", reason="unknown_tool", output="x"
+    )
     lines = path.read_text(encoding="utf-8").splitlines()
     path.write_text(lines[0] + "\n" + lines[2] + "\n", encoding="utf-8")
     report = verify(path)
@@ -160,6 +165,7 @@ async def test_auditing_tools_writes_one_record_per_execute(tmp_path: Path) -> N
     assert len(lines) == 2
     records = [AuditRecord.model_validate_json(line) for line in lines]
     assert [row.decision for row in records] == ["allowed", "denied"]
+    assert [row.reason for row in records] == [None, "unknown_tool"]
     assert [row.tool for row in records] == ["calculator", "shell"]
     assert {row.trace_id for row in records} == {"trace-live"}
     report = verify(path)

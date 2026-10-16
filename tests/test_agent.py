@@ -27,6 +27,7 @@ from capitalcite.api.app import create_app
 from capitalcite.api.routes.ask import AskRequest, AskResponse
 from capitalcite.api.routes.search import get_setup
 from capitalcite.ask.types import Answered, DraftCite, ModelDraft, Refused
+from capitalcite.audit import AuditRecord, verify
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.config import Settings, get_settings
 from capitalcite.retrieval import (
@@ -398,6 +399,18 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
     if body.kind == "answered":
         assert body.citations
         assert body.refusal_reason is None
+    audit_path = tmp_path / "audit.jsonl"
+    report = verify(audit_path)
+    assert report.ok is True
+    assert report.records == len(body.traces)
+    records = [
+        AuditRecord.model_validate_json(line)
+        for line in audit_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row.tool for row in records] == [step.tool for step in body.traces]
+    assert all(row.trace_id for row in records)
+    assert len({row.trace_id for row in records}) == 1
 
 
 def test_post_ask_agent_tool_http_error_is_200(
@@ -519,33 +532,35 @@ def _search_of(hits: list[Hit]) -> SearchFn:
 def _indexed_app(tmp_path: Path, chunks: list[Chunk]) -> tuple[FastAPI, RetrievalSetup]:
     _write_chunks(tmp_path, chunks)
     client = AsyncQdrantClient(":memory:")
-    setup = setup_retrieval(_settings(), client=client, embedder=FakeEmbedder())
+    settings = _settings(tmp_path)
+    setup = setup_retrieval(settings, client=client, embedder=FakeEmbedder())
     asyncio.run(build_index(setup, tmp_path))
     application = create_app()
     application.dependency_overrides[get_setup] = lambda: setup
-    application.dependency_overrides[get_settings] = lambda: _settings()
+    application.dependency_overrides[get_settings] = lambda: settings
     return application, setup
 
 
-def _settings() -> Settings:
-    return Settings.model_validate(
-        {
-            "sec_user_agent": "capitalcite-tests tests@example.com",
-            "chunker": ChunkerName.SECTION,
-            "chunk_size": 32,
-            "chunk_overlap": 4,
-            "qdrant_collection": "filings",
-            "embedder": "bge-small",
-            "search_k": 8,
-            "rrf_k": 60,
-            "openai_api_key": None,
-            "ask_model": "fake",
-            "ask_openai_model": "gpt-4o-mini",
-            "ask_min_hit_score": 0.0,
-            "ask_max_steps": 8,
-            "ask_max_tokens": 8000,
-        }
-    )
+def _settings(tmp_path: Path | None = None) -> Settings:
+    payload: dict[str, object] = {
+        "sec_user_agent": "capitalcite-tests tests@example.com",
+        "chunker": ChunkerName.SECTION,
+        "chunk_size": 32,
+        "chunk_overlap": 4,
+        "qdrant_collection": "filings",
+        "embedder": "bge-small",
+        "search_k": 8,
+        "rrf_k": 60,
+        "openai_api_key": None,
+        "ask_model": "fake",
+        "ask_openai_model": "gpt-4o-mini",
+        "ask_min_hit_score": 0.0,
+        "ask_max_steps": 8,
+        "ask_max_tokens": 8000,
+    }
+    if tmp_path is not None:
+        payload["audit_log_path"] = tmp_path / "audit.jsonl"
+    return Settings.model_validate(payload)
 
 
 def _chunk(

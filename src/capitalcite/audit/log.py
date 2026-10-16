@@ -47,6 +47,7 @@ class AuditLog:
         args: object,
         decision: Decision,
         output: object,
+        reason: str | None = None,
         timestamp: datetime | None = None,
     ) -> AuditRecord:
         if not trace_id.strip():
@@ -69,6 +70,7 @@ class AuditLog:
                     tool=tool.strip(),
                     args_digest=args_digest,
                     decision=decision,
+                    reason=reason,
                     output_digest=output_digest,
                     prev_hash=prev_hash,
                     hash=sha256_json(
@@ -79,6 +81,7 @@ class AuditLog:
                             "tool": tool.strip(),
                             "args_digest": args_digest,
                             "decision": decision,
+                            "reason": reason,
                             "output_digest": output_digest,
                             "prev_hash": prev_hash,
                         }

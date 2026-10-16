@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +18,7 @@ from capitalcite.agent import (
     default_registry,
     run_agent,
 )
+from capitalcite.agent.audited import AuditingTools
 from capitalcite.agent.fdic import FakeFdicClient, FdicClient
 from capitalcite.agent.http import HttpxJsonClient
 from capitalcite.agent.xbrl import FakeXbrlClient, XbrlClient
@@ -31,6 +33,7 @@ from capitalcite.ask.types import (
     ModelNotConfigured,
     ModelUnavailable,
 )
+from capitalcite.audit import AuditLog
 from capitalcite.config import Settings, get_settings
 from capitalcite.gate import Gate, load_policy
 from capitalcite.ingest.rate_limit import shared_limiter
@@ -194,9 +197,13 @@ async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings
     else:
         xbrl = XbrlClient(sec_client).fact
         fdic = FdicClient(fdic_client).lookup
-    tools = Gate(
-        load_policy(settings.gate_policy),
-        default_registry(search=search, xbrl=xbrl, fdic=fdic),
+    tools = AuditingTools(
+        Gate(
+            load_policy(settings.gate_policy),
+            default_registry(search=search, xbrl=xbrl, fdic=fdic),
+        ),
+        AuditLog(settings.audit_log_path),
+        str(uuid.uuid4()),
     )
     return await run_agent(
         body.question,
