@@ -79,10 +79,10 @@ FastEmbed models cache under `FASTEMBED_CACHE_PATH`. The eval index
 caches under `QDRANT_PATH`; `build_index` skips re-embed when point
 ids already match. Caches save after ingest, model warmup, and a
 successful eval. `capitalcite eval --suite golden` re-chunks, indexes
-embedded Qdrant with `bge-small` (all-core FastEmbed passage embed),
-and compares Recall@5 to `evals/baselines/nightly.json`. Ingest is
-bounded by five EDGAR retries and a 10-minute step timeout. The job
-timeout is 90 minutes; the eval step is 50.
+embedded Qdrant with `bge-small` (threaded ONNX, batch 256; not a
+process pool), and compares Recall@5 to `evals/baselines/nightly.json`.
+Ingest is bounded by five EDGAR retries and a 10-minute step timeout.
+The job timeout is 90 minutes; the eval step is 70.
 
 UNVERIFIED (exit 0) is only ingest exit 2: `EdgarAccessError` or
 `EdgarUnavailableError` (403, 429 after retries, 5xx, transport). A

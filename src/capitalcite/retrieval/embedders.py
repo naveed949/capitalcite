@@ -163,7 +163,10 @@ class FastEmbedEmbedder:
             if loaded is None:
                 from fastembed import TextEmbedding as FastTextEmbedding
 
-                loaded = FastTextEmbedding(model_name=self._spec.model_name)
+                loaded = FastTextEmbedding(
+                    model_name=self._spec.model_name,
+                    threads=os.cpu_count() or 4,
+                )
                 self._model = loaded
         return loaded
 
@@ -262,17 +265,17 @@ def _load_sparse() -> FastSparseEmbedding:
         if loaded is None:
             from fastembed.sparse import SparseTextEmbedding
 
-            loaded = SparseTextEmbedding(model_name=SPARSE_MODEL)
+            loaded = SparseTextEmbedding(
+                model_name=SPARSE_MODEL,
+                threads=os.cpu_count() or 4,
+            )
             _SPARSE = loaded
     return loaded
 
 
-def _fastembed_document_kwargs(n: int) -> dict[str, int]:
-    """Batch and, for large passage sets, use every core once."""
-    kwargs: dict[str, int] = {"batch_size": 256}
-    if n >= 32:
-        kwargs["parallel"] = 0
-    return kwargs
+def _fastembed_document_kwargs(_n: int) -> dict[str, int]:
+    """Larger ONNX batches. Process-pool parallel=0 OOMs a 4-core runner."""
+    return {"batch_size": 256}
 
 
 def _sparse_documents(texts: list[str]) -> list[SparseTermVector]:

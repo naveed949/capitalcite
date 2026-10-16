@@ -175,7 +175,7 @@ jobs:
 
       - name: Twelve-filing matrix vs nightly baseline
         if: steps.ingest.outputs.unverified != 'true'
-        timeout-minutes: 50
+        timeout-minutes: 70
         run: |
           uv run capitalcite eval --suite golden --input-dir data --embedder bge-small \
             --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"
