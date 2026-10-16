@@ -89,7 +89,6 @@ QDRANT_STORE="${ART}/qdrant"
 mkdir -p "${QDRANT_STORE}"
 export QDRANT_PATH="${QDRANT_STORE}"
 write qdrant.path "${QDRANT_PATH}"
-# File exporter proves the span tree without Langfuse. Do not dial :3000 from this process.
 export LANGFUSE_TRACING_ENABLED=false
 export CAPITALCITE_TRACE_FILE="${ART}/spans.jsonl"
 write capitalcite.trace.file "${CAPITALCITE_TRACE_FILE}"

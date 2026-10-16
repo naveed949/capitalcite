@@ -77,8 +77,6 @@ _NOOP = _NoOpSpan()
 
 
 class MemoryExporter:
-    """In-process finished spans. Tests use this. No network."""
-
     def __init__(self) -> None:
         self._finished: list[SpanRecord] = []
 
@@ -106,8 +104,6 @@ class MemoryExporter:
 
 
 class FileExporter:
-    """Append JSONL SpanRecords. verify.sh points this at an artifacts file."""
-
     def __init__(self, path: Path) -> None:
         self._path = path
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -289,11 +285,7 @@ _TEST_EXPORTER: MemoryExporter | None = None
 
 
 def configure(settings: Settings, *, exporter: Exporter | None = None) -> None:
-    """Install exporters. A failing adapter becomes a no-op and does not raise.
-
-    A trace file is written even when Langfuse is off so verify.sh can prove the
-    tree without keys or Docker.
-    """
+    """Install exporters. A failing adapter becomes a no-op and does not raise."""
     global _TRACER
     try:
         _TRACER.shutdown()
@@ -307,12 +299,10 @@ def configure(settings: Settings, *, exporter: Exporter | None = None) -> None:
 
 
 def configure_settings(settings: Settings) -> None:
-    """Lifespan and CLI entry. Same as configure(settings)."""
     configure(settings)
 
 
 def configure_for_tests(exporter: MemoryExporter, *, sample_rate: float = 1.0) -> None:
-    """Replace the process tracer with a memory exporter. Pytest only."""
     global _TRACER, _TEST_EXPORTER
     try:
         _TRACER.shutdown()
@@ -342,7 +332,6 @@ def shutdown() -> None:
 
 @lru_cache(maxsize=1)
 def git_sha() -> str:
-    """HEAD for ask and eval tags. `unknown` when git is not available."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -399,7 +388,6 @@ def gate_decision(
     decision: Literal["allow", "deny"],
     reason: str,
 ) -> Iterator[Span]:
-    """Record a gate span. Gate.decide calls observation() the same way."""
     attrs = gate_attrs(tool=tool, decision=decision, reason=reason)
     with observation("gate", ObservationKind.GATE, **attrs) as span:
         yield span
