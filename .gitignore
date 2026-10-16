@@ -33,6 +33,9 @@ uv-cache/
 # Verification evidence (scripts/verify.sh writes timestamped runs here)
 /artifacts/
 
+# Local agent decision logs (not the docs/DECISIONS.md index)
+.audit/
+
 # Editors / OS
 .idea/
 .vscode/

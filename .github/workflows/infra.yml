@@ -1,0 +1,60 @@
+name: Infra
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: infra-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bicep:
+    name: bicep build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bicep
+        run: |
+          curl -sSL -o "${RUNNER_TEMP}/bicep" \
+            https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
+          chmod +x "${RUNNER_TEMP}/bicep"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Validate Bicep
+        run: ./scripts/infra-validate.sh
+        env:
+          SKIP_DOCKER: "1"
+
+  image:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t capitalcite:ci .
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL -o /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C "${RUNNER_TEMP}" gitleaks
+          chmod +x "${RUNNER_TEMP}/gitleaks"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Detect secrets
+        run: gitleaks detect --source . --verbose --redact --no-banner

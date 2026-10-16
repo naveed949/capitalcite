@@ -1,0 +1,138 @@
+name: Deploy Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      resource_group:
+        description: Resource group to create or update
+        required: false
+        default: rg-capitalcite
+      location:
+        description: Azure region
+        required: false
+        default: eastus
+      parameters:
+        description: Bicep parameters file
+        required: false
+        default: infra/parameters/demo.json
+
+concurrency:
+  group: deploy-azure
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  guard:
+    name: skip without secrets
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.creds.outputs.skip }}
+    steps:
+      - name: Check Azure OIDC secrets
+        id: creds
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          if [ -z "${AZURE_CLIENT_ID}" ] || [ -z "${AZURE_TENANT_ID}" ] || [ -z "${AZURE_SUBSCRIPTION_ID}" ]; then
+            echo "UNVERIFIED: AZURE_CLIENT_ID, AZURE_TENANT_ID, or AZURE_SUBSCRIPTION_ID is empty."
+            echo "Create GitHub environment azure, federate the deploy identity, and store those three secrets."
+            echo "Live Azure apply and public /health stay UNVERIFIED."
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+
+  deploy:
+    name: apply Bicep and image
+    needs: guard
+    if: needs.guard.outputs.skip == 'false'
+    runs-on: ubuntu-latest
+    environment: azure
+    env:
+      AZURE_RESOURCE_GROUP: ${{ github.event.inputs.resource_group }}
+      AZURE_LOCATION: ${{ github.event.inputs.location }}
+      PARAMS_FILE: ${{ github.event.inputs.parameters }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bicep
+        run: |
+          curl -sSL -o "${RUNNER_TEMP}/bicep" \
+            https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
+          chmod +x "${RUNNER_TEMP}/bicep"
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure resource group
+        run: |
+          if ! az group show --name "${AZURE_RESOURCE_GROUP}" >/dev/null 2>&1; then
+            az group create --name "${AZURE_RESOURCE_GROUP}" --location "${AZURE_LOCATION}" --output none
+          fi
+
+      - name: Deploy Bicep
+        run: |
+          az deployment group create \
+            --name capitalcite \
+            --resource-group "${AZURE_RESOURCE_GROUP}" \
+            --template-file infra/main.bicep \
+            --parameters "${PARAMS_FILE}"
+
+      - name: Build and push API image
+        id: image
+        run: |
+          set -euo pipefail
+          ACR="$(az deployment group show \
+            --resource-group "${AZURE_RESOURCE_GROUP}" \
+            --name capitalcite \
+            --query properties.outputs.acrName.value -o tsv)"
+          SERVER="$(az deployment group show \
+            --resource-group "${AZURE_RESOURCE_GROUP}" \
+            --name capitalcite \
+            --query properties.outputs.acrLoginServer.value -o tsv)"
+          APP="$(az deployment group show \
+            --resource-group "${AZURE_RESOURCE_GROUP}" \
+            --name capitalcite \
+            --query properties.outputs.apiAppName.value -o tsv)"
+          IMAGE="${SERVER}/capitalcite:${GITHUB_SHA}"
+          docker build -t "${IMAGE}" .
+          az acr login --name "${ACR}"
+          docker push "${IMAGE}"
+          echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
+          echo "app=${APP}" >> "${GITHUB_OUTPUT}"
+
+      - name: Point API at the pushed image
+        run: |
+          az containerapp update \
+            --name "${{ steps.image.outputs.app }}" \
+            --resource-group "${AZURE_RESOURCE_GROUP}" \
+            --image "${{ steps.image.outputs.image }}"
+
+      - name: Public /health
+        run: |
+          set -euo pipefail
+          FQDN="$(az deployment group show \
+            --resource-group "${AZURE_RESOURCE_GROUP}" \
+            --name capitalcite \
+            --query properties.outputs.apiFqdn.value -o tsv || true)"
+          if [ -z "${FQDN}" ]; then
+            echo "UNVERIFIED: no apiFqdn output. Public /health on Azure was not probed."
+            exit 0
+          fi
+          if curl -sf "https://${FQDN}/health"; then
+            echo
+            echo "https://${FQDN}/health returned 200"
+          else
+            echo "UNVERIFIED: https://${FQDN}/health did not return 200"
+            exit 0
+          fi
