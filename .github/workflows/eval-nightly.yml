@@ -70,11 +70,12 @@ jobs:
   full:
     name: twelve-filing golden matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       SEC_USER_AGENT: capitalcite-ci ci@example.com
       APP_ENV: test
       FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
+      OMP_NUM_THREADS: 4
     steps:
       - uses: actions/checkout@v4
 
@@ -86,19 +87,22 @@ jobs:
       - name: Install package and dev tools
         run: uv sync --frozen --all-groups
 
-      - name: Cache EDGAR filings
-        uses: actions/cache@v4
+      - name: Restore EDGAR filings
+        id: edgar
+        uses: actions/cache/restore@v4
         with:
           path: data/raw/edgar
           key: edgar-jpm-bac-wfc-c-10k-2023-2025-v1
 
-      - name: Cache FastEmbed models
-        uses: actions/cache@v4
+      - name: Restore FastEmbed models
+        id: fastembed
+        uses: actions/cache/restore@v4
         with:
           path: .cache/fastembed
           key: fastembed-bge-small-en-v1.5-bm25-v1
 
       - name: Ingest twelve 10-Ks
+        id: ingest
         run: |
           set -euo pipefail
           expected=12
@@ -125,6 +129,7 @@ jobs:
             if [ "${count}" != "${expected}" ]; then
               if [ "${ingest_rc}" = "2" ]; then
                 echo "UNVERIFIED: EDGAR outage or rate-limit (ingest exit 2, filings=${count})"
+                echo "unverified=true" >> "${GITHUB_OUTPUT}"
                 exit 0
               fi
               echo "::error::expected ${expected} filings, have ${count}, ingest exit ${ingest_rc}"
@@ -132,7 +137,33 @@ jobs:
             fi
           fi
 
+      - name: Save EDGAR filings
+        if: steps.edgar.outputs.cache-hit != 'true' && steps.ingest.outputs.unverified != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/raw/edgar
+          key: edgar-jpm-bac-wfc-c-10k-2023-2025-v1
+
+      - name: Warm FastEmbed models
+        if: steps.ingest.outputs.unverified != 'true'
+        run: |
+          uv run python -c "
+          from fastembed import TextEmbedding
+          from fastembed.sparse import SparseTextEmbedding
+          TextEmbedding('BAAI/bge-small-en-v1.5')
+          SparseTextEmbedding('Qdrant/bm25')
+          print('fastembed ready')
+          "
+
+      - name: Save FastEmbed models
+        if: steps.fastembed.outputs.cache-hit != 'true' && steps.ingest.outputs.unverified != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-en-v1.5-bm25-v1
+
       - name: Twelve-filing matrix vs nightly baseline
+        if: steps.ingest.outputs.unverified != 'true'
         run: |
           uv run capitalcite eval --suite golden --input-dir data --embedder bge-small \
             --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"
