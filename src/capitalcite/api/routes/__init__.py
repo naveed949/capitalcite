@@ -1,1 +1,1 @@
-"""HTTP routes. /search and /ask are added in later issues."""
+"""HTTP routes. /ask is added in a later issue."""

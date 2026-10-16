@@ -50,8 +50,9 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [EDGAR ingest](./ingest.md) covers `capitalcite ingest --tickers … --forms … --years …`.
 - [Parse and chunk](./chunk.md) covers `capitalcite chunk --chunker section` on the checked-in fixture tree.
 - [Golden Q&A set](./golden.md) covers `capitalcite golden validate`.
+- [Hybrid search](./search.md) covers `POST /search`, `capitalcite index --help`, and the quote-index recall sanity.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
 
 ## Extending the map
 
-New endpoints (`POST /search`, `POST /ask`) and commands (`ingest`, `index`, `eval`, `audit verify`) each get their own feature file in this directory, a row in the list above, and a step in `scripts/verify.sh`. See the parent skill's **Extending this skill** section.
+New endpoints (`POST /ask`) and commands (`eval`, `audit verify`) each get their own feature file in this directory, a row in the list above, and a step in `scripts/verify.sh`. See the parent skill's **Extending this skill** section.

@@ -85,6 +85,8 @@ Stable handles (do not invent others):
 | CLI | `capitalcite chunk --input-dir tests/fixtures/chunking/corpus --chunker section` | exit 0 + `chunks.jsonl` with citation fields (isolate `--output-dir`) |
 | CLI | `capitalcite golden validate` | exit 0 + mix counts; no network |
 | CLI | `capitalcite golden validate --against-raw <data_dir>` | exit 0 + `aligned=` / `recall=handwritten-only` after ingest+chunk |
+| CLI | `capitalcite index --help` | exit 0; lists `--embedder` |
+| HTTP | `POST /search` | 200 + citation fields + gold span overlap on `cc-h-013` / `cc-h-063`; UNVERIFIED only when ingest could not run |
 | Compose (optional) | `docker compose config` | exit 0 |
 | Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
 
@@ -98,7 +100,7 @@ Report each driven feature as `passed`, `failed`, or `UNVERIFIED`.
 
 - `passed` only when this run executed the user path and the proof files match the expected result.
 - `failed` when the path ran and the result is wrong.
-- `UNVERIFIED` when the path cannot run here. Azure deploy with no credentials, live EDGAR 403, Docker missing, and Qdrant not listening are all `UNVERIFIED`. Record the attempted command and the missing precondition.
+- `UNVERIFIED` when the path cannot run here. Azure deploy with no credentials, live EDGAR 403, and Docker missing for the optional compose stack are `UNVERIFIED`. Embedded `POST /search` is UNVERIFIED only when ingest could not store JPM FY24 / WFC FY25. Record the attempted command and the missing precondition.
 
 Never report `UNVERIFIED` as `passed`. `scripts/verify.sh` may exit 0 when only optional steps were skipped. Copy those skips into the report as `UNVERIFIED`. Files named `*.skipped` or `verified-unreachable` mean `UNVERIFIED`.
 
@@ -125,6 +127,10 @@ Each run of `scripts/verify.sh` writes at least:
 | `ingest.out` / `ingest.exit` / `ingest.files.txt` **or** `ingest.unreachable` | Live EDGAR ingest proof |
 | `chunk.help.out` / `chunk.help.exit` | `capitalcite chunk --help` |
 | `chunk.out` / `chunk.exit` / `chunk.files.txt` | Fixture chunk proof |
+| `index.help.out` / `index.help.exit` | `capitalcite index --help` |
+| `index.1.out` / `index.2.out` **or** `search.unreachable` | Two `capitalcite index` runs on the ingested corpus, or UNVERIFIED when ingest could not run |
+| `search.top5.txt` / `search.*.body.json` / `search.http` **or** `search.unreachable` | Live `POST /search` on embedded Qdrant, or UNVERIFIED when ingest could not run |
+| `quote-sanity.out` / `quote-sanity.exit` **or** `quote-sanity.skipped` | Quote-index recall sanity, not the 12-filing corpus eval |
 | `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
 | `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |
 
@@ -177,7 +183,7 @@ Expected later handles (do not add empty stubs now):
 | Issue | Handle to add |
 |---|---|
 | #3 chunking | `capitalcite chunk --chunker section` (landed) |
-| #4 retrieval | `POST /search` |
+| #4 retrieval | `POST /search` (landed) |
 | #5 golden set | `capitalcite golden validate` (landed) |
 | #6 evals | `capitalcite eval --suite golden` |
 | #7 answers | `POST /ask` |

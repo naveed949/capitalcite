@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -52,15 +53,51 @@ class Settings(BaseSettings):
     chunk_size: int = Field(default=512, ge=1, description="Target chunk size in tokens.")
     chunk_overlap: int = Field(default=64, ge=0, description="Overlap in tokens.")
 
-    openai_api_key: str | None = None
+    openai_api_key: str | None = Field(
+        default=None,
+        description="Secret for EMBEDDER=openai-small. bge-small and minilm do not read it.",
+    )
+    embedder: Literal["bge-small", "minilm", "openai-small"] = Field(
+        default="bge-small",
+        description=(
+            "Dense model. bge-small and minilm run locally. openai-small needs OPENAI_API_KEY."
+        ),
+    )
+    search_k: int = Field(default=8, ge=1, le=50, description="Default number of hits for search.")
+    rrf_k: int = Field(
+        default=60,
+        ge=1,
+        description="Reciprocal rank fusion constant passed to Qdrant.",
+    )
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
+    qdrant_path: Path | None = Field(
+        default=None,
+        description=(
+            "Embedded Qdrant directory. When set, the process does not dial QDRANT_URL. "
+            "QDRANT_URL=:memory: is the process-local store."
+        ),
+    )
     qdrant_collection: str = "filings"
 
     langfuse_host: str = "http://localhost:3000"
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
+
+    @field_validator("qdrant_url")
+    @classmethod
+    def qdrant_url_stripped(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("qdrant_path", mode="before")
+    @classmethod
+    def qdrant_path_blank_is_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("sec_user_agent")
     @classmethod
