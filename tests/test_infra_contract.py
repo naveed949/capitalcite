@@ -47,3 +47,16 @@ def test_infra_workflow_does_not_login_to_azure() -> None:
     assert "bicep" in text
     assert "gitleaks" in text
     assert "docker build" in text
+
+
+def test_gitleaks_allowlist_covers_azure_role_ids() -> None:
+    text = (ROOT / ".gitleaks.toml").read_text(encoding="utf-8")
+    bicep = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
+    for role_id in (
+        "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+        "8311e382-0749-4cb8-b69d-38feb7eb23f0",
+        "4633458b-17de-408a-b874-0445c86b69e6",
+        "b24988ac-6180-42a0-ab88-20f7382dd24c",
+    ):
+        assert role_id in bicep
+        assert role_id in text
