@@ -116,6 +116,7 @@ class EvalReport(BaseModel):
     k: int = Field(ge=1)
     n_items: int = Field(ge=0)
     embedder_id: str
+    sparse_id: str = ""
     fastembed_version: str = ""
     qdrant_client_version: str = ""
     arms: tuple[ArmResult, ...]

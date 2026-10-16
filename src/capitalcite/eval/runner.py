@@ -95,6 +95,7 @@ async def run_suite(
     retrieve_k = max(k, _RETRIEVE_K)
     arms: list[ArmResult] = []
     embedder_id = "fake:deterministic" if small else ""
+    sparse_id = ""
     diagnostics: list[str] = []
     probe_items = items_for_probe(items)
 
@@ -126,6 +127,7 @@ async def run_suite(
                 search_k=retrieve_k,
             )
             embedder_id = setup.config.embedder_id
+            sparse_id = setup.config.sparse_id
             try:
                 receipt = await build_index(setup, work)
                 if probe_items:
@@ -163,6 +165,7 @@ async def run_suite(
         k=k,
         n_items=len(items),
         embedder_id=embedder_id,
+        sparse_id=sparse_id,
         fastembed_version=_package_version("fastembed"),
         qdrant_client_version=_package_version("qdrant-client"),
         arms=tuple(arms),

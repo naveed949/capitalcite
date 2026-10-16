@@ -37,6 +37,13 @@ from capitalcite.retrieval import (
 )
 from capitalcite.retrieval.embedders import FastEmbedEmbedder, spec_for
 from capitalcite.retrieval.sanity import run_quote_index_sanity
+from capitalcite.retrieval.sparse import (
+    BM25_K1,
+    FAKE_SPARSE_ID,
+    bm25_document,
+    bm25_query,
+    bm25_terms,
+)
 from capitalcite.retrieval.types import (
     CorruptChunks,
     EmbedderNotConfigured,
@@ -54,6 +61,7 @@ def test_config_hash_is_canonical_json() -> None:
     config = IndexConfig(
         embedder_id="fake:deterministic",
         dense_size=8,
+        sparse_id=FAKE_SPARSE_ID,
         chunker=ChunkerName.SECTION,
         chunk_size=32,
         chunk_overlap=4,
@@ -74,8 +82,11 @@ def test_config_hash_is_canonical_json() -> None:
     assert body["dense_vector"] == "dense"
     assert body["sparse_vector"] == "bm25"
     assert body["sparse_modifier"] == "idf"
+    assert body["sparse_id"] == FAKE_SPARSE_ID
     changed = config.model_copy(update={"chunk_overlap": 0})
     assert config_hash(changed) != digest
+    other_sparse = config.model_copy(update={"sparse_id": "fastembed:Qdrant/bm25"})
+    assert config_hash(other_sparse) != digest
 
 
 def test_point_id_is_stable() -> None:
@@ -98,6 +109,29 @@ def test_term_counts_are_sorted_counts() -> None:
     sparse = term_counts("Alpha alpha BETA")
     assert sparse.indices == (2933053284, 4133809390)
     assert sparse.values == (1.0, 2.0)
+
+
+def test_bm25_query_drops_stopwords_and_weights_one() -> None:
+    assert "cet1" in bm25_terms("What was the CET1 ratio")
+    assert "what" not in bm25_terms("What was the CET1 ratio")
+    assert "was" not in bm25_terms("What was the CET1 ratio")
+    assert "the" not in bm25_terms("What was the CET1 ratio")
+    query = bm25_query("What was the CET1 ratio at year-end 2024?")
+    assert query.values == tuple(1.0 for _ in query.indices)
+    assert query.indices
+    assert FakeEmbedder().sparse_id == FAKE_SPARSE_ID
+    assert FakeEmbedder().sparse_query_terms("What was JPMorgan's CET1") == ("jpmorgan", "cet1")
+
+
+def test_bm25_document_saturates_repeated_terms() -> None:
+    once = bm25_document("cet1")
+    twice = bm25_document("cet1 cet1")
+    many = bm25_document("cet1 " * 20)
+    assert len(once.indices) == 1
+    assert once.values[0] < twice.values[0] < many.values[0]
+    assert many.values[0] < BM25_K1 + 1.0
+    linear = once.values[0] + 19 * (twice.values[0] - once.values[0])
+    assert many.values[0] < linear
 
 
 def test_year_of_and_parse_filters() -> None:

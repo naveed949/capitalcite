@@ -1,4 +1,4 @@
-"""BM25 probe for a few golden items. Sparse counts are term_counts."""
+"""BM25 probe for a few golden items. Sparse weights come from query_embed/embed."""
 
 from __future__ import annotations
 
@@ -25,60 +25,61 @@ async def diagnose_bm25(
     *,
     probe_k: int = 2000,
 ) -> str:
-    """Describe query tokens, gold-chunk overlap, top-5 BM25 hits, and gold rank."""
+    """Describe query terms, gold-chunk overlap, top-5 BM25 hits, and gold rank."""
     wanted = {item.id: item for item in items if item.id in PROBE_IDS}
     ordered = [wanted[item_id] for item_id in PROBE_IDS if item_id in wanted]
     idf = await _idf_active(setup)
     indexed = await _indexed_chunks(setup)
     query_path = (
         "embed_query builds the dense vector (BGE may prefix that vector) and "
-        "pairs term_counts of the raw query as the sparse vector. "
-        "embed_documents pairs term_counts of chunk.text. "
-        "BM25 search sends only the sparse vector."
+        "pairs FastEmbed query_embed() (or FakeEmbedder bm25_query) of the raw "
+        "query as the sparse vector: unique terms, weight 1. "
+        "embed_documents pairs embed() BM25 TF: "
+        "tf*(k1+1)/(tf+k1*(1-b+b*dl/avgdl)) with k1=1.2 b=0.75 avgdl=256. "
+        "Stopwords are dropped. Production stems. BM25 search sends only the sparse vector."
     )
     lines = [
         "BM25 diagnostic",
         f"collection={collection_name(setup.config)} points probe_k={probe_k}",
         f"chunker={setup.config.chunker.value} embedder={setup.config.embedder_id}",
+        f"sparse_id={setup.config.sparse_id}",
         f"idf_modifier={idf}",
         query_path,
-        "tokenizer=[a-z0-9]+ after lowercasing. CET1 -> cet1.",
+        "CET1 survives as cet1 (and stems to cet1).",
         f"rare_token_examples={list(rare_token_examples())}",
         "",
     ]
     for item in ordered:
         embedding = await setup.embedder.embed_query(item.question)
-        query_tokens = tokens(item.question)
-        unique_query = list(dict.fromkeys(query_tokens))
+        query_terms = setup.embedder.sparse_query_terms(item.question)
+        raw_tokens = tokens(item.question)
         gold_rows = [row for row in item.evidence if row.start is not None]
         hits = await retrieve(setup, item.question, mode=RetrievalMode.BM25, k=probe_k)
         gold_rank = _gold_rank(hits, gold_rows)
         gold_chunks = [
             chunk for chunk in indexed if any(span_overlap(chunk, row) for row in gold_rows)
         ]
+        ones = all(value == 1.0 for value in embedding.sparse.values)
         lines.append(f"## {item.id}")
         lines.append(f"question={item.question}")
-        lines.append(f"query_tokens={query_tokens}")
+        lines.append(f"raw_tokens={raw_tokens}")
+        lines.append(f"query_embed_terms={list(query_terms)}")
         lines.append(
-            "query_term_counts="
-            + ", ".join(f"{tok}={query_tokens.count(tok)}" for tok in unique_query)
-        )
-        lines.append(
-            f"sparse_dims={len(embedding.sparse.indices)} (indices hashed, values are raw counts)"
+            f"sparse_dims={len(embedding.sparse.indices)} query_values_all_ones={str(ones).lower()}"
         )
         for row in gold_rows:
             quote_tokens = tokens(row.quote)
-            shared = [tok for tok in unique_query if tok in quote_tokens]
-            missing = [tok for tok in unique_query if tok not in quote_tokens]
+            shared = [tok for tok in query_terms if tok in quote_tokens]
+            missing = [tok for tok in query_terms if tok not in quote_tokens]
             lines.append(f"gold {row.doc_id} [{row.start},{row.end}) quote_tokens={quote_tokens}")
-            lines.append(f"gold_quote_has_query_tokens={shared}")
-            lines.append(f"gold_quote_missing_query_tokens={missing}")
+            lines.append(f"gold_quote_has_query_terms={shared}")
+            lines.append(f"gold_quote_missing_query_terms={missing}")
         if not gold_chunks:
             lines.append("gold_covering_chunks=none")
         for chunk in gold_chunks:
             chunk_tokens = set(tokens(chunk.text))
-            present = [tok for tok in unique_query if tok in chunk_tokens]
-            absent = [tok for tok in unique_query if tok not in chunk_tokens]
+            present = [tok for tok in query_terms if tok in chunk_tokens]
+            absent = [tok for tok in query_terms if tok not in chunk_tokens]
             rare = [tok for tok in rare_token_examples() if tok in chunk_tokens]
             snippet = " ".join(chunk.text.split())[:160]
             lines.append(
@@ -86,8 +87,8 @@ async def diagnose_bm25(
                 f"chars={len(chunk.text)} tokens={len(tokens(chunk.text))} "
                 f"section={chunk.section!r}"
             )
-            lines.append(f"gold_chunk_has_query_tokens={present}")
-            lines.append(f"gold_chunk_missing_query_tokens={absent}")
+            lines.append(f"gold_chunk_has_query_terms={present}")
+            lines.append(f"gold_chunk_missing_query_terms={absent}")
             lines.append(f"gold_chunk_has_rare_tokens={rare}")
             lines.append(f"gold_chunk_snippet={snippet!r}")
         lines.append(
@@ -97,8 +98,9 @@ async def diagnose_bm25(
         for index, hit in enumerate(hits[:5], start=1):
             snippet = " ".join(hit.chunk.text.split())[:160]
             overlap = any(span_overlap(hit.chunk, row) for row in gold_rows)
+            ticker = hit.chunk.ticker or "?"
             lines.append(
-                f"  {index}. score={hit.score:.4f} doc_id={hit.chunk.doc_id} "
+                f"  {index}. score={hit.score:.4f} ticker={ticker} doc_id={hit.chunk.doc_id} "
                 f"[{hit.chunk.start},{hit.chunk.end}) gold={overlap} {snippet!r}"
             )
         lines.append("")

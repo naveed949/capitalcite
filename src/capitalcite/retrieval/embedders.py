@@ -1,4 +1,4 @@
-"""Dense embedders. Sparse counts always come from term_counts."""
+"""Dense embedders plus a BM25 sparse encoder. FastEmbed Qdrant/bm25 in production."""
 
 from __future__ import annotations
 
@@ -7,21 +7,31 @@ import hashlib
 import math
 import os
 import threading
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from capitalcite.retrieval.hashing import term_counts, tokens
+from capitalcite.retrieval.hashing import tokens
+from capitalcite.retrieval.sparse import (
+    FAKE_SPARSE_ID,
+    FASTEMBED_SPARSE_ID,
+    SPARSE_MODEL,
+    bm25_document,
+    bm25_query,
+    bm25_terms,
+)
 from capitalcite.retrieval.types import (
     Embedder,
     EmbedderName,
     EmbedderNotConfigured,
     RetrievalError,
+    SparseTermVector,
     TextEmbedding,
 )
 
 if TYPE_CHECKING:
     from fastembed import TextEmbedding as FastTextEmbedding
+    from fastembed.sparse import SparseTextEmbedding as FastSparseEmbedding
 
 
 class EmbedderSpec(BaseModel):
@@ -71,25 +81,36 @@ def spec_for(name: EmbedderName) -> EmbedderSpec:
 class FakeEmbedder:
     """Deterministic embedder for pytest. Dense width 8. No download.
 
-    Sparse indices come from term_counts, the same encoder as production.
-    Dense axes are a hash of the same tokens, so shared words raise cosine.
+    Sparse weights use the BM25 formula in retrieval.sparse, not raw counts.
     """
 
     id: str = "fake:deterministic"
     dense_size: int = 8
+    sparse_id: str = FAKE_SPARSE_ID
 
     async def embed_documents(self, texts: list[str]) -> list[TextEmbedding]:
-        return [_embed_fake(text, self.dense_size) for text in texts]
+        return [
+            TextEmbedding(
+                dense=_dense_from_tokens(text, self.dense_size), sparse=bm25_document(text)
+            )
+            for text in texts
+        ]
 
     async def embed_query(self, text: str) -> TextEmbedding:
-        return _embed_fake(text, self.dense_size)
+        return TextEmbedding(
+            dense=_dense_from_tokens(text, self.dense_size), sparse=bm25_query(text)
+        )
+
+    def sparse_query_terms(self, text: str) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(bm25_terms(text)))
 
 
 class FastEmbedEmbedder:
-    """Local dense model. The ONNX file loads on the first embed call."""
+    """Local dense model. Sparse side is FastEmbed Qdrant/bm25."""
 
     id: str
     dense_size: int
+    sparse_id: str = FASTEMBED_SPARSE_ID
 
     def __init__(self, spec: EmbedderSpec) -> None:
         self.id = spec.embedder_id
@@ -102,12 +123,20 @@ class FastEmbedEmbedder:
         if not texts:
             return []
         vectors = await asyncio.to_thread(self._passage_vectors, texts)
-        return [_pair(text, vector) for text, vector in zip(texts, vectors, strict=True)]
+        sparse = await asyncio.to_thread(_sparse_documents, texts)
+        return [
+            TextEmbedding(dense=dense, sparse=sparse_vec)
+            for dense, sparse_vec in zip(vectors, sparse, strict=True)
+        ]
 
     async def embed_query(self, text: str) -> TextEmbedding:
         prefixed = f"{self._spec.query_prefix}{text}" if self._spec.query_prefix else text
         vectors = await asyncio.to_thread(self._passage_vectors, [prefixed])
-        return _pair(text, vectors[0])
+        sparse = await asyncio.to_thread(_sparse_query, text)
+        return TextEmbedding(dense=vectors[0], sparse=sparse)
+
+    def sparse_query_terms(self, text: str) -> tuple[str, ...]:
+        return _fastembed_query_terms(text)
 
     def _passage_vectors(self, texts: list[str]) -> list[tuple[float, ...]]:
         model = self._load()
@@ -123,8 +152,7 @@ class FastEmbedEmbedder:
         return vectors
 
     def _load(self) -> FastTextEmbedding:
-        if os.environ.get("PYTEST_CURRENT_TEST"):
-            raise RuntimeError("FastEmbed must not run under pytest")
+        _forbid_fastembed()
         loaded = self._model
         if loaded is not None:
             return loaded
@@ -140,10 +168,14 @@ class FastEmbedEmbedder:
 
 _LOCAL: dict[EmbedderName, FastEmbedEmbedder] = {}
 _LOCAL_LOCK = threading.Lock()
+_SPARSE: FastSparseEmbedding | None = None
+_SPARSE_LOCK = threading.Lock()
 
 
 class OpenAIEmbedder:
-    """text-embedding-3-small over httpx. Sparse counts stay local."""
+    """text-embedding-3-small over httpx. Sparse side is FastEmbed Qdrant/bm25."""
+
+    sparse_id: str = FASTEMBED_SPARSE_ID
 
     def __init__(self, spec: EmbedderSpec, api_key: str) -> None:
         self.id = spec.embedder_id
@@ -158,11 +190,19 @@ class OpenAIEmbedder:
         if not texts:
             return []
         vectors = await self._embed(texts)
-        return [_pair(text, vector) for text, vector in zip(texts, vectors, strict=True)]
+        sparse = await asyncio.to_thread(_sparse_documents, texts)
+        return [
+            TextEmbedding(dense=dense, sparse=sparse_vec)
+            for dense, sparse_vec in zip(vectors, sparse, strict=True)
+        ]
 
     async def embed_query(self, text: str) -> TextEmbedding:
         vectors = await self._embed([text])
-        return _pair(text, vectors[0])
+        sparse = await asyncio.to_thread(_sparse_query, text)
+        return TextEmbedding(dense=vectors[0], sparse=sparse)
+
+    def sparse_query_terms(self, text: str) -> tuple[str, ...]:
+        return _fastembed_query_terms(text)
 
     async def _embed(self, texts: list[str]) -> list[tuple[float, ...]]:
         import httpx
@@ -197,12 +237,60 @@ def build_embedder(settings_embedder: EmbedderName, api_key: str | None) -> Embe
         return embedder
 
 
-def _embed_fake(text: str, size: int) -> TextEmbedding:
-    return _pair(text, _dense_from_tokens(text, size))
+def _forbid_fastembed() -> None:
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        raise RuntimeError("FastEmbed must not run under pytest")
 
 
-def _pair(text: str, dense: tuple[float, ...]) -> TextEmbedding:
-    return TextEmbedding(dense=dense, sparse=term_counts(text))
+def _load_sparse() -> FastSparseEmbedding:
+    _forbid_fastembed()
+    global _SPARSE
+    loaded = _SPARSE
+    if loaded is not None:
+        return loaded
+    with _SPARSE_LOCK:
+        loaded = _SPARSE
+        if loaded is None:
+            from fastembed.sparse import SparseTextEmbedding
+
+            loaded = SparseTextEmbedding(model_name=SPARSE_MODEL)
+            _SPARSE = loaded
+    return loaded
+
+
+def _sparse_documents(texts: list[str]) -> list[SparseTermVector]:
+    model = _load_sparse()
+    embedded = list(model.embed(texts))
+    if len(embedded) != len(texts):
+        raise RetrievalError("fastembed bm25 returned a different number of vectors than texts")
+    return [_from_fastembed_sparse(item) for item in embedded]
+
+
+def _sparse_query(text: str) -> SparseTermVector:
+    model = _load_sparse()
+    return _from_fastembed_sparse(next(iter(model.query_embed(text))))
+
+
+def _fastembed_query_terms(text: str) -> tuple[str, ...]:
+    from fastembed.common.utils import remove_non_alphanumeric
+
+    inner: Any = _load_sparse().model
+    cleaned = remove_non_alphanumeric(text)
+    stemmed = inner._stem(inner.tokenizer.tokenize(cleaned))
+    return tuple(dict.fromkeys(stemmed))
+
+
+def _from_fastembed_sparse(embedding: Any) -> SparseTermVector:
+    indices = embedding.indices
+    values = embedding.values
+    pairs = sorted(
+        ((int(index), float(value)) for index, value in zip(indices, values, strict=True)),
+        key=lambda item: item[0],
+    )
+    return SparseTermVector(
+        indices=tuple(index for index, _ in pairs),
+        values=tuple(value for _, value in pairs),
+    )
 
 
 def _dense_from_tokens(text: str, size: int) -> tuple[float, ...]:

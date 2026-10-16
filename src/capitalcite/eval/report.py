@@ -15,6 +15,7 @@ def render_markdown(report: EvalReport) -> str:
     lines = [
         f"suite={report.suite} sha={report.git_sha} small={str(report.small).lower()} "
         f"items={report.n_items} k={report.k} embedder={report.embedder_id} "
+        f"sparse={report.sparse_id or 'absent'} "
         f"fastembed={report.fastembed_version or 'absent'} "
         f"qdrant-client={report.qdrant_client_version or 'absent'}",
         "",
@@ -131,6 +132,7 @@ def _readme_table(report: EvalReport) -> str:
     lines.append(
         f"Generated from `evals/results/{_stem(report)}.json` "
         f"(sha `{report.git_sha[:12]}`, embedder `{report.embedder_id}`, "
+        f"sparse `{report.sparse_id or 'absent'}`, "
         f"fastembed `{report.fastembed_version or 'absent'}`, "
         f"qdrant-client `{report.qdrant_client_version or 'absent'}`). "
         f"Noise floor: n={report.n_items}, one item is "

@@ -54,11 +54,10 @@ def tokens(text: str) -> list[str]:
 
 
 def term_counts(text: str) -> SparseTermVector:
-    """Lowercase word tokens. The index is blake2s truncated to 32 bits.
+    """Lowercase word tokens hashed with blake2s. Raw counts, not BM25.
 
-    Values are raw counts. Indices are unique and sorted. Truncation avoids a
-    vocabulary file that can drift from the points already stored. Two tokens
-    can share an index.
+    Production sparse vectors come from FastEmbed Qdrant/bm25 or FakeEmbedder
+    `bm25_document` / `bm25_query`. This helper stays for hash tests.
     """
     counts: dict[int, int] = {}
     for token in tokens(text):

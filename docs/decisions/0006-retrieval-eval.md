@@ -87,33 +87,27 @@ About 77 handwritten spanned items is a small sample. Moving one item
 changes recall by about `1/n`. A 0.02 gap is noise. The table reports n
 and does not rank chunkers on a gap that small.
 
-## BM25 is wired; the corpus still buries gold
+## The first BM25 matrix measured TF-IDF
 
 The first matrix had section BM25 Recall@5 = 0/77 and hybrid worse than
-dense on both chunkers. That looked like a broken sparse path. A probe
-on `cc-h-013`, `cc-h-063`, and `cc-h-001` (FakeEmbedder, same
-`term_counts` as production, 12 filings) says it is not.
+dense. A probe on `cc-h-013`, `cc-h-063`, and `cc-h-001` showed the
+sparse path was hashed raw term counts plus Qdrant IDF: no k1
+saturation, no b length norm, no stopwords. Query words `what` / `was`
+/ `the` / `at` carried weight 1. Citi capital tables that repeat
+`CET1` / `capital` / `ratio` outranked the gold JPM and WFC Item 7
+chunks (ranks 172–389). That is TF-IDF, not BM25. It was a retrieval
+bug on the #4 production path, not a property of the corpus.
 
-`embed_query` still builds the dense vector (BGE may prefix that vector)
-and pairs `term_counts` of the raw query as the sparse vector.
-`embed_documents` pairs `term_counts` of `chunk.text`. BM25 search
-sends only the sparse vector. The collection sparse params are
-`Modifier.IDF`. The tokenizer is `[a-z0-9]+` after lowercasing, so
-`CET1` survives as `cet1`. Those three checks hold.
+The encoder is now FastEmbed `SparseTextEmbedding("Qdrant/bm25")` for
+every production embedder (bge-small, minilm, openai-small).
+`embed_documents` calls `embed()`. `embed_query` calls `query_embed()`
+on the raw question. `IndexConfig.sparse_id` records
+`fastembed:Qdrant/bm25:k1=1.2:b=0.75:avgdl=256` so a hashed-count
+collection cannot be reused. Pytest `FakeEmbedder` uses the same
+formula and does not download FastEmbed. The eval writes a BM25 probe
+for those three items next to the matrix JSON.
 
-The gold chunks exist and overlap the handwritten spans. They contain
-`cet1`. On the section chunker the gold BM25 ranks are 172, 212, and
-271. On fixed they are 389, 118, and 370. The top-5 for every probe is
-a Citi (or Citi-like) capital-ratio passage that repeats
-`CET1` / `capital` / `ratio` / `Standardized Approach` in a tight
-block. The gold JPM and WFC Item 7 chunks mention `CET1` once in
-narrative. JPM's body often says "the Firm", not "JPMorgan". WFC's
-Item 7 gold chunk says "we", not "Wells Fargo". Hashed raw term
-frequency plus Qdrant IDF has no length normalization, so the dense
-Citi block wins.
-
-Hybrid is worse than dense because RRF mixes that BM25 ranking in.
-This record does not replace the #24 sparse encoder. A real BM25
-formula (document-length normalization, or a stop list) is a retrieval
-change, not an eval scoring change. minilm is UNVERIFIED: a second
-full embed of 12k–17k chunks is not cheap on this corpus.
+minilm is UNVERIFIED: a second full embed of 12k–17k chunks is not
+cheap on this corpus. The numbers for corrected BM25 and hybrid live
+in `evals/results/<sha12>.json` and the README table. They are not
+typed here.

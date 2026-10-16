@@ -174,7 +174,9 @@ def test_small_bm25_writes_json(tmp_path: Path) -> None:
     assert len(diagnose_files) == 1
     text = diagnose_files[0].read_text(encoding="utf-8")
     assert "idf_modifier=IDF" in text
-    assert "CET1 -> cet1" in text
+    assert "query_embed" in text
+    assert "query_values_all_ones=true" in text
+    assert "sparse_id=" in text
 
 
 def test_render_markdown_names_probe() -> None:
@@ -186,6 +188,7 @@ def test_render_markdown_names_probe() -> None:
     assert "Noise floor: n=2, one item is 0.500 recall." in table
     assert "fastembed=absent" in table
     assert "qdrant-client=absent" in table
+    assert "sparse=absent" in table
 
 
 def load_report_from_text(raw: str) -> EvalReport:
