@@ -364,6 +364,7 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
         kinds = {record.kind for record in exporter.finished()}
         assert ObservationKind.ASK in kinds
         assert ObservationKind.AGENT in kinds
+        assert ObservationKind.GATE in kinds
         assert ObservationKind.TOOL in kinds
         assert ObservationKind.RETRIEVE in kinds
         assert ObservationKind.GENERATE in kinds
@@ -376,6 +377,12 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
         assert tools
         assert all(record.parent_id == agent_span.span_id for record in tools)
         assert {record.attributes["capitalcite.tool"] for record in tools} == {"search_filings"}
+        gates = [record for record in records if record.kind is ObservationKind.GATE]
+        assert gates
+        assert all(record.parent_id == agent_span.span_id for record in gates)
+        assert {record.attributes["capitalcite.tool"] for record in gates} == {"search_filings"}
+        assert all(record.attributes["capitalcite.gate.decision"] == "allow" for record in gates)
+        assert all(record.attributes["capitalcite.gate.reason"] == "allow" for record in gates)
         tool_ids = {record.span_id for record in tools}
         retrieves = [record for record in records if record.kind is ObservationKind.RETRIEVE]
         assert retrieves

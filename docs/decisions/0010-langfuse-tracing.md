@@ -63,10 +63,11 @@ A tool span records the tool name, ok, and duration. Arguments that
 could hold secrets are not copied. The HTTP `traces` field on `/ask` is
 a different object. It is the agent's plan log in the response body.
 
-A gate span is a helper for issue #9. This change does not invent
-allow/deny decisions. `ToolRegistry.execute` stays the wrap point #9
-named. `current_trace_id()` is the hook issue #10 needs for the audit
-row.
+A gate span is recorded by `Gate.decide`. Allow and deny both emit one
+span with the tool name, `allow` or `deny`, and the deny reason (or
+`allow`). `ToolRegistry.execute` still wraps the runner. A deny never
+reaches it. `current_trace_id()` is the hook issue #10 needs for the
+audit row.
 
 Eval tags the evaluator root with `git_sha` (already `git rev-parse
 HEAD` in the results JSON) and each arm's `config_hash` (already the

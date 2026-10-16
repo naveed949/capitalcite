@@ -335,6 +335,50 @@ if errors:
 print("gate decide unknown/invalid/broken ok")
 PY
 
+log "verify: gate decide spans"
+uv run python - "${ART}/spans.jsonl" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.is_file() or path.stat().st_size == 0:
+    sys.stderr.write("verify: spans.jsonl missing after gate decide\n")
+    sys.exit(1)
+records = [
+    json.loads(line)
+    for line in path.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+]
+gates = [row for row in records if row.get("name") == "gate"]
+if len(gates) < 3:
+    sys.stderr.write(f"verify: expected >=3 gate spans, got {len(gates)}\n")
+    sys.exit(1)
+reasons = {
+    str((row.get("attributes") or {}).get("capitalcite.gate.reason")) for row in gates
+}
+tools = {str((row.get("attributes") or {}).get("capitalcite.tool")) for row in gates}
+decisions = {
+    str((row.get("attributes") or {}).get("capitalcite.gate.decision")) for row in gates
+}
+missing = []
+if "unknown_tool" not in reasons:
+    missing.append("unknown_tool")
+if "invalid_args" not in reasons:
+    missing.append("invalid_args")
+if "policy_load_failed" not in reasons:
+    missing.append("policy_load_failed")
+if "shell" not in tools or "calculator" not in tools:
+    missing.append(f"tools={sorted(tools)}")
+if decisions != {"deny"}:
+    missing.append(f"decisions={sorted(decisions)}")
+if missing:
+    sys.stderr.write("verify: gate spans missing " + ", ".join(missing) + "\n")
+    sys.exit(1)
+print(f"gate spans n={len(gates)} deny reasons={sorted(reasons)}")
+PY
+log "verify: gate decide spans tagged tool, deny, and reason"
+
 log "verify: capitalcite gate redteam"
 set +e
 uv run capitalcite gate redteam \

@@ -399,7 +399,7 @@ def gate_decision(
     decision: Literal["allow", "deny"],
     reason: str,
 ) -> Iterator[Span]:
-    """Record a gate span. Issue #9 calls this. This package does not decide allow or deny."""
+    """Record a gate span. Gate.decide calls observation() the same way."""
     attrs = gate_attrs(tool=tool, decision=decision, reason=reason)
     with observation("gate", ObservationKind.GATE, **attrs) as span:
         yield span

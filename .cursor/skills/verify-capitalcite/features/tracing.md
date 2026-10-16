@@ -2,9 +2,8 @@
 
 `POST /ask` and `capitalcite eval` emit a trace tree when tracing is
 configured. Spans cover retrieval, each model call, each tool call, and
-(when a gate exists) gate decisions. Cost and latency sit on those
-spans. If Langfuse keys are missing, tracing is a no-op and the request
-still returns.
+gate decisions. Cost and latency sit on those spans. If Langfuse keys
+are missing, tracing is a no-op and the request still returns.
 
 ## Sub-features
 
@@ -17,6 +16,9 @@ still returns.
 - `eval-tags` runs `capitalcite eval --suite golden --small` with a trace
   file. The eval root records `git_sha`. `config_hash` is on that root when
   every arm shares one hash, and on each `eval-arm` span otherwise.
+- `gate-spans` runs `capitalcite gate decide` for an unknown tool, invalid
+  args, and a broken policy. Each call appends a `gate` span with
+  `capitalcite.tool`, `capitalcite.gate.decision` `deny`, and the reason.
 - `langfuse-live` is UNVERIFIED when nothing is listening on
   `localhost:3000`. Do not start compose for this check.
 
@@ -45,6 +47,9 @@ Preconditions:
   file env writes an `eval` span that includes `capitalcite.git_sha`.
   `capitalcite.config_hash` is on that span when the arms share one hash,
   and on the `eval-arm` spans when they do not.
+- **Gate decisions.** After the three `capitalcite gate decide` denials,
+  the trace file has `gate` records whose attributes include the tool,
+  `deny`, and `unknown_tool` / `invalid_args` / `policy_load_failed`.
 - **Live Langfuse.** If `curl -sf http://127.0.0.1:3000` fails, write
   `langfuse.skipped` and report UNVERIFIED. Do not start compose.
 - **Bundled helper.** Run `./scripts/verify.sh`. It writes `spans.jsonl`
@@ -60,5 +65,6 @@ Preconditions:
   dials `:3000`.
 - File export does not require Langfuse keys. Live ingestion does.
 - Do not treat an in-memory pytest tree as a Langfuse UI screenshot.
-- Gate spans appear when a caller uses `gate_decision`. The fail-closed
-  gate in issue #9 is the production caller.
+- `Gate.decide` writes one gate span per allow or deny. `capitalcite
+  gate bench` does not open a tracer, so the p95 ceiling stays a
+  decision-cost measurement.

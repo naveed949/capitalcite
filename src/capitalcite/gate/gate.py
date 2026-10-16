@@ -1,4 +1,4 @@
-"""Decide allow or deny, then maybe run the tool. decide() does no I/O."""
+"""Decide allow or deny, then maybe run the tool. decide() does no tool I/O."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from capitalcite.agent.tools import ToolExecutor
 from capitalcite.agent.types import ToolResult
 from capitalcite.gate.policy import BrokenPolicy, Policy
 from capitalcite.gate.schema import validate_args
+from capitalcite.trace import ObservationKind, gate_attrs, observation
 
 
 class DenyReason(StrEnum):
@@ -62,6 +63,22 @@ class Gate:
         self._calls: dict[str, int] = {}
 
     def decide(self, name: str, args: Mapping[str, object]) -> Decision:
+        with observation(
+            "gate",
+            ObservationKind.GATE,
+            **gate_attrs(tool=name, decision="deny", reason=DenyReason.gate_error.value),
+        ) as span:
+            decision = self._evaluate(name, args)
+            span.set(
+                **gate_attrs(
+                    tool=decision.tool,
+                    decision=decision.kind,
+                    reason=decision.reason.value if decision.reason is not None else "allow",
+                )
+            )
+            return decision
+
+    def _evaluate(self, name: str, args: Mapping[str, object]) -> Decision:
         recorded = _record_args(args)
         if isinstance(self._policy, BrokenPolicy):
             return _deny(name, recorded, DenyReason.policy_load_failed)

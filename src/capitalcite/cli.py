@@ -113,7 +113,11 @@ def gate_decide(
         typer.echo("error: --args must be a JSON object", err=True)
         raise typer.Exit(code=1)
     gate = Gate(load_policy(policy), ToolRegistry({}))
-    typer.echo(gate.decide(tool, parsed).model_dump_json())
+    configure_settings(get_settings())
+    try:
+        typer.echo(gate.decide(tool, parsed).model_dump_json())
+    finally:
+        shutdown()
 
 
 @gate_app.command("redteam")

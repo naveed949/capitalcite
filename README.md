@@ -57,7 +57,7 @@ flowchart LR
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, and `calculator`. Unknown names are denied. HTTP tools take an injected client so tests stay offline. | 🟡 agent tools |
 | Fail-closed gate | JSON allow-list per tool with argument schemas and per-request budgets. Unknown names, invalid args, and a policy-load failure are denies. `capitalcite gate decide` prints the decision. Denied calls do not run. | 🟡 `capitalcite gate` |
 | Audit log | Append-only, hash-chained JSONL of every tool call, decision, and input/output digest | ⬜ planned |
-| Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
+| Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
 | Evals in CI | RAGAS/DeepEval and behavioral contract tests; the PR fails on regression past a set threshold | ⬜ planned |
 | Deploy | Azure Container Apps | ⬜ planned |
 | MCP server (optional) | Exposes `search_filings` / `ask` as MCP tools | ⬜ optional |
@@ -195,8 +195,12 @@ UI capture.
 flowchart TD
   ask["ask (chain)"] --> retrieve["retrieve (retriever)"]
   ask --> generate["generate (generation)"]
+  ask --> agent["agent"]
+  agent --> gate["gate (guardrail)"]
+  agent --> tool["tool"]
   retrieve --> hits["hit_count, scores, doc_id, ticker, section"]
   generate --> usage["model, tokens when the provider sent usage, cost only then"]
+  gate --> decision["tool, allow or deny, reason"]
 ```
 
 Do not send chunk text, chat messages, or secrets. Attribute keys are an
