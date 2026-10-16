@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Offline check for Issue 13 IaC. No Azure login. No spend.
-# Usage (repo root): ./scripts/infra-validate.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

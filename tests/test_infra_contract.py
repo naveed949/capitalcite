@@ -1,5 +1,3 @@
-"""Contracts for the Azure IaC and image recipe. No Azure account."""
-
 from __future__ import annotations
 
 from pathlib import Path

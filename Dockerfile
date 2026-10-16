@@ -1,6 +1,3 @@
-# Multi-stage image for the FastAPI process.
-# Secrets stay in the environment / Key Vault. This file never copies `.env`.
-
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 WORKDIR /src

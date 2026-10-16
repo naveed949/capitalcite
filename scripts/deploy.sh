@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Opt-in Azure apply. Skips with UNVERIFIED when az or a login is missing.
-# Never treats a skipped cloud step as a pass.
-# Usage (repo root): ./scripts/deploy.sh
-# Optional env: AZURE_RESOURCE_GROUP, AZURE_LOCATION, PARAMS_FILE, API_IMAGE
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
