@@ -38,4 +38,4 @@ Preconditions:
 - The fixtures are excerpts, not a live 10-K. Live ingest HTML is tens of megabytes and is not required to prove table preservation or Item detection. The 80-row table is the long-table case.
 - `CHUNKER` in the environment can override a forgotten `--chunker`. The helper passes `--chunker section` explicitly.
 - `CliRunner().invoke(...)` in pytest is not this feature.
-- `/ask` is still a later issue. `capitalcite index` is covered by [search.md](./search.md).
+- `POST /ask` is covered by [ask.md](./ask.md). `capitalcite index` is covered by [search.md](./search.md).

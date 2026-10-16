@@ -55,12 +55,35 @@ class Settings(BaseSettings):
 
     openai_api_key: str | None = Field(
         default=None,
-        description="Secret for EMBEDDER=openai-small. bge-small and minilm do not read it.",
+        description=(
+            "Secret for EMBEDDER=openai-small and ASK_MODEL=openai. "
+            "bge-small, minilm, and ASK_MODEL=fake do not read it."
+        ),
     )
     embedder: Literal["bge-small", "minilm", "openai-small"] = Field(
         default="bge-small",
         description=(
             "Dense model. bge-small and minilm run locally. openai-small needs OPENAI_API_KEY."
+        ),
+    )
+    ask_model: Literal["openai", "fake"] = Field(
+        default="openai",
+        description=(
+            "Chat model for POST /ask. fake quotes a retrieved chunk and does not read "
+            "OPENAI_API_KEY."
+        ),
+    )
+    ask_openai_model: str = Field(
+        default="gpt-4o-mini",
+        min_length=1,
+        description="OpenAI chat model used when ASK_MODEL=openai.",
+    )
+    ask_min_hit_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Refuse POST /ask before the model when the top hit score is below this floor. "
+            "Hybrid RRF scores are typically near 0.03. 0 disables the floor."
         ),
     )
     search_k: int = Field(default=8, ge=1, le=50, description="Default number of hits for search.")

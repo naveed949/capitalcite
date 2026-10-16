@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from capitalcite.api.routes.ask import router as ask_router
 from capitalcite.api.routes.health import router as health_router
 from capitalcite.api.routes.search import router as search_router
 from capitalcite.config import get_settings
@@ -21,7 +22,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    """Build the FastAPI app. /ask attaches here later."""
+    """Build the FastAPI app."""
     settings = get_settings()
     application = FastAPI(
         title=settings.app_name,
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     )
     application.include_router(health_router)
     application.include_router(search_router)
+    application.include_router(ask_router)
     return application
 
 
