@@ -59,7 +59,7 @@ flowchart LR
 | Audit log | Append-only, hash-chained JSONL of every gated tool call, plus a sibling head file so deleting the last line fails verify. The wrapper writes the gate decision before the tool runs and refuses with `audit unavailable` if that write fails. Records store the gate `decision` and `reason`. `trace_id` is `current_trace_id()` (UUID only when tracing is off). The chain is not keyed: anyone with write access can rebuild it. | 🟡 `capitalcite audit verify` |
 | Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
 | Evals in CI | RAGAS/DeepEval and behavioral contract tests; the PR fails on regression past a set threshold | ⬜ planned |
-| Deploy | Azure Container Apps | ⬜ planned |
+| Deploy | Azure Container Apps (Bicep, scale-to-zero API, internal Qdrant). Live Azure `/health` is UNVERIFIED until someone opts in. | 🟡 IaC + image recipe |
 | MCP server (optional) | Exposes `search_filings` / `ask` as MCP tools | ⬜ optional |
 | Entity graph (optional) | Neo4j graph of bank → subsidiary → filing → metric | ⬜ optional |
 
@@ -180,6 +180,7 @@ Fail-closed tool gate: [docs/decisions/0009-fail-closed-tool-gate.md](docs/decis
 Plan-then-act agent: [docs/decisions/0008-plan-then-act-agent.md](docs/decisions/0008-plan-then-act-agent.md).
 Langfuse tracing: [docs/decisions/0010-langfuse-tracing.md](docs/decisions/0010-langfuse-tracing.md).
 Audit log: [docs/decisions/0011-append-only-audit-log.md](docs/decisions/0011-append-only-audit-log.md).
+Azure Container Apps: [docs/decisions/0012-azure-container-apps.md](docs/decisions/0012-azure-container-apps.md).
 
 ### Observability
 
@@ -210,6 +211,11 @@ allowlist. Question text is masked and truncated. Sampling is
 `LANGFUSE_SAMPLE_RATE` on the root. A dropped root drops every child.
 
 Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langfuse Cloud.
+
+Azure is opt-in. `make infra-validate` compiles the Bicep. `make deploy` and the
+Deploy Azure workflow skip with UNVERIFIED when `az` or OIDC secrets are
+missing. Cost, roles, and secrets: [infra/README.md](infra/README.md). Design:
+[docs/decisions/0012-azure-container-apps.md](docs/decisions/0012-azure-container-apps.md).
 
 Design choices for this scaffold: [docs/decisions/0001-scaffold.md](docs/decisions/0001-scaffold.md).
 
@@ -249,15 +255,19 @@ docs/decisions/      architecture decision records
 evals/               golden set and results (issues #5 / #6)
 data/                raw and parsed filings (gitignored contents)
 docker-compose.yml   Qdrant + self-hosted Langfuse
+Dockerfile           multi-stage API image (`ASK_MODEL=fake` by default)
+infra/               Bicep for Azure Container Apps, Key Vault, ACR
 ```
 
-Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR.
+Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR. A second
+workflow compiles Bicep, builds the image, and runs gitleaks. It does not log
+in to Azure.
 
 ## Roadmap
 
 - [ ] **M1: RAG + evals foundation** (week 1): ingestion, chunking/embedding experiments, hybrid search, golden set, baseline eval tables
 - [ ] **M2: Agent, gate, observability** (week 2): plan-then-act agent, structured outputs, fail-closed gate + audit log, Langfuse, eval regression CI
-- [ ] **M3: Ship** (week 3): Azure Container Apps, filled-in README eval tables, optional MCP server and Neo4j graph
+- [ ] **M3: Ship** (week 3): Azure Container Apps IaC (live apply UNVERIFIED), filled-in README eval tables, optional MCP server and Neo4j graph
 - [ ] Later: multi-tenant document isolation, PII redaction, human-in-the-loop approvals for high-risk tools
 
 See [MILESTONES.md](MILESTONES.md) for the full issue breakdown.
