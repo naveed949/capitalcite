@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "default": "deny",
+  "tools": {
+    "search_filings": {
+      "max_calls": 8,
+      "max_arg_bytes": 4096,
+      "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": {"type": "string", "minLength": 1},
+          "ticker": {"type": ["string", "null"]},
+          "form": {"type": ["string", "null"]},
+          "period": {"type": ["string", "null"]},
+          "k": {"type": ["integer", "null"], "minimum": 1, "maximum": 50}
+        }
+      }
+    },
+    "xbrl_fact": {
+      "max_calls": 4,
+      "max_arg_bytes": 1024,
+      "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ticker", "concept"],
+        "properties": {
+          "ticker": {"type": "string", "minLength": 1},
+          "concept": {"type": "string", "minLength": 1},
+          "period": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "fdic_bankfind": {
+      "max_calls": 2,
+      "max_arg_bytes": 1024,
+      "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "calculator": {
+      "max_calls": 4,
+      "max_arg_bytes": 512,
+      "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expression"],
+        "properties": {
+          "expression": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

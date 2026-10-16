@@ -8,7 +8,7 @@ from typing import Any, Literal, TypedDict, cast
 from langgraph.graph import END, START, StateGraph
 
 from capitalcite.agent.models import AgentModel
-from capitalcite.agent.tools import ToolRegistry
+from capitalcite.agent.tools import ToolExecutor
 from capitalcite.agent.types import AgentResult, Budgets, PlanStep, TraceStep
 from capitalcite.ask.service import ask
 from capitalcite.ask.types import Answer, ModelDraft, Refused
@@ -53,7 +53,7 @@ def _charge(state: GraphState, extra: int) -> int:
 async def run_agent(
     question: str,
     model: AgentModel,
-    tools: ToolRegistry,
+    tools: ToolExecutor,
     budgets: Budgets,
     *,
     min_score: float = 0.0,
@@ -92,7 +92,7 @@ async def run_agent(
     )
 
 
-def _compile(model: AgentModel, tools: ToolRegistry, min_score: float) -> Any:
+def _compile(model: AgentModel, tools: ToolExecutor, min_score: float) -> Any:
     async def plan_node(state: GraphState) -> dict[str, object]:
         reason = _over_budget(state)
         if reason is not None:

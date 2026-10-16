@@ -222,6 +222,177 @@ fi
 log "verify: capitalcite golden validate ok"
 cat "${ART}/golden.out"
 
+log "verify: capitalcite gate --help"
+set +e
+uv run capitalcite gate --help >"${ART}/gate.help.out" 2>"${ART}/gate.help.err"
+gate_help_rc=$?
+set -e
+write gate.help.exit "${gate_help_rc}"
+if [[ "${gate_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite gate --help failed"
+  cat "${ART}/gate.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/gate.help.out" | grep -q "validate" \
+  || ! plain "${ART}/gate.help.out" | grep -q "decide" \
+  || ! plain "${ART}/gate.help.out" | grep -q "redteam" \
+  || ! plain "${ART}/gate.help.out" | grep -q "bench"; then
+  log "verify: gate --help missing validate, decide, redteam, or bench"
+  cat "${ART}/gate.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite gate --help ok"
+
+log "verify: capitalcite gate validate"
+set +e
+uv run capitalcite gate validate >"${ART}/gate.validate.out" 2>"${ART}/gate.validate.err"
+gate_validate_rc=$?
+set -e
+write gate.validate.exit "${gate_validate_rc}"
+if [[ "${gate_validate_rc}" -ne 0 ]]; then
+  log "verify: capitalcite gate validate failed"
+  cat "${ART}/gate.validate.out" >&2 || true
+  cat "${ART}/gate.validate.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "ok tools=" "${ART}/gate.validate.out" \
+  || ! grep -q "calculator" "${ART}/gate.validate.out"; then
+  log "verify: gate validate stdout missing ok tools="
+  cat "${ART}/gate.validate.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite gate validate ok"
+cat "${ART}/gate.validate.out"
+
+log "verify: capitalcite gate decide unknown tool"
+set +e
+uv run capitalcite gate decide --tool shell --args '{"cmd":"ls"}' \
+  >"${ART}/gate.decide.unknown.body.json" 2>"${ART}/gate.decide.unknown.err"
+gate_unknown_rc=$?
+set -e
+write gate.decide.unknown.exit "${gate_unknown_rc}"
+if [[ "${gate_unknown_rc}" -ne 0 ]]; then
+  log "verify: gate decide unknown failed"
+  cat "${ART}/gate.decide.unknown.err" >&2 || true
+  exit 1
+fi
+
+log "verify: capitalcite gate decide invalid args"
+set +e
+uv run capitalcite gate decide --tool calculator --args '{"expression":"1+1","cmd":"id"}' \
+  >"${ART}/gate.decide.invalid.body.json" 2>"${ART}/gate.decide.invalid.err"
+gate_invalid_rc=$?
+set -e
+write gate.decide.invalid.exit "${gate_invalid_rc}"
+if [[ "${gate_invalid_rc}" -ne 0 ]]; then
+  log "verify: gate decide invalid failed"
+  cat "${ART}/gate.decide.invalid.err" >&2 || true
+  exit 1
+fi
+
+GATE_BROKEN="${ART}/gate.broken.json"
+printf '%s\n' '{' >"${GATE_BROKEN}"
+log "verify: capitalcite gate decide broken policy"
+set +e
+uv run capitalcite gate decide --policy "${GATE_BROKEN}" --tool calculator --args '{"expression":"1+1"}' \
+  >"${ART}/gate.decide.broken.body.json" 2>"${ART}/gate.decide.broken.err"
+gate_broken_rc=$?
+set -e
+write gate.decide.broken.exit "${gate_broken_rc}"
+if [[ "${gate_broken_rc}" -ne 0 ]]; then
+  log "verify: gate decide broken policy failed"
+  cat "${ART}/gate.decide.broken.err" >&2 || true
+  exit 1
+fi
+
+uv run python - "${ART}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+art = Path(sys.argv[1])
+errors = []
+
+def load(name: str) -> dict:
+    return json.loads((art / f"{name}.body.json").read_text(encoding="utf-8"))
+
+unknown = load("gate.decide.unknown")
+if unknown.get("kind") != "deny" or unknown.get("reason") != "unknown_tool":
+    errors.append(f"unknown: {unknown!r}")
+invalid = load("gate.decide.invalid")
+if invalid.get("kind") != "deny" or invalid.get("reason") != "invalid_args":
+    errors.append(f"invalid: {invalid!r}")
+broken = load("gate.decide.broken")
+if broken.get("kind") != "deny" or broken.get("reason") != "policy_load_failed":
+    errors.append(f"broken: {broken!r}")
+if errors:
+    sys.stderr.write("verify: gate decide checks failed: " + "; ".join(errors) + "\n")
+    sys.exit(1)
+print("gate decide unknown/invalid/broken ok")
+PY
+
+log "verify: capitalcite gate redteam"
+set +e
+uv run capitalcite gate redteam \
+  >"${ART}/gate.redteam.body.json" 2>"${ART}/gate.redteam.err"
+gate_redteam_rc=$?
+set -e
+write gate.redteam.exit "${gate_redteam_rc}"
+if [[ "${gate_redteam_rc}" -ne 0 ]]; then
+  log "verify: capitalcite gate redteam failed"
+  cat "${ART}/gate.redteam.body.json" >&2 || true
+  cat "${ART}/gate.redteam.err" >&2 || true
+  exit 1
+fi
+uv run python - "${ART}/gate.redteam.body.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+body = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if body.get("failed") != 0:
+    sys.stderr.write(f"verify: gate redteam failed={body.get('failed')!r}\n")
+    sys.exit(1)
+if body.get("passed", 0) < 5:
+    sys.stderr.write(f"verify: gate redteam passed={body.get('passed')!r}\n")
+    sys.exit(1)
+print(json.dumps(body, sort_keys=True))
+PY
+log "verify: capitalcite gate redteam ok"
+
+log "verify: capitalcite gate bench --n 2000"
+set +e
+uv run capitalcite gate bench --n 2000 \
+  >"${ART}/gate.bench.body.json" 2>"${ART}/gate.bench.err"
+gate_bench_rc=$?
+set -e
+write gate.bench.exit "${gate_bench_rc}"
+if [[ "${gate_bench_rc}" -ne 0 ]]; then
+  log "verify: capitalcite gate bench failed"
+  cat "${ART}/gate.bench.err" >&2 || true
+  exit 1
+fi
+uv run python - "${ART}/gate.bench.body.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+body = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+errors = []
+if not isinstance(body.get("p95_ms"), (int, float)):
+    errors.append(f"p95_ms={body.get('p95_ms')!r}")
+if not isinstance(body.get("p50_ms"), (int, float)):
+    errors.append(f"p50_ms={body.get('p50_ms')!r}")
+if body.get("p95_ms", 999) >= 50:
+    errors.append(f"p95_ms {body.get('p95_ms')} >= 50ms ceiling")
+if errors:
+    sys.stderr.write("verify: gate bench checks failed: " + "; ".join(errors) + "\n")
+    sys.exit(1)
+print(json.dumps(body, sort_keys=True))
+PY
+log "verify: capitalcite gate bench ok"
+cat "${ART}/gate.bench.body.json"
+
 log "verify: capitalcite ingest --help"
 set +e
 uv run capitalcite ingest --help >"${ART}/ingest.help.out" 2>"${ART}/ingest.help.err"
@@ -1331,6 +1502,14 @@ fi
   echo "version.exit $(cat "${ART}/version.exit")"
   echo "golden.help.exit $(cat "${ART}/golden.help.exit")"
   echo "golden.exit $(cat "${ART}/golden.exit")"
+  echo "gate.help.exit $(cat "${ART}/gate.help.exit")"
+  echo "gate.validate.exit $(cat "${ART}/gate.validate.exit")"
+  echo "gate.decide.unknown.exit $(cat "${ART}/gate.decide.unknown.exit")"
+  echo "gate.decide.invalid.exit $(cat "${ART}/gate.decide.invalid.exit")"
+  echo "gate.decide.broken.exit $(cat "${ART}/gate.decide.broken.exit")"
+  echo "gate.redteam.exit $(cat "${ART}/gate.redteam.exit")"
+  echo "gate.bench.exit $(cat "${ART}/gate.bench.exit")"
+  echo "gate.bench $(cat "${ART}/gate.bench.body.json")"
   echo "ingest.help.exit $(cat "${ART}/ingest.help.exit")"
   if [[ -f "${ART}/ingest.unreachable" ]]; then
     echo "ingest unreachable ($(cat "${ART}/ingest.unreachable"))"

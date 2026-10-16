@@ -54,6 +54,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Retrieval eval](./eval.md) covers `capitalcite eval --suite golden` and the `--small` CI path.
 - [Structured answers](./ask.md) covers `POST /ask`.
 - [Plan-then-act agent](./agent.md) covers `POST /ask` with `path` `agent`.
+- [Fail-closed tool gate](./gate.md) covers `capitalcite gate validate`, `decide`, `redteam`, and `bench`.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
 
 ## Extending the map

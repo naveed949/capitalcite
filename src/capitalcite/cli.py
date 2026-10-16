@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from importlib.metadata import version
 from pathlib import Path
@@ -60,6 +61,82 @@ golden_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(golden_app, name="golden")
+
+
+gate_app = typer.Typer(
+    help="Fail-closed tool gate. No network.",
+    no_args_is_help=True,
+)
+app.add_typer(gate_app, name="gate")
+
+
+@gate_app.command("validate")
+def gate_validate(
+    policy: Path | None = typer.Option(
+        None,
+        "--policy",
+        help="Policy JSON. Default is the shipped allow-list.",
+    ),
+) -> None:
+    """Load the policy. Exit 1 if it is broken."""
+    from capitalcite.gate import BrokenPolicy, load_policy
+
+    loaded = load_policy(policy)
+    if isinstance(loaded, BrokenPolicy):
+        typer.echo(f"deny policy_load_failed {loaded.detail}", err=True)
+        raise typer.Exit(code=1)
+    names = ",".join(sorted(loaded.tools))
+    typer.echo(f"ok tools={names}")
+
+
+@gate_app.command("decide")
+def gate_decide(
+    tool: str = typer.Option(..., "--tool", help="Tool name the planner requested."),
+    args: str = typer.Option("{}", "--args", help="JSON object of tool arguments."),
+    policy: Path | None = typer.Option(
+        None,
+        "--policy",
+        help="Policy JSON. Default is the shipped allow-list.",
+    ),
+) -> None:
+    """Print one allow or deny decision. Does not run the tool."""
+    from capitalcite.agent.tools import ToolRegistry
+    from capitalcite.gate import Gate, load_policy
+
+    try:
+        parsed = json.loads(args)
+    except json.JSONDecodeError as exc:
+        typer.echo("error: --args must be a JSON object", err=True)
+        raise typer.Exit(code=1) from exc
+    if not isinstance(parsed, dict):
+        typer.echo("error: --args must be a JSON object", err=True)
+        raise typer.Exit(code=1)
+    gate = Gate(load_policy(policy), ToolRegistry({}))
+    typer.echo(gate.decide(tool, parsed).model_dump_json())
+
+
+@gate_app.command("redteam")
+def gate_redteam() -> None:
+    """Run the prompt-injection suite. Exit 1 if any case fails."""
+    from capitalcite.gate import run_redteam
+
+    report = asyncio.run(run_redteam())
+    typer.echo(report.model_dump_json())
+    if report.failed:
+        raise typer.Exit(code=1)
+
+
+@gate_app.command("bench")
+def gate_bench(
+    n: int = typer.Option(2000, "--n", help="Number of decide() samples."),
+) -> None:
+    """Measure decide() p50 and p95 in milliseconds."""
+    from capitalcite.gate import bench_decide
+
+    if n < 2:
+        typer.echo("error: --n must be at least 2", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(bench_decide(n).model_dump_json())
 
 
 @golden_app.command("validate")

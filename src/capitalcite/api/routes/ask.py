@@ -17,6 +17,7 @@ from capitalcite.agent import (
     default_registry,
     run_agent,
 )
+from capitalcite.gate import Gate, load_policy
 from capitalcite.agent.fdic import FakeFdicClient, FdicClient
 from capitalcite.agent.http import HttpxJsonClient
 from capitalcite.agent.xbrl import FakeXbrlClient, XbrlClient
@@ -175,7 +176,10 @@ async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings
     else:
         xbrl = XbrlClient(sec_client).fact
         fdic = FdicClient(fdic_client).lookup
-    tools = default_registry(search=search, xbrl=xbrl, fdic=fdic)
+    tools = Gate(
+        load_policy(settings.gate_policy),
+        default_registry(search=search, xbrl=xbrl, fdic=fdic),
+    )
     return await run_agent(
         body.question,
         model,
