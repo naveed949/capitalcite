@@ -82,8 +82,8 @@ exports nothing.
 Attribute keys are an allowlist. Headers, API keys, and `Bearer` tokens
 cannot be set. Question text is masked (email and long digit runs) and
 truncated. Full chat messages stay off the wire. A second mask on the
-Langfuse client is defense in depth. If the mask function raises, the
-export is skipped rather than sending the raw batch.
+Langfuse client is defense in depth. That function catches its own errors, because Langfuse drops the export
+batch when mask raises.
 
 Local compose keys in `.env.example` are localhost secrets. They are not
 production credentials. Do not commit a Cloud secret key.

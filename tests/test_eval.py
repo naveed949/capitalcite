@@ -196,9 +196,7 @@ def test_small_bm25_writes_json(tmp_path: Path) -> None:
         assert "query_embed" in text
         assert "query_values_all_ones=true" in text
         assert "sparse_id=" in text
-        eval_spans = [
-            record for record in exporter.finished() if record.kind is ObservationKind.EVAL
-        ]
+        eval_spans = [record for record in exporter.finished() if record.name == "eval"]
         assert len(eval_spans) == 1
         assert eval_spans[0].attributes["capitalcite.git_sha"] == body["git_sha"]
         assert eval_spans[0].attributes["capitalcite.config_hash"] == body["arms"][0]["config_hash"]
@@ -210,6 +208,18 @@ def test_small_bm25_writes_json(tmp_path: Path) -> None:
         assert retrieve_spans[0].trace_id == eval_spans[0].trace_id
     finally:
         reset_for_tests()
+
+
+def test_tag_eval_keeps_one_hash_and_drops_a_split() -> None:
+    from capitalcite.eval.runner import tag_eval
+
+    report = load_report_from_text(_sample_report_json())
+    tagged = tag_eval(report)
+    assert tagged["capitalcite.git_sha"] == report.git_sha
+    assert tagged["capitalcite.config_hash"] == report.arms[0].config_hash
+    other = report.arms[0].model_copy(update={"config_hash": "c" * 64})
+    mixed = report.model_copy(update={"arms": (report.arms[0], other)})
+    assert "capitalcite.config_hash" not in tag_eval(mixed)
 
 
 def test_render_markdown_names_probe() -> None:

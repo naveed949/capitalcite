@@ -143,10 +143,26 @@ async def run_suite(
                     if probe_items:
                         diagnostics.append(await diagnose_bm25(setup, probe_items))
                     for mode in modes:
-                        scores = []
-                        for item in items:
-                            hits = await retrieve(setup, item.question, mode=mode, k=retrieve_k)
-                            scores.append(score_item(item, hits))
+                        with observation(
+                            "eval-arm",
+                            ObservationKind.EVAL,
+                            **eval_attrs(
+                                git_sha=git_sha,
+                                suite=suite,
+                                small=small,
+                                config_hash=receipt.config_hash,
+                            ),
+                        ) as arm:
+                            arm.set(
+                                **{
+                                    "capitalcite.mode": mode.value,
+                                    "capitalcite.collection": receipt.collection_name,
+                                }
+                            )
+                            scores = []
+                            for item in items:
+                                hits = await retrieve(setup, item.question, mode=mode, k=retrieve_k)
+                                scores.append(score_item(item, hits))
                         arms.append(
                             ArmResult(
                                 config_hash=receipt.config_hash,
@@ -175,11 +191,6 @@ async def run_suite(
                     raise EvalUnverified(str(exc)) from exc
                 finally:
                     await setup.aclose()
-        config_hash = arms[0].config_hash if arms else None
-        if config_hash is not None:
-            span.set(
-                **eval_attrs(git_sha=git_sha, suite=suite, small=small, config_hash=config_hash)
-            )
         report = EvalReport(
             git_sha=git_sha,
             suite=suite,
@@ -193,6 +204,7 @@ async def run_suite(
             arms=tuple(arms),
             agent_vs_rag=agent_vs_rag,
         )
+        span.set(**tag_eval(report))
     if write:
         from capitalcite.eval.report import write_report
 
@@ -203,6 +215,18 @@ async def run_suite(
                 "\n".join(diagnostics),
             )
     return report
+
+
+def tag_eval(report: EvalReport) -> dict[str, str | int | float | bool]:
+    """Root attributes. A single shared config hash is included."""
+    hashes = {arm.config_hash for arm in report.arms}
+    config_hash = next(iter(hashes)) if len(hashes) == 1 else None
+    return eval_attrs(
+        git_sha=report.git_sha,
+        suite=report.suite,
+        small=report.small,
+        config_hash=config_hash,
+    )
 
 
 def _setup(

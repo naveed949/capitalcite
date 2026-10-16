@@ -1439,17 +1439,28 @@ evals = [row for row in records if row.get("name") == "eval"]
 if not evals:
     sys.stderr.write("verify: no eval span in spans.jsonl\n")
     sys.exit(1)
-attrs = evals[-1].get("attributes") or {}
+root = evals[-1]
+attrs = root.get("attributes") or {}
 if not attrs.get("capitalcite.git_sha"):
     sys.stderr.write("verify: eval span missing capitalcite.git_sha\n")
     sys.exit(1)
-if not attrs.get("capitalcite.config_hash"):
+trace_id = root.get("trace_id")
+arm_hashes = [
+    (row.get("attributes") or {}).get("capitalcite.config_hash")
+    for row in records
+    if row.get("name") == "eval-arm" and row.get("trace_id") == trace_id
+]
+config_hash = attrs.get("capitalcite.config_hash") or next(
+    (value for value in arm_hashes if value),
+    None,
+)
+if not config_hash:
     sys.stderr.write("verify: eval span missing capitalcite.config_hash\n")
     sys.exit(1)
 print(
     "eval span "
     f"git_sha={attrs['capitalcite.git_sha']} "
-    f"config_hash={attrs['capitalcite.config_hash']}"
+    f"config_hash={config_hash}"
 )
 PY
 log "verify: eval span tagged with git_sha and config_hash"

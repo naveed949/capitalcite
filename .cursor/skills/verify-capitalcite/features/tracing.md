@@ -15,7 +15,8 @@ still returns.
 - `ask-unconfigured` posts the same question with tracing disabled. HTTP
   200 is unchanged. The trace file is absent or empty.
 - `eval-tags` runs `capitalcite eval --suite golden --small` with a trace
-  file. The eval root records `git_sha` and a `config_hash`.
+  file. The eval root records `git_sha`. `config_hash` is on that root when
+  every arm shares one hash, and on each `eval-arm` span otherwise.
 - `langfuse-live` is UNVERIFIED when nothing is listening on
   `localhost:3000`. Do not start compose for this check.
 
@@ -41,8 +42,9 @@ Preconditions:
   has name `retrieve`. The retrieve record has `capitalcite.hit_count`.
   No record value contains `sk-` or `Bearer `.
 - **Eval tags.** `capitalcite eval --suite golden --small` with the same
-  file env writes an `eval` span that includes `capitalcite.git_sha` and
-  `capitalcite.config_hash`.
+  file env writes an `eval` span that includes `capitalcite.git_sha`.
+  `capitalcite.config_hash` is on that span when the arms share one hash,
+  and on the `eval-arm` spans when they do not.
 - **Live Langfuse.** If `curl -sf http://127.0.0.1:3000` fails, write
   `langfuse.skipped` and report UNVERIFIED. Do not start compose.
 - **Bundled helper.** Run `./scripts/verify.sh`. It writes `spans.jsonl`
