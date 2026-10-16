@@ -54,9 +54,7 @@ async def diagnose_bm25(
         hits = await retrieve(setup, item.question, mode=RetrievalMode.BM25, k=probe_k)
         gold_rank = _gold_rank(hits, gold_rows)
         gold_chunks = [
-            chunk
-            for chunk in indexed
-            if any(span_overlap(chunk, row) for row in gold_rows)
+            chunk for chunk in indexed if any(span_overlap(chunk, row) for row in gold_rows)
         ]
         lines.append(f"## {item.id}")
         lines.append(f"question={item.question}")
@@ -66,16 +64,13 @@ async def diagnose_bm25(
             + ", ".join(f"{tok}={query_tokens.count(tok)}" for tok in unique_query)
         )
         lines.append(
-            f"sparse_dims={len(embedding.sparse.indices)} "
-            f"(indices hashed, values are raw counts)"
+            f"sparse_dims={len(embedding.sparse.indices)} (indices hashed, values are raw counts)"
         )
         for row in gold_rows:
             quote_tokens = tokens(row.quote)
             shared = [tok for tok in unique_query if tok in quote_tokens]
             missing = [tok for tok in unique_query if tok not in quote_tokens]
-            lines.append(
-                f"gold {row.doc_id} [{row.start},{row.end}) quote_tokens={quote_tokens}"
-            )
+            lines.append(f"gold {row.doc_id} [{row.start},{row.end}) quote_tokens={quote_tokens}")
             lines.append(f"gold_quote_has_query_tokens={shared}")
             lines.append(f"gold_quote_missing_query_tokens={missing}")
         if not gold_chunks:
