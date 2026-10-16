@@ -1,4 +1,4 @@
-# 0014. MCP server
+# 0015. MCP server
 
 Date: 2026-10-16
 
@@ -9,8 +9,9 @@ through the same fail-closed gate and audit log, and to prove a real MCP
 client can call them. This record is why MCP is a stdio transport over
 `AuditingTools`, why `ask` is a policy tool that the agent registry does
 not run, and why the server overrides `call_tool` so extra keys still
-reach `Gate.decide`. Number 0013 is taken by in-flight issue #12
-(`capitalcite check`).
+reach `Gate.decide`. Number 0012 is Azure Container Apps. Number 0013 is
+PR #31 (`capitalcite check`). Number 0014 is PR #34 (optional Neo4j
+entity graph).
 
 ## MCP is a transport. The gate is still the only way to run a tool.
 
@@ -32,6 +33,14 @@ gated user action.
 nest two Gates. An IDE can call `search_filings` more than once, then
 `ask`.
 
+## Hosts discover tools. REST stays for services.
+
+An MCP host calls `list_tools` and receives names plus JSON Schema. That
+is native discovery: Cursor, Claude Desktop, and other hosts do not curl
+OpenAPI. REST stays for services that already speak HTTP — uvicorn,
+compose, curl, and any caller of `POST /search` or `POST /ask`. MCP does
+not replace those routes. This PR does not change them.
+
 ## Two advertised names. One policy file.
 
 The shipped allow-list gains `ask`. Agent `TOOL_NAMES` stays four names.
@@ -51,6 +60,19 @@ already on the policy rules. The raw `arguments` object is what
 stdio stdout is the wire. Logging for this command is stderr. `mcp` is a
 main dependency so `uv run capitalcite mcp` works in verify without an
 optional extra.
+
+## stdio now. Streamable HTTP later, and not without auth.
+
+stdio is a child process. The host launches `capitalcite mcp`. stdout is
+the JSON-RPC wire. There is no listening socket, so local attach does not
+need a second auth layer. Logs go to stderr so a stray print cannot
+corrupt a message.
+
+Streamable HTTP would put the same tools on a URL. That is a network
+trust boundary the gate does not cover: anyone who can POST can name a
+tool. Auth (a token, mTLS, or an allow-listed reverse proxy) has to exist
+before that port is reachable. This PR does not add it. HTTP transport is
+deferred.
 
 ## CLI is the user path. Pytest is not verification.
 

@@ -203,7 +203,7 @@ Fail-closed tool gate: [docs/decisions/0009-fail-closed-tool-gate.md](docs/decis
 Plan-then-act agent: [docs/decisions/0008-plan-then-act-agent.md](docs/decisions/0008-plan-then-act-agent.md).
 Langfuse tracing: [docs/decisions/0010-langfuse-tracing.md](docs/decisions/0010-langfuse-tracing.md).
 Audit log: [docs/decisions/0011-append-only-audit-log.md](docs/decisions/0011-append-only-audit-log.md).
-MCP server: [docs/decisions/0014-mcp-server.md](docs/decisions/0014-mcp-server.md).
+MCP server: [docs/decisions/0015-mcp-server.md](docs/decisions/0015-mcp-server.md).
 Azure Container Apps: [docs/decisions/0012-azure-container-apps.md](docs/decisions/0012-azure-container-apps.md).
 Regression CI: [docs/decisions/0013-eval-regression-ci.md](docs/decisions/0013-eval-regression-ci.md).
 Optional entity graph: [docs/decisions/0014-optional-entity-graph.md](docs/decisions/0014-optional-entity-graph.md).
