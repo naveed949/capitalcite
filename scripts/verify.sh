@@ -852,8 +852,8 @@ PY
   cp "${ART}/search.cc-h-013.hybrid.http" "${ART}/search.http"
   cp "${ART}/search.cc-h-013.hybrid.exit" "${ART}/search.exit"
 
-  ASK013='{"question":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":10,"ticker":"JPM","model":"fake"}'
-  ASK_U001='{"question":"What CET1 ratio did Wells Fargo disclose for year-end 2026?","mode":"hybrid","k":10,"ticker":"WFC","model":"fake"}'
+  ASK013='{"question":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","k":10,"ticker":"JPM","model":"fake"}'
+  ASK_U001='{"question":"What CET1 ratio did Wells Fargo disclose for year-end 2026?","k":10,"ticker":"WFC","model":"fake"}'
   SEARCH_U001='{"query":"What CET1 ratio did Wells Fargo disclose for year-end 2026?","mode":"hybrid","k":10,"ticker":"WFC"}'
   log "verify: POST /ask cc-h-013 model=fake"
   post_ask ask.cc-h-013 "${ASK013}"
@@ -861,7 +861,7 @@ PY
   post_ask ask.cc-u-001 "${ASK_U001}"
   post_search search.cc-u-001.hybrid-wfc "${SEARCH_U001}"
 
-  ASK_OPENAI='{"question":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":10,"ticker":"JPM","model":"openai"}'
+  ASK_OPENAI='{"question":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","k":10,"ticker":"JPM","model":"openai"}'
   KEY_PRESENT="$(uv run python -c 'from capitalcite.config import Settings; key=(Settings().openai_api_key or "").strip(); print("yes" if key else "no")')"
   write ask.openai.key "${KEY_PRESENT}"
   printf '%s\n' "${ASK_OPENAI}" >"${ART}/ask.openai.request.json"

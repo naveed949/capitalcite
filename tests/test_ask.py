@@ -68,7 +68,7 @@ async def test_ask_refuses_a_hallucinated_quote() -> None:
     script = ModelDraft(
         kind="answered",
         answer="The ratio was 15.7%.",
-        citations=(DraftCite(index=0, quote="15.7%"),),
+        citations=(DraftCite(index=1, quote="15.7%"),),
     )
     model = FakeStructuredModel(script)
     answer = await ask([_hit()], "What was CET1?", model)
@@ -81,8 +81,8 @@ async def test_ask_refuses_when_any_citation_is_ungrounded() -> None:
         kind="answered",
         answer="Both passages.",
         citations=(
-            DraftCite(index=0, quote="tier one"),
-            DraftCite(index=1, quote="not in the second passage"),
+            DraftCite(index=1, quote="tier one"),
+            DraftCite(index=2, quote="not in the second passage"),
         ),
     )
     hits = [_hit(), _hit(doc_id="doc-bac", text="wholesale funding markets")]
@@ -132,7 +132,7 @@ async def test_openai_retries_invalid_json_once() -> None:
                     "kind": "answered",
                     "answer": "tier one capital buffer",
                     "confidence": 0.5,
-                    "citations": [{"index": 0, "quote": "tier one"}],
+                    "citations": [{"index": 1, "quote": "tier one"}],
                 }
             )
         return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
@@ -146,7 +146,9 @@ async def test_openai_retries_invalid_json_once() -> None:
     blob = json.dumps(second["messages"])
     assert "non-empty answer" in blob
     assert "tier one capital buffer" in blob
-    assert "[0]" in blob
+    assert "Passage 1" in blob
+    assert "JSON" in blob
+    assert "doc_id=" not in blob
     assert second["response_format"] == {"type": "json_object"}
     assert second["model"] == "gpt-4o-mini"
     assert seen[1].headers["authorization"] == "Bearer test-key"
@@ -191,7 +193,7 @@ async def test_grounding_failure_does_not_retry_openai() -> None:
                 "kind": "answered",
                 "answer": "The ratio was 15.7%.",
                 "confidence": 0.4,
-                "citations": [{"index": 0, "quote": "15.7%"}],
+                "citations": [{"index": 1, "quote": "15.7%"}],
             }
         )
         return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
@@ -248,7 +250,7 @@ def test_post_ask_scripted_refusal(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert body.answer is None
     assert body.citations == []
     assert body.refusal_reason == "not in the filing"
-    assert body.confidence == 0.1
+    assert body.confidence == 0.0
     assert body.point_count == 1
     assert body.config_hash == config_hash(setup.config)
 
@@ -262,7 +264,7 @@ def test_post_ask_hallucinated_quote_is_refused(
         ModelDraft(
             kind="answered",
             answer="The ratio was 15.7%.",
-            citations=(DraftCite(index=0, quote="15.7%"),),
+            citations=(DraftCite(index=1, quote="15.7%"),),
         ),
     )
     with TestClient(application) as http:
@@ -273,6 +275,7 @@ def test_post_ask_hallucinated_quote_is_refused(
     assert body.answer is None
     assert body.citations == []
     assert body.refusal_reason
+    assert "15.7%" not in body.refusal_reason
 
 
 def test_post_ask_openai_without_key_is_503(tmp_path: Path) -> None:
@@ -349,6 +352,7 @@ def _indexed_app(tmp_path: Path, chunks: list[Chunk]) -> tuple[FastAPI, Retrieva
     asyncio.run(build_index(setup, tmp_path))
     application = create_app()
     application.dependency_overrides[get_setup] = lambda: setup
+    application.dependency_overrides[get_settings] = lambda: _settings()
     return application, setup
 
 

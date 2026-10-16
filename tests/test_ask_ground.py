@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from capitalcite.ask import Answered, Citation, DraftCite, ModelDraft, Refused, ground
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.retrieval import Hit
@@ -14,12 +17,12 @@ def test_ground_expands_a_verbatim_quote() -> None:
         kind="answered",
         answer="The buffer is tier one capital.",
         confidence=0.8,
-        citations=(DraftCite(index=0, quote="tier one capital"),),
+        citations=(DraftCite(index=1, quote="tier one capital"),),
     )
     answer = ground(draft, hits)
     assert isinstance(answer, Answered)
     assert answer.answer == "The buffer is tier one capital."
-    assert answer.confidence == 0.8
+    assert answer.confidence == hits[0].score
     assert answer.citations == (
         Citation(
             doc_id="doc-jpm",
@@ -32,6 +35,24 @@ def test_ground_expands_a_verbatim_quote() -> None:
     )
 
 
+def test_ground_confidence_is_the_minimum_cited_score() -> None:
+    hits = [
+        _hit("doc-jpm", "tier one capital buffer", start=10, end=40, score=0.4),
+        _hit("doc-bac", "wholesale funding markets", url=_BAC_URL, start=80, end=120, score=0.1),
+    ]
+    draft = ModelDraft(
+        kind="answered",
+        answer="Both passages.",
+        citations=(
+            DraftCite(index=1, quote="tier one"),
+            DraftCite(index=2, quote="wholesale funding"),
+        ),
+    )
+    answer = ground(draft, hits)
+    assert isinstance(answer, Answered)
+    assert answer.confidence == 0.1
+
+
 def test_ground_uses_the_cited_hit_not_a_neighbor() -> None:
     hits = [
         _hit("doc-jpm", "tier one capital buffer", start=10, end=40),
@@ -40,7 +61,7 @@ def test_ground_uses_the_cited_hit_not_a_neighbor() -> None:
     draft = ModelDraft(
         kind="answered",
         answer="Funding comes from wholesale markets.",
-        citations=(DraftCite(index=1, quote="wholesale funding"),),
+        citations=(DraftCite(index=2, quote="wholesale funding"),),
     )
     answer = ground(draft, hits)
     assert isinstance(answer, Answered)
@@ -56,7 +77,7 @@ def test_ground_refuses_a_quote_that_is_not_in_the_chunk() -> None:
     draft = ModelDraft(
         kind="answered",
         answer="The ratio was 15.7%.",
-        citations=(DraftCite(index=0, quote="15.7%"),),
+        citations=(DraftCite(index=1, quote="15.7%"),),
     )
     answer = ground(draft, hits)
     assert isinstance(answer, Refused)
@@ -70,12 +91,38 @@ def test_ground_refuses_an_index_outside_the_hits() -> None:
         citations=(DraftCite(index=3, quote="tier one"),),
     )
     assert isinstance(ground(draft, hits), Refused)
-    negative = ModelDraft(
+
+
+def test_draft_cite_rejects_a_zero_index() -> None:
+    with pytest.raises(ValidationError):
+        DraftCite(index=0, quote="tier one")
+
+
+def test_ground_refuses_a_constructed_zero_index() -> None:
+    hits = [_hit("doc-jpm", "tier one capital buffer")]
+    draft = ModelDraft.model_construct(
         kind="answered",
         answer="Something.",
-        citations=(DraftCite(index=-1, quote="tier one"),),
+        refusal_reason="",
+        confidence=0.9,
+        citations=(DraftCite.model_construct(index=0, quote="tier one"),),
     )
-    assert isinstance(ground(negative, hits), Refused)
+    answer = ground(draft, hits)
+    assert isinstance(answer, Refused)
+    assert "tier one" not in answer.refusal_reason
+
+
+def test_ground_refuses_a_blank_quote() -> None:
+    hits = [_hit("doc-jpm", "tier one capital buffer")]
+    draft = ModelDraft.model_construct(
+        kind="answered",
+        answer="Something.",
+        refusal_reason="",
+        confidence=0.9,
+        citations=(DraftCite.model_construct(index=1, quote=""),),
+    )
+    answer = ground(draft, hits)
+    assert isinstance(answer, Refused)
 
 
 def test_ground_passes_a_refusal_through() -> None:
@@ -87,7 +134,7 @@ def test_ground_passes_a_refusal_through() -> None:
     answer = ground(draft, [_hit("doc-jpm", "tier one capital buffer")])
     assert isinstance(answer, Refused)
     assert answer.refusal_reason == "The filing does not state that ratio."
-    assert answer.confidence == 0.2
+    assert answer.confidence == 0.0
 
 
 def test_ground_refuses_an_answered_draft_with_no_citations() -> None:
@@ -110,9 +157,10 @@ def _hit(
     start: int = 10,
     end: int = 40,
     url: str = _JPM_URL,
+    score: float = 1.0,
 ) -> Hit:
     return Hit(
-        score=1.0,
+        score=score,
         chunk=Chunk(
             doc_id=doc_id,
             section=section,

@@ -46,8 +46,7 @@ class FakeStructuredModel:
         return ModelDraft(
             kind="answered",
             answer=quote,
-            confidence=1.0,
-            citations=(DraftCite(index=0, quote=quote),),
+            citations=(DraftCite(index=1, quote=quote),),
         )
 
 
@@ -137,14 +136,13 @@ def build_structured_model(
 
 
 def _system_prompt() -> str:
-    # response_format json_object requires the messages to contain the word JSON.
     schema = json.dumps(ModelDraft.model_json_schema())
     return (
         "You answer questions about U.S. bank filings using only the numbered passages. "
         "Return one JSON object. "
         "kind is answered or refused. "
         "When kind is answered, answer is non-empty and citations contains at least one "
-        "object with index and quote. index is the passage number. "
+        "object with index and quote. index is the 1-based passage number. "
         "quote must be a verbatim substring of that passage. "
         "When the passages do not support an answer, set kind to refused, "
         "set refusal_reason, and set citations to an empty array. "
@@ -155,9 +153,16 @@ def _system_prompt() -> str:
 
 def _user_prompt(question: str, hits: Sequence[Hit]) -> str:
     blocks: list[str] = []
-    for index, hit in enumerate(hits):
+    for number, hit in enumerate(hits, start=1):
         chunk = hit.chunk
-        blocks.append(f"[{index}] doc_id={chunk.doc_id} section={chunk.section}\n{chunk.text}")
+        blocks.append(
+            f"Passage {number}\n"
+            f"section: {chunk.section}\n"
+            f"ticker: {chunk.ticker}\n"
+            f"form: {chunk.form}\n"
+            f"period: {chunk.period}\n"
+            f"{chunk.text}"
+        )
     return f"Question: {question}\n\nPassages:\n" + "\n\n".join(blocks)
 
 

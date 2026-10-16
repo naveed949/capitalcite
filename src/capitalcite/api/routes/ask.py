@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from capitalcite.api.routes.search import get_setup
 from capitalcite.ask.models import FakeStructuredModel, StructuredModel, build_structured_model
@@ -36,12 +36,19 @@ router = APIRouter(tags=["ask"])
 
 class AskRequest(BaseModel):
     question: str = Field(min_length=1)
-    mode: RetrievalMode = RetrievalMode.HYBRID
     k: int | None = Field(default=None, ge=1, le=50)
     ticker: str | None = None
     form: str | None = None
     period: str | None = None
     model: AskModelName | None = None
+
+    @field_validator("question")
+    @classmethod
+    def question_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("question must not be blank")
+        return stripped
 
 
 class AskResponse(BaseModel):
@@ -84,7 +91,9 @@ async def post_ask(
         filters = parse_filters(ticker=body.ticker, form=body.form, period=body.period)
         limit = body.k if body.k is not None else setup.search_k
         count = await point_count(setup)
-        hits = await retrieve(setup, body.question, mode=body.mode, k=limit, filters=filters)
+        hits = await retrieve(
+            setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters
+        )
         answer = await ask(hits, body.question, _model_for(body, settings, hits_exist=bool(hits)))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

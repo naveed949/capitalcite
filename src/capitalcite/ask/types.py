@@ -22,11 +22,11 @@ class ModelUnavailable(AskError):
 
 
 class DraftCite(BaseModel):
-    """A citation the model claims. index selects a retrieved hit."""
+    """A citation the model claims. index is the 1-based passage number."""
 
     model_config = ConfigDict(frozen=True)
-    index: int
-    quote: str
+    index: int = Field(ge=1)
+    quote: str = Field(min_length=1)
 
 
 class ModelDraft(BaseModel):

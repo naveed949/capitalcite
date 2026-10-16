@@ -11,23 +11,23 @@ from capitalcite.retrieval.types import Hit
 def ground(draft: ModelDraft, hits: Sequence[Hit]) -> Answer:
     """Copy doc_id, start, end, section, and source_url from the cited hit.
 
-    The quote must be a verbatim substring of that hit's chunk text. An illegal
-    draft or a quote that is not in the chunk becomes Refused. This does not
-    call the model again.
+    Passage numbers are 1-based. The quote must be a verbatim substring of that
+    hit's chunk text. An illegal draft or a quote that is not in the chunk
+    becomes Refused. This does not call the model again. Confidence is the
+    minimum retrieval score of the cited hits.
     """
     problem = draft_problem(draft)
     if problem is not None:
         return Refused(refusal_reason=problem)
     if draft.kind == "refused":
-        return Refused(refusal_reason=draft.refusal_reason, confidence=draft.confidence)
+        return Refused(refusal_reason=draft.refusal_reason)
     citations: list[Citation] = []
+    scores: list[float] = []
     for cite in draft.citations:
-        if cite.index < 0 or cite.index >= len(hits):
-            return Refused(
-                refusal_reason=f"citation index {cite.index} is outside the retrieved hits"
-            )
-        chunk = hits[cite.index].chunk
-        # "" in text is True. A blank quote must not count as grounded.
+        if cite.index < 1 or cite.index > len(hits):
+            return Refused(refusal_reason="citation index is outside the retrieved hits")
+        hit = hits[cite.index - 1]
+        chunk = hit.chunk
         if cite.quote == "" or cite.quote not in chunk.text:
             return Refused(
                 refusal_reason="citation quote is not a verbatim substring of the cited passage"
@@ -42,4 +42,5 @@ def ground(draft: ModelDraft, hits: Sequence[Hit]) -> Answer:
                 source_url=chunk.source_url,
             )
         )
-    return Answered(answer=draft.answer, citations=tuple(citations), confidence=draft.confidence)
+        scores.append(hit.score)
+    return Answered(answer=draft.answer, citations=tuple(citations), confidence=min(scores))

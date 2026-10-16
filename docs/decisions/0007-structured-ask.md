@@ -13,11 +13,14 @@ call is httpx instead of an agent framework.
 ## The model cites an index and a quote
 
 The model does not choose `doc_id`, `start`, or `end`. Those fields
-already live on the retrieved `Chunk`. A draft citation is an index into
-the hit list and a quote string. `ground()` copies `doc_id`, `start`,
-`end`, `section`, and `source_url` from `hits[index]` when `quote` is a
-verbatim substring of `hits[index].chunk.text`. `start` and `end` stay
-the chunk span. They are not recomputed from the quote.
+already live on the retrieved `Chunk`. A draft citation is a 1-based
+passage number and a quote string. The prompt shows `Passage n` plus
+`Chunk.text`. It does not show `doc_id`, `start`, `end`, or
+`source_url`. `ground()` copies those fields from `hits[index - 1]`
+when `quote` is a verbatim substring of that chunk's text. `start` and
+`end` stay the chunk span. They are not recomputed from the quote.
+Confidence is the minimum retrieval score of the cited hits. A refusal
+has confidence 0. The model does not write that number.
 
 A blank quote is refused. In Python `"" in text` is true, so a membership
 test alone would accept it. An index outside the list is refused. If any
@@ -51,9 +54,10 @@ in the follow-up message. A second failure becomes a refused draft. A
 non-200 response raises `ModelUnavailable` and the route returns 503.
 That path does not retry.
 
-The system prompt numbers the passages, tells the model to quote a
-verbatim substring, and includes the `ModelDraft` JSON schema. It tells
-the model to refuse when the passages are not enough.
+The system prompt numbers the passages from 1, tells the model to quote
+a verbatim substring, and includes the `ModelDraft` JSON schema. It
+tells the model to refuse when the passages are not enough. `/ask`
+always retrieves hybrid. There is no `mode` on the request.
 
 `ASK_MODEL` is `openai` or `fake`. The default is `openai`, so a server
 without `OPENAI_API_KEY` fails the call with 503 instead of quietly
@@ -62,11 +66,11 @@ key. `FakeStructuredModel` is importable in production. `verify.sh`
 starts uvicorn with `ASK_MODEL=fake`.
 
 The request body may set `model` to `openai` or `fake`. A missing value
-uses `ASK_MODEL`. Verification always sends `fake` for the grounded
-check. A second request sends `openai` when a key is visible to
-`Settings`. No key and `model=openai` is HTTP 503, recorded as
-UNVERIFIED live generation. The verify process does not treat that 503
-as a product failure.
+uses `ASK_MODEL`. That override exists so verify can keep one uvicorn on
+`QDRANT_PATH` with `ASK_MODEL=fake` and still probe OpenAI when a key is
+present. No key and `model=openai` is HTTP 503, recorded as UNVERIFIED
+live generation. The verify process does not treat that 503 as a product
+failure.
 
 ## What this leaves out
 
