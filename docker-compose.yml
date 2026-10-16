@@ -58,7 +58,7 @@ x-langfuse-worker-env: &langfuse-worker-env
 
 services:
   qdrant:
-    image: qdrant/qdrant:v1.15.3
+    image: qdrant/qdrant:v1.16.2
     restart: unless-stopped
     logging: *default-logging
     ports:

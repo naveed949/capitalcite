@@ -124,6 +124,10 @@ with FastEmbed. `minilm` is the other local model. `openai-small` calls OpenAI
 and reads `OPENAI_API_KEY`. That variable is the secret for the paid embedder.
 Leave it empty when you use the local models.
 
+Without Docker, set `QDRANT_PATH` to a directory (or `QDRANT_URL=:memory:` in
+one process). Index and `POST /search` must share that path. Compose Qdrant
+is `qdrant/qdrant:v1.16.2` or newer; parameterized RRF needs server 1.16.
+
 ```bash
 uv run capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025
 uv run capitalcite chunk --chunker section

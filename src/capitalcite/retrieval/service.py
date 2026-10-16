@@ -119,18 +119,41 @@ def setup_retrieval(
     )
 
 
-def create_retrieval_setup(settings: Settings) -> RetrievalSetup:
-    """Production constructor. Does not call Qdrant and does not load FastEmbed."""
-    embedder = build_embedder(EmbedderName(settings.embedder), settings.openai_api_key)
-    # The compatibility check starts a daemon thread that dials Qdrant during
+def open_qdrant_client(settings: Settings) -> AsyncQdrantClient:
+    """Open the store Settings names. Path and :memory: never dial a URL.
+
+    QDRANT_PATH wins over QDRANT_URL. Neither location is part of IndexConfig.
+    """
+    # Compatibility check starts a daemon thread that dials a remote during
     # construction. A down server has to fail the search RPC instead.
-    client = AsyncQdrantClient(
+    if settings.qdrant_path is not None:
+        return AsyncQdrantClient(
+            path=str(settings.qdrant_path),
+            timeout=5,
+            check_compatibility=False,
+        )
+    if settings.qdrant_url == ":memory:":
+        return AsyncQdrantClient(
+            location=":memory:",
+            timeout=5,
+            check_compatibility=False,
+        )
+    return AsyncQdrantClient(
         url=settings.qdrant_url,
         api_key=settings.qdrant_api_key,
         timeout=5,
         check_compatibility=False,
     )
-    return setup_retrieval(settings, client=client, embedder=embedder)
+
+
+def create_retrieval_setup(settings: Settings) -> RetrievalSetup:
+    """Production constructor. Does not load FastEmbed. Embedded stores open locally."""
+    embedder = build_embedder(EmbedderName(settings.embedder), settings.openai_api_key)
+    return setup_retrieval(
+        settings,
+        client=open_qdrant_client(settings),
+        embedder=embedder,
+    )
 
 
 async def build_index(setup: RetrievalSetup, input_dir: Path) -> IndexReceipt:

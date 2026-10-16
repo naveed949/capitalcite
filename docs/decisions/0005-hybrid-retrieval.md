@@ -36,9 +36,21 @@ successful run repairs. Search does not read the sidecar. It reads Qdrant.
 `capitalcite index` is the command that fills the store. `POST /search` is
 the command a caller uses to read it. `/health` stays a process check. The
 lifespan does not construct a Qdrant client. A search builds a client for
-that request. A down Qdrant becomes HTTP 503. An empty collection is HTTP
-200 with `point_count` 0. Verification treats both the 503 and the empty
-200 as unverified. A 200 whose hits lack citation fields fails.
+that request.
+
+The store location is not part of the config hash. `QDRANT_PATH` opens
+embedded Qdrant on that directory (`AsyncQdrantClient(path=...)`).
+`QDRANT_URL=:memory:` opens a process-local store. Those two processes
+cannot share `:memory:`. Verification indexes and serves from the same
+`QDRANT_PATH`. When neither is set, the client dials `QDRANT_URL`. Path
+wins if both are set. A down remote becomes HTTP 503. An empty collection
+is HTTP 200 with `point_count` 0. Verification treats a missing corpus or
+a 503 as unverified. A 200 whose hits lack citation fields fails.
+
+A remote Qdrant server must be 1.16 or newer. Parameterized
+`RrfQuery(rrf=Rrf(k=...))` is not on 1.15.3. Compose pins
+`qdrant/qdrant:v1.16.2`. Embedded `qdrant-client` 1.19 local mode ships
+its own engine and does not use that image.
 
 ## Which embedding model
 

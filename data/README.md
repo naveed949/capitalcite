@@ -24,9 +24,10 @@ data/parsed/edgar/{ticker}/{form}/{period}/{accession}/
 ```
 
 `capitalcite index` reads `parsed/edgar/**/chunks.jsonl` and writes one
-sidecar after the Qdrant upsert finishes. The points live in Qdrant. The
-file is the receipt for that collection name. The name is
-`{QDRANT_COLLECTION}-{config_hash}`.
+sidecar after the Qdrant upsert finishes. The points live in Qdrant
+(remote `QDRANT_URL`, embedded `QDRANT_PATH`, or process-local
+`QDRANT_URL=:memory:`). The file is the receipt for that collection name.
+The name is `{QDRANT_COLLECTION}-{config_hash}`.
 
 ```
 data/index/{collection_name}.json

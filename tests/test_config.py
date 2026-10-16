@@ -16,3 +16,12 @@ def test_sec_user_agent_accepts_name_and_email(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("SEC_USER_AGENT", "  Naveed Iqbal you@example.com  ")
     settings = Settings()
     assert settings.sec_user_agent == "Naveed Iqbal you@example.com"
+
+
+def test_qdrant_path_blank_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("QDRANT_PATH", "  ")
+    monkeypatch.setenv("QDRANT_URL", ":memory:")
+    settings = Settings()
+    assert settings.qdrant_path is None
+    assert settings.qdrant_url == ":memory:"

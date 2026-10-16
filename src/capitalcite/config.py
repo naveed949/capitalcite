@@ -72,11 +72,32 @@ class Settings(BaseSettings):
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
+    qdrant_path: Path | None = Field(
+        default=None,
+        description=(
+            "Embedded Qdrant directory. When set, the process does not dial QDRANT_URL. "
+            "QDRANT_URL=:memory: is the process-local store."
+        ),
+    )
     qdrant_collection: str = "filings"
 
     langfuse_host: str = "http://localhost:3000"
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
+
+    @field_validator("qdrant_url")
+    @classmethod
+    def qdrant_url_stripped(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("qdrant_path", mode="before")
+    @classmethod
+    def qdrant_path_blank_is_none(cls, value: object) -> object:
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("sec_user_agent")
     @classmethod

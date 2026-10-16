@@ -25,6 +25,7 @@ from capitalcite.retrieval import (
     build_index,
     collection_name,
     config_hash,
+    open_qdrant_client,
     parse_filters,
     point_id,
     reciprocal_rank_fusion,
@@ -294,6 +295,52 @@ async def test_chunker_mismatch_fails(tmp_path: Path) -> None:
         with pytest.raises(CorruptChunks, match="chunker"):
             await build_index(setup, tmp_path)
         assert not (tmp_path / "index").exists()
+    finally:
+        await client.close()
+
+
+def test_open_qdrant_client_memory_is_local() -> None:
+    client = open_qdrant_client(_settings(qdrant_url=":memory:"))
+    assert type(client._client).__name__ == "AsyncQdrantLocal"
+
+
+def test_open_qdrant_client_path_beats_url(tmp_path: Path) -> None:
+    store = tmp_path / "qdrant"
+    client = open_qdrant_client(_settings(qdrant_path=store, qdrant_url="http://127.0.0.1:1"))
+    assert type(client._client).__name__ == "AsyncQdrantLocal"
+
+
+async def test_embedded_path_survives_reopen(tmp_path: Path) -> None:
+    data = tmp_path / "data"
+    store = tmp_path / "qdrant"
+    _write_chunks(data, [_chunk(text="tier one capital buffer")])
+    settings = _settings(qdrant_path=store)
+    first = open_qdrant_client(settings)
+    try:
+        setup = setup_retrieval(settings, client=first, embedder=FakeEmbedder())
+        receipt = await build_index(setup, data)
+        assert receipt.point_count == 1
+    finally:
+        await first.close()
+    second = open_qdrant_client(settings)
+    try:
+        setup = setup_retrieval(settings, client=second, embedder=FakeEmbedder())
+        hits = await retrieve(setup, "tier one capital", mode=RetrievalMode.HYBRID, k=5)
+        assert [hit.chunk.doc_id for hit in hits] == ["doc-jpm"]
+    finally:
+        await second.close()
+
+
+async def test_memory_url_indexes(tmp_path: Path) -> None:
+    _write_chunks(tmp_path, [_chunk(text="tier one capital buffer")])
+    settings = _settings(qdrant_url=":memory:")
+    client = open_qdrant_client(settings)
+    try:
+        setup = setup_retrieval(settings, client=client, embedder=FakeEmbedder())
+        receipt = await build_index(setup, tmp_path)
+        hits = await retrieve(setup, "tier one capital", mode=RetrievalMode.HYBRID, k=5)
+        assert receipt.point_count == 1
+        assert hits[0].chunk.doc_id == "doc-jpm"
     finally:
         await client.close()
 

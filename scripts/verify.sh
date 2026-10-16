@@ -82,6 +82,11 @@ export APP_ENV="${APP_ENV:-verify}"
 export LOG_LEVEL="${LOG_LEVEL:-WARNING}"
 # Typer/Rich splits "--against-raw" with SGR codes; grep needs the literal flag.
 export NO_COLOR="${NO_COLOR:-1}"
+export EMBEDDER="${EMBEDDER:-bge-small}"
+QDRANT_STORE="${ART}/qdrant"
+mkdir -p "${QDRANT_STORE}"
+export QDRANT_PATH="${QDRANT_STORE}"
+write qdrant.path "${QDRANT_PATH}"
 
 uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
   >"${ART}/uvicorn.log" 2>&1 &
@@ -557,77 +562,234 @@ if ! plain "${ART}/index.help.out" | grep -q -- "--embedder" \
 fi
 log "verify: capitalcite index --help ok"
 
-log "verify: POST /search"
-SEARCH_BODY='{"query":"CET1 capital ratio","mode":"hybrid","k":5}'
-printf '%s\n' "${SEARCH_BODY}" >"${ART}/search.request.json"
-set +e
-search_http="$(
-  curl -sS --max-time 20 \
-    -D "${ART}/search.headers" \
-    -o "${ART}/search.body.json" \
-    -w "%{http_code}" \
-    -H 'content-type: application/json' \
-    -d "${SEARCH_BODY}" \
-    "http://127.0.0.1:${PORT}/search"
-)"
-search_curl_rc=$?
-set -e
-write search.exit "${search_curl_rc}"
-write search.http "${search_http}"
-if [[ "${search_curl_rc}" -ne 0 ]]; then
-  write search.unreachable "curl POST /search failed (exit ${search_curl_rc})"
-  log "verify: POST /search UNVERIFIED (curl exit ${search_curl_rc})"
-elif [[ "${search_http}" == "503" ]]; then
-  write search.unreachable "POST /search HTTP 503. Qdrant is down or the index is not built."
-  log "verify: POST /search UNVERIFIED (HTTP 503)"
-elif [[ "${search_http}" != "200" ]]; then
-  log "verify: POST /search HTTP ${search_http}"
-  cat "${ART}/search.body.json" >&2 || true
-  exit 1
-else
+post_search() {
+  local name="$1"
+  local body="$2"
+  printf '%s\n' "${body}" >"${ART}/${name}.request.json"
   set +e
-  uv run python - "${ART}/search.body.json" <<'PY'
+  local http
+  http="$(
+    curl -sS --max-time 180 \
+      -D "${ART}/${name}.headers" \
+      -o "${ART}/${name}.body.json" \
+      -w "%{http_code}" \
+      -H 'content-type: application/json' \
+      -d "${body}" \
+      "http://127.0.0.1:${PORT}/search"
+  )"
+  local rc=$?
+  set -e
+  write "${name}.exit" "${rc}"
+  write "${name}.http" "${http}"
+  if [[ "${rc}" -ne 0 ]]; then
+    log "verify: POST /search ${name} curl exit ${rc}"
+    cat "${ART}/${name}.body.json" >&2 || true
+    exit 1
+  fi
+  if [[ "${http}" != "200" ]]; then
+    log "verify: POST /search ${name} HTTP ${http}"
+    cat "${ART}/${name}.body.json" >&2 || true
+    exit 1
+  fi
+}
+
+if [[ -f "${ART}/ingest.unreachable" ]]; then
+  write search.unreachable "live ingest unreachable; embedded index needs JPM FY24 and WFC FY25 chunks"
+  log "verify: POST /search UNVERIFIED (no ingested corpus)"
+else
+  INDEX_CMD=(
+    uv run capitalcite index
+    --input-dir "${INGEST_DIR}"
+    --chunker section
+    --embedder bge-small
+  )
+  printf '%s\n' "${INDEX_CMD[*]}" >"${ART}/index.cmd"
+  log "verify: ${INDEX_CMD[*]} (1/2)"
+  set +e
+  "${INDEX_CMD[@]}" >"${ART}/index.1.out" 2>"${ART}/index.1.err"
+  index_1_rc=$?
+  set -e
+  write index.1.exit "${index_1_rc}"
+  if [[ "${index_1_rc}" -ne 0 ]]; then
+    log "verify: capitalcite index failed"
+    cat "${ART}/index.1.out" >&2 || true
+    cat "${ART}/index.1.err" >&2 || true
+    exit 1
+  fi
+
+  Q013='{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":5}'
+  post_search search.repro.1 "${Q013}"
+
+  log "verify: ${INDEX_CMD[*]} (2/2)"
+  set +e
+  "${INDEX_CMD[@]}" >"${ART}/index.2.out" 2>"${ART}/index.2.err"
+  index_2_rc=$?
+  set -e
+  write index.2.exit "${index_2_rc}"
+  if [[ "${index_2_rc}" -ne 0 ]]; then
+    log "verify: capitalcite index rerun failed"
+    cat "${ART}/index.2.out" >&2 || true
+    cat "${ART}/index.2.err" >&2 || true
+    exit 1
+  fi
+
+  post_search search.repro.2 "${Q013}"
+  post_search search.cc-h-013.hybrid "${Q013}"
+  post_search search.cc-h-013.hybrid-jpm \
+    '{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":5,"ticker":"JPM"}'
+  post_search search.cc-h-013.dense \
+    '{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"dense","k":5}'
+  post_search search.cc-h-013.bm25 \
+    '{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"bm25","k":5}'
+  post_search search.cc-h-063.hybrid \
+    '{"query":"What CET1 ratio did Wells Fargo report under the Standardized Approach at year-end 2025?","mode":"hybrid","k":5}'
+  post_search search.cc-h-063.hybrid-wfc \
+    '{"query":"What CET1 ratio did Wells Fargo report under the Standardized Approach at year-end 2025?","mode":"hybrid","k":5,"ticker":"WFC"}'
+
+  uv run python - "${ART}" "${INGEST_DIR}" evals/golden/v1.jsonl <<'PY'
 import json
 import sys
 from pathlib import Path
 
-body = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-point_count = body.get("point_count")
-hits = body.get("hits")
-if not isinstance(point_count, int):
-    sys.stderr.write("verify: search body missing point_count\n")
+art = Path(sys.argv[1])
+ingest = Path(sys.argv[2])
+items = {
+    json.loads(line)["id"]: json.loads(line)
+    for line in Path(sys.argv[3]).read_text(encoding="utf-8").splitlines()
+    if line.strip()
+}
+sidecars = sorted((ingest / "index").glob("*.json"))
+if len(sidecars) != 1:
+    sys.stderr.write(f"verify: expected 1 index sidecar, found {len(sidecars)}\n")
     sys.exit(1)
-if point_count == 0 or not hits:
-    hit_count = 0 if not isinstance(hits, list) else len(hits)
-    sys.stderr.write(f"verify: search point_count={point_count} hits={hit_count}\n")
-    sys.exit(2)
+receipt = json.loads(sidecars[0].read_text(encoding="utf-8"))
+for key in ("config_hash", "collection_name", "point_count"):
+    if key not in receipt:
+        sys.stderr.write(f"verify: sidecar missing {key}\n")
+        sys.exit(1)
+if receipt["point_count"] < 1:
+    sys.stderr.write("verify: index point_count is 0\n")
+    sys.exit(1)
+
 required = ("doc_id", "section", "start", "end", "source_url", "text")
-for hit in hits:
-    if not isinstance(hit, dict):
-        sys.stderr.write("verify: search hit was not an object\n")
-        sys.exit(1)
-    score = hit.get("score")
-    chunk = hit.get("chunk")
-    if not isinstance(score, (int, float)) or not isinstance(chunk, dict):
-        sys.stderr.write("verify: search hit missing score or chunk\n")
-        sys.exit(1)
-    missing = [key for key in required if key not in chunk]
-    if missing:
-        sys.stderr.write("verify: search hit missing " + ", ".join(missing) + "\n")
-        sys.exit(1)
-print(f"search hits {len(hits)} points {point_count}")
+errors: list[str] = []
+report: list[str] = []
+
+
+def load(name: str) -> dict:
+    body = json.loads((art / f"{name}.body.json").read_text(encoding="utf-8"))
+    hits = body.get("hits")
+    if body.get("config_hash") != receipt["config_hash"]:
+        errors.append(f"{name}: config_hash mismatch")
+    if body.get("collection_name") != receipt["collection_name"]:
+        errors.append(f"{name}: collection_name mismatch")
+    if not isinstance(hits, list) or not hits:
+        errors.append(f"{name}: no hits")
+        return body
+    if not isinstance(body.get("point_count"), int) or body["point_count"] < 1:
+        errors.append(f"{name}: empty point_count")
+    for hit in hits:
+        if not isinstance(hit, dict):
+            errors.append(f"{name}: hit was not an object")
+            continue
+        chunk = hit.get("chunk")
+        if not isinstance(hit.get("score"), (int, float)) or not isinstance(chunk, dict):
+            errors.append(f"{name}: missing score or chunk")
+            continue
+        missing = [key for key in required if key not in chunk]
+        if missing:
+            errors.append(f"{name}: missing {missing}")
+    return body
+
+
+def hit_ids(body: dict) -> list[tuple[object, object, object]]:
+    out: list[tuple[object, object, object]] = []
+    for hit in body.get("hits") or []:
+        chunk = hit.get("chunk") or {}
+        out.append((chunk.get("doc_id"), chunk.get("start"), chunk.get("end")))
+    return out
+
+
+def overlaps(body: dict, item_id: str) -> bool:
+    item = items[item_id]
+    for hit in body.get("hits") or []:
+        chunk = hit.get("chunk") or {}
+        for row in item.get("evidence") or []:
+            start = row.get("start")
+            end = row.get("end")
+            if start is None or end is None:
+                continue
+            if chunk.get("doc_id") != row.get("doc_id"):
+                continue
+            if int(chunk["start"]) < int(end) and int(start) < int(chunk["end"]):
+                return True
+    return False
+
+
+def tickers(body: dict) -> set[str]:
+    found: set[str] = set()
+    for hit in body.get("hits") or []:
+        found.add(str((hit.get("chunk") or {}).get("ticker") or ""))
+    return found
+
+
+def dump(name: str, body: dict) -> None:
+    report.append(f"## {name}")
+    report.append(f"config_hash {body.get('config_hash')}")
+    report.append(f"collection {body.get('collection_name')}")
+    report.append(f"point_count {body.get('point_count')}")
+    for index, hit in enumerate(body.get("hits") or [], start=1):
+        chunk = hit.get("chunk") or {}
+        report.append(
+            f"{index}. score={hit.get('score')} doc_id={chunk.get('doc_id')} "
+            f"section={chunk.get('section')} start={chunk.get('start')} "
+            f"end={chunk.get('end')} ticker={chunk.get('ticker')}"
+        )
+    report.append("")
+
+
+first = load("search.repro.1")
+second = load("search.repro.2")
+if hit_ids(first) != hit_ids(second):
+    errors.append("index rerun changed top-k ids")
+dump("search.repro.1", first)
+dump("search.repro.2", second)
+
+cases = (
+    ("search.cc-h-013.hybrid", "cc-h-013", None),
+    ("search.cc-h-013.hybrid-jpm", "cc-h-013", "JPM"),
+    ("search.cc-h-013.dense", "cc-h-013", None),
+    ("search.cc-h-013.bm25", "cc-h-013", None),
+    ("search.cc-h-063.hybrid", "cc-h-063", None),
+    ("search.cc-h-063.hybrid-wfc", "cc-h-063", "WFC"),
+)
+for name, item_id, ticker in cases:
+    body = load(name)
+    dump(name, body)
+    if not overlaps(body, item_id):
+        errors.append(f"{name}: gold span for {item_id} missed top-k")
+    if ticker is not None and tickers(body) - {ticker, ""}:
+        errors.append(f"{name}: hits outside ticker {ticker}: {sorted(tickers(body))}")
+
+(art / "search.top5.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
+(art / "index.receipt.json").write_text(
+    json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+)
+if errors:
+    sys.stderr.write("verify: search checks failed:\n  " + "\n  ".join(errors) + "\n")
+    sys.exit(1)
+print(
+    "search "
+    f"config_hash={receipt['config_hash']} "
+    f"collection={receipt['collection_name']} "
+    f"points={receipt['point_count']}"
+)
 PY
-  search_check_rc=$?
-  set -e
-  if [[ "${search_check_rc}" -eq 2 ]]; then
-    write search.unreachable "POST /search HTTP 200 with an empty index or no hits"
-    log "verify: POST /search UNVERIFIED (empty index or no hits)"
-  elif [[ "${search_check_rc}" -ne 0 ]]; then
-    log "verify: POST /search body failed citation checks"
-    exit 1
-  else
-    log "verify: POST /search returned cited hits"
-  fi
+  log "verify: POST /search returned cited hits with gold span overlap"
+  cat "${ART}/search.top5.txt"
+  cp "${ART}/search.cc-h-013.hybrid.body.json" "${ART}/search.body.json"
+  cp "${ART}/search.cc-h-013.hybrid.http" "${ART}/search.http"
+  cp "${ART}/search.cc-h-013.hybrid.exit" "${ART}/search.exit"
 fi
 
 log "verify: quote-index sanity"
@@ -680,6 +842,8 @@ for needle in (
 ):
     if needle not in text:
         errors.append(f"missing {needle}")
+if "qdrant/qdrant:v1.16.2" not in text:
+    errors.append("missing qdrant/qdrant:v1.16.2")
 if re.search(r"langfuse/langfuse:4\s*$", text, re.M) or re.search(
     r"langfuse/langfuse-worker:4\s*$", text, re.M
 ):
@@ -745,6 +909,10 @@ fi
   echo "chunk.help.exit $(cat "${ART}/chunk.help.exit")"
   echo "chunk.exit $(cat "${ART}/chunk.exit")"
   echo "index.help.exit $(cat "${ART}/index.help.exit")"
+  if [[ -f "${ART}/index.1.exit" ]]; then
+    echo "index.1.exit $(cat "${ART}/index.1.exit")"
+    echo "index.2.exit $(cat "${ART}/index.2.exit")"
+  fi
   if [[ -f "${ART}/search.unreachable" ]]; then
     echo "search unreachable ($(cat "${ART}/search.unreachable"))"
   else
