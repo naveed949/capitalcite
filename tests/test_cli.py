@@ -16,6 +16,7 @@ def test_cli_help_lists_index() -> None:
     assert "ingest" in result.stdout
     assert "chunk" in result.stdout
     assert "eval" in result.stdout
+    assert "audit" in result.stdout
 
 
 def test_cli_version() -> None:
