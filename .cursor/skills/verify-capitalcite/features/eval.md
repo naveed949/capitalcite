@@ -37,7 +37,7 @@ Preconditions:
 ## Gotchas
 
 - `--small` rejects `--embedder`, `--input-dir`, and `--baseline`. That is a product error, not UNVERIFIED.
-- Nightly CI ingests the twelve 10-Ks, caches them, and runs `eval --suite golden --baseline evals/baselines/nightly.json`. A missing `data/` tree is not a skip. Ingest exit 2 (EDGAR 403/429/5xx) is UNVERIFIED. Do not add that compare to `verify.sh`.
+- Nightly CI ingests the twelve 10-Ks, caches them, and runs `eval --suite golden --chunker section --mode hybrid --embedder bge-small --baseline evals/baselines/nightly.json`. A missing `data/` tree is not a skip. Ingest exit 2 (EDGAR 403/429/5xx) is UNVERIFIED. Do not add that compare to `verify.sh`. The six-arm README table is not the nightly gate.
 - The corpus run re-chunks into a private tree. It does not reuse `data/parsed` from an earlier `capitalcite chunk`.
 - RAGAS and hybrid+rerank are UNVERIFIED. Do not invent those numbers.
 - `CliRunner().invoke(...)` in pytest is not this feature.

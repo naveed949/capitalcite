@@ -176,7 +176,7 @@ class NightlyThresholds(BaseModel):
 
 
 class NightlyBaseline(BaseModel):
-    """evals/baselines/nightly.json. One Recall@5 rate per arm."""
+    """evals/baselines/nightly.json. Nightly CI commits one arm (section/hybrid)."""
 
     model_config = ConfigDict(frozen=True)
     schema_version: int = 1

@@ -6,56 +6,11 @@
   "arms": [
     {
       "chunker": "section",
-      "mode": "dense",
-      "recall_at_5": {
-        "hits": 6,
-        "items": 77,
-        "rate": 0.07792207792207792
-      }
-    },
-    {
-      "chunker": "section",
-      "mode": "bm25",
-      "recall_at_5": {
-        "hits": 14,
-        "items": 77,
-        "rate": 0.18181818181818182
-      }
-    },
-    {
-      "chunker": "section",
       "mode": "hybrid",
       "recall_at_5": {
         "hits": 13,
         "items": 77,
         "rate": 0.16883116883116883
-      }
-    },
-    {
-      "chunker": "fixed",
-      "mode": "dense",
-      "recall_at_5": {
-        "hits": 13,
-        "items": 77,
-        "rate": 0.16883116883116883
-      }
-    },
-    {
-      "chunker": "fixed",
-      "mode": "bm25",
-      "recall_at_5": {
-        "hits": 10,
-        "items": 77,
-        "rate": 0.12987012987012986
-      }
-    },
-    {
-      "chunker": "fixed",
-      "mode": "hybrid",
-      "recall_at_5": {
-        "hits": 15,
-        "items": 77,
-        "rate": 0.19480519480519481
       }
     }
   ],

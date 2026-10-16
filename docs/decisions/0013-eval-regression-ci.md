@@ -61,13 +61,13 @@ FakeEmbedder and the fake chat model are deterministic. There is no
 LLM sampling in PR CI. The PR pack therefore uses
 `quote_sanity_max_drop_items=0` and `fixture_max_drop_items=0`. A
 one-item miss is a product change, not rank-boundary noise. The
-1-item allowance lives on the nightly twelve-filing matrix instead.
+1-item allowance lives on the nightly section/hybrid cell instead.
 
 Live OpenAI is `--live`. Empty `OPENAI_API_KEY` is UNVERIFIED, not a
 failure. The nightly live job skips the same way. PR CI does not pass
 `--live`. That is cost control and flake control in one flag.
 
-## Nightly twelve-filing matrix
+## Nightly twelve-filing cell
 
 `data/raw/edgar` is gitignored. A job that skipped when that tree was
 missing would never score the golden set on GitHub-hosted runners.
@@ -78,21 +78,30 @@ filings cache under `actions/cache` keyed on that filing list.
 FastEmbed models cache under `FASTEMBED_CACHE_PATH`. The eval index
 caches under `QDRANT_PATH`; `build_index` skips re-embed when point
 ids already match. Caches save after ingest, model warmup, and a
-successful eval. `capitalcite eval --suite golden` re-chunks, indexes
-embedded Qdrant with `bge-small` (threaded ONNX, batch 256; not a
-process pool), and compares Recall@5 to `evals/baselines/nightly.json`.
-Ingest is bounded by five EDGAR retries and a 10-minute step timeout.
-The job timeout is 90 minutes; the eval step is 70.
+successful eval.
+
+The nightly gate is one published cell: `--chunker section --mode
+hybrid --embedder bge-small` against n=77. Two chunkers (~12k section
+points plus ~17k fixed) do not finish inside the 90-minute
+GitHub-hosted cap even with threaded ONNX (batch 256, no process
+pool): section alone took 39 minutes, then the job died mid-fixed.
+Raising the timeout or iterating embedder throughput is not the fix.
+The six-arm README table stays generated from
+`evals/results/8b63d12acd50.json`. That file is not the nightly
+compare. `evals/baselines/nightly.json` is the section/hybrid
+Recall@5 snapshot (13/77). Ingest is bounded by five EDGAR retries
+and a 10-minute step timeout. The job timeout is 90 minutes; the
+eval step is 70.
 
 UNVERIFIED (exit 0) is only ingest exit 2: `EdgarAccessError` or
 `EdgarUnavailableError` (403, 429 after retries, 5xx, transport). A
 short corpus after any other ingest failure fails the job. Eval
 itself is not skipped.
 
-Nightly `max_drop_items` is 1. The committed matrix is n=77 against
-live bge-small ranks. One item moving across the cutoff is noise. Two
-is a drop. `agent_vs_rag` is not gated; that row is a planner probe,
-not a retrieval baseline.
+Nightly `max_drop_items` is 1. The committed cell is n=77 against
+live bge-small hybrid ranks. One item moving across the cutoff is
+noise. Two is a drop. `agent_vs_rag` is not gated; that row is a
+planner probe, not a retrieval baseline.
 
 `capitalcite eval --baseline` is the compare. `--small` rejects that
 flag. CI never passes `--write-baseline`.
@@ -100,7 +109,7 @@ flag. CI never passes `--write-baseline`.
 ## Baseline updates
 
 `evals/baselines/ci.json` is the PR snapshot.
-`evals/baselines/nightly.json` is the twelve-filing snapshot.
+`evals/baselines/nightly.json` is the section/hybrid twelve-filing snapshot.
 Lowering either file would pass the compare. The `eval-baseline`
 label is the control. A workflow job diffs `evals/baselines/` against
 the PR base and fails when those files changed and the label is
@@ -124,5 +133,9 @@ A 1-item PR budget would hide a deterministic FakeEmbedder miss.
 
 Skipping nightly when `data/` is missing would make the full golden
 eval a no-op on every hosted runner.
+
+Gating all six published arms on GitHub-hosted runners exceeds the
+90-minute cap. The laptop and `verify.sh` path still run the full
+matrix. Nightly gates the one section/hybrid cell.
 
 RAGAS and DeepEval need an LLM judge. Those rows stay UNVERIFIED.

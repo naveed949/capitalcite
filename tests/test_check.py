@@ -206,16 +206,19 @@ def test_committed_nightly_baseline_matches_published_matrix() -> None:
     assert snap.embedder_id == "fastembed:BAAI/bge-small-en-v1.5"
     assert snap.thresholds.max_drop_items == 1
     by_arm = {(arm.chunker, arm.mode): arm.recall_at_5.hits for arm in snap.arms}
-    assert by_arm == {
-        ("section", "dense"): 6,
-        ("section", "bm25"): 14,
-        ("section", "hybrid"): 13,
-        ("fixed", "dense"): 13,
-        ("fixed", "bm25"): 10,
-        ("fixed", "hybrid"): 15,
-    }
+    assert by_arm == {("section", "hybrid"): 13}
     published = load_report(Path("evals/results/8b63d12acd50.json"))
-    assert compare_nightly(snapshot_nightly(published), snap).ok
+    gated = snapshot_nightly(published)
+    gated = gated.model_copy(
+        update={
+            "arms": tuple(
+                arm
+                for arm in gated.arms
+                if arm.chunker == "section" and arm.mode == "hybrid"
+            )
+        }
+    )
+    assert compare_nightly(gated, snap).ok
 
 
 def test_snapshot_nightly_rejects_small() -> None:
