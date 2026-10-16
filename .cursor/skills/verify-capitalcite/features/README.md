@@ -55,6 +55,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Structured answers](./ask.md) covers `POST /ask`.
 - [Plan-then-act agent](./agent.md) covers `POST /ask` with `path` `agent`.
 - [Fail-closed tool gate](./gate.md) covers `capitalcite gate validate`, `decide`, `redteam`, and `bench`.
+- [Langfuse tracing](./tracing.md) covers `CAPITALCITE_TRACE_FILE` span JSONL after `POST /ask` and `capitalcite eval --small`.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
 
 ## Extending the map

@@ -89,6 +89,10 @@ QDRANT_STORE="${ART}/qdrant"
 mkdir -p "${QDRANT_STORE}"
 export QDRANT_PATH="${QDRANT_STORE}"
 write qdrant.path "${QDRANT_PATH}"
+# File exporter proves the span tree without Langfuse. Do not dial :3000 from this process.
+export LANGFUSE_TRACING_ENABLED=false
+export CAPITALCITE_TRACE_FILE="${ART}/spans.jsonl"
+write capitalcite.trace.file "${CAPITALCITE_TRACE_FILE}"
 
 uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
   >"${ART}/uvicorn.log" 2>&1 &
@@ -801,9 +805,11 @@ if [[ -f "${ART}/ingest.unreachable" ]]; then
   write search.unreachable "live ingest unreachable; embedded index needs JPM FY24 and WFC FY25 chunks"
   write ask.unreachable "POST /search was unverified; POST /ask needs the same index"
   write agent.unreachable "POST /search was unverified; POST /ask path=agent needs the same index"
+  write spans.skipped "POST /ask was unverified; span JSONL needs a fake /ask"
   log "verify: POST /search UNVERIFIED (no ingested corpus)"
   log "verify: POST /ask UNVERIFIED (no ingested corpus)"
   log "verify: POST /ask path=agent UNVERIFIED (no ingested corpus)"
+  log "verify: ask span tree UNVERIFIED (no ingested corpus)"
 else
   INDEX_CORPUS="${ART}/index-corpus"
   mkdir -p \
@@ -1198,6 +1204,39 @@ PY
   fi
   log "verify: POST /ask fake path ok"
 
+  log "verify: span JSONL after fake /ask"
+  uv run python - "${ART}/spans.jsonl" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.is_file() or path.stat().st_size == 0:
+    sys.stderr.write("verify: spans.jsonl missing after POST /ask\n")
+    sys.exit(1)
+records = [
+    json.loads(line)
+    for line in path.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+]
+names = {str(row.get("name")) for row in records}
+if "ask" not in names or "retrieve" not in names:
+    sys.stderr.write(f"verify: span names {sorted(names)} missing ask or retrieve\n")
+    sys.exit(1)
+retrieve = next(row for row in records if row.get("name") == "retrieve")
+attrs = retrieve.get("attributes") or {}
+if not isinstance(attrs.get("capitalcite.hit_count"), int):
+    sys.stderr.write("verify: retrieve span missing capitalcite.hit_count\n")
+    sys.exit(1)
+blob = json.dumps(records)
+for needle in ("Bearer ", "sk-lf-", "Authorization"):
+    if needle in blob:
+        sys.stderr.write(f"verify: span JSONL contained {needle!r}\n")
+        sys.exit(1)
+print(f"spans ask+retrieve n={len(records)}")
+PY
+  log "verify: span JSONL has ask and retrieve"
+
   AGENT055='{"question":"Which bank had the higher Standardized CET1 ratio at year-end 2024, JPMorgan or Bank of America?","k":10,"path":"agent","model":"fake"}'
   AGENT061='{"question":"Did JPMorgan'\''s year-end 2024 Standardized CET1 ratio exceed its 12.3% requirement including buffers?","k":10,"path":"agent","model":"fake"}'
   log "verify: POST /ask path=agent cc-h-055 model=fake"
@@ -1381,6 +1420,40 @@ fi
 log "verify: capitalcite eval --small ok"
 cat "${ART}/eval-small.out"
 
+log "verify: eval tags on span JSONL"
+uv run python - "${ART}/spans.jsonl" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.is_file() or path.stat().st_size == 0:
+    sys.stderr.write("verify: spans.jsonl missing after eval --small\n")
+    sys.exit(1)
+records = [
+    json.loads(line)
+    for line in path.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+]
+evals = [row for row in records if row.get("name") == "eval"]
+if not evals:
+    sys.stderr.write("verify: no eval span in spans.jsonl\n")
+    sys.exit(1)
+attrs = evals[-1].get("attributes") or {}
+if not attrs.get("capitalcite.git_sha"):
+    sys.stderr.write("verify: eval span missing capitalcite.git_sha\n")
+    sys.exit(1)
+if not attrs.get("capitalcite.config_hash"):
+    sys.stderr.write("verify: eval span missing capitalcite.config_hash\n")
+    sys.exit(1)
+print(
+    "eval span "
+    f"git_sha={attrs['capitalcite.git_sha']} "
+    f"config_hash={attrs['capitalcite.config_hash']}"
+)
+PY
+log "verify: eval span tagged with git_sha and config_hash"
+
 if [[ -f "${ART}/ingest.unreachable" ]]; then
   write eval.skipped "live ingest unreachable; corpus eval needs the twelve 10-Ks"
   log "verify: corpus eval UNVERIFIED (no live corpus)"
@@ -1423,6 +1496,25 @@ else
     log "verify: corpus eval ok"
     cat "${ART}/eval.out"
   fi
+fi
+
+log "verify: live Langfuse :3000"
+set +e
+langfuse_http="$(
+  curl -sS -o "${ART}/langfuse.health.out" -w "%{http_code}" \
+    --connect-timeout 1 --max-time 2 \
+    "http://127.0.0.1:3000" 2>"${ART}/langfuse.health.err"
+)"
+langfuse_rc=$?
+set -e
+write langfuse.health.exit "${langfuse_rc}"
+write langfuse.health.http "${langfuse_http:-}"
+if [[ "${langfuse_rc}" -eq 0 && "${langfuse_http}" =~ ^(200|302|307|308)$ ]]; then
+  write langfuse.reachable "http://127.0.0.1:3000 HTTP ${langfuse_http}. UI screenshot still UNVERIFIED (this run did not capture the Langfuse UI)."
+  log "verify: Langfuse :3000 reachable; live UI screenshot UNVERIFIED"
+else
+  write langfuse.skipped "nothing healthy on 127.0.0.1:3000 (curl_exit=${langfuse_rc} http=${langfuse_http:-}). live trace ingestion UNVERIFIED"
+  log "verify: Langfuse not listening; live ingestion UNVERIFIED"
 fi
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -1568,6 +1660,16 @@ fi
     echo "eval skipped ($(cat "${ART}/eval.skipped"))"
   else
     echo "eval.exit $(cat "${ART}/eval.exit")"
+  fi
+  if [[ -f "${ART}/spans.jsonl" ]]; then
+    echo "spans.jsonl $(wc -l <"${ART}/spans.jsonl" | tr -d ' ') lines"
+  elif [[ -f "${ART}/spans.skipped" ]]; then
+    echo "spans skipped ($(cat "${ART}/spans.skipped"))"
+  fi
+  if [[ -f "${ART}/langfuse.skipped" ]]; then
+    echo "langfuse skipped ($(cat "${ART}/langfuse.skipped"))"
+  elif [[ -f "${ART}/langfuse.reachable" ]]; then
+    echo "langfuse reachable ($(cat "${ART}/langfuse.reachable"))"
   fi
   if [[ -f "${ART}/compose.config.exit" ]]; then
     echo "compose.config.exit $(cat "${ART}/compose.config.exit")"
