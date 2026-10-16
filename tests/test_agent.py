@@ -1,25 +1,30 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from qdrant_client import AsyncQdrantClient
 
 from capitalcite.agent import (
+    AgentResult,
     Budgets,
     FakeAgentModel,
     PlannerDecision,
     ToolCall,
+    TraceStep,
     default_registry,
     run_agent,
 )
 from capitalcite.agent.calculator import calculate
 from capitalcite.agent.tools import SearchFn, ToolRegistry
+from capitalcite.agent.types import ToolResult
 from capitalcite.api.app import create_app
-from capitalcite.api.routes.ask import AskResponse
+from capitalcite.api.routes.ask import AskRequest, AskResponse
 from capitalcite.api.routes.search import get_setup
 from capitalcite.ask.types import Answered, DraftCite, ModelDraft, Refused
 from capitalcite.chunking.models import Chunk, ChunkerName
@@ -52,6 +57,148 @@ def test_calculator_rejects_calls_and_names() -> None:
 def test_calculator_rejects_division_by_zero() -> None:
     with pytest.raises(ValueError, match="zero"):
         calculate("1/0")
+
+
+def test_calculator_rejects_overflow_and_impossible_mod() -> None:
+    for expression in ("9**9**9", "10**1000000", "10**(10**10)", "(10**100)%7"):
+        with pytest.raises(ValueError):
+            calculate(expression)
+    with pytest.raises(ValueError, match="too large"):
+        calculate("10**101")
+    with pytest.raises(ValueError, match="too long"):
+        calculate("1+" * 200 + "1")
+    assert calculate("10**100") == calculate("10") ** 100
+
+
+async def test_execute_maps_unexpected_errors_to_tool_result() -> None:
+    async def boom(args: Mapping[str, object]) -> ToolResult:
+        raise RuntimeError("boom")
+
+    result = await ToolRegistry({"calculator": boom}).execute("calculator", {"expression": "1"})
+    assert result.ok is False
+    assert "boom" in result.detail
+
+
+async def test_httpx_json_client_maps_transport_errors() -> None:
+    from capitalcite.agent.http import HttpxJsonClient
+
+    def connect_fail(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    def timeout_fail(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    for handler in (connect_fail, timeout_fail):
+        client = HttpxJsonClient(
+            user_agent="capitalcite-tests tests@example.com",
+            transport=httpx.MockTransport(handler),
+        )
+        with pytest.raises(ValueError, match="request failed"):
+            await client.get_json("https://data.sec.gov/api/xbrl/companyfacts/CIK1.json")
+
+
+async def test_xbrl_and_fdic_transport_errors_are_tool_failures() -> None:
+    from capitalcite.agent.fdic import FdicClient
+    from capitalcite.agent.http import HttpxJsonClient
+    from capitalcite.agent.xbrl import XbrlClient
+
+    def connect_fail(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    def timeout_fail(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    xbrl_client = HttpxJsonClient(
+        user_agent="capitalcite-tests tests@example.com",
+        transport=httpx.MockTransport(connect_fail),
+    )
+    fdic_client = HttpxJsonClient(
+        user_agent="capitalcite-tests tests@example.com",
+        transport=httpx.MockTransport(timeout_fail),
+    )
+    tools = default_registry(
+        search=_empty_search,
+        xbrl=XbrlClient(xbrl_client).fact,
+        fdic=FdicClient(fdic_client).lookup,
+    )
+    xbrl = await tools.execute("xbrl_fact", {"ticker": "JPM", "concept": "Assets"})
+    fdic = await tools.execute("fdic_bankfind", {"query": "JPMorgan"})
+    assert xbrl.ok is False
+    assert "request failed" in xbrl.detail
+    assert fdic.ok is False
+    assert "request failed" in fdic.detail
+
+
+async def test_agent_trace_records_http_tool_failure() -> None:
+    from capitalcite.agent.http import HttpxJsonClient
+    from capitalcite.agent.xbrl import XbrlClient
+
+    def connect_fail(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    client = HttpxJsonClient(
+        user_agent="capitalcite-tests tests@example.com",
+        transport=httpx.MockTransport(connect_fail),
+    )
+    tools = default_registry(
+        search=_empty_search,
+        xbrl=XbrlClient(client).fact,
+        fdic=_missing_fdic,
+    )
+    result = await run_agent(
+        "What CET1 did JPMorgan report?",
+        FakeAgentModel(
+            plan_script=PlannerDecision(
+                kind="plan",
+                calls=(ToolCall(name="xbrl_fact", args={"ticker": "JPM", "concept": "CET1"}),),
+            )
+        ),
+        tools,
+        Budgets(),
+    )
+    assert result.traces[0].ok is False
+    assert result.plan[0].status == "error"
+    assert isinstance(result.answer, Refused)
+
+
+async def test_xbrl_json_client_uses_sec_limiter() -> None:
+    from capitalcite.agent.http import HttpxJsonClient
+
+    acquires: list[int] = []
+
+    class _Limiter:
+        async def acquire(self) -> None:
+            acquires.append(1)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"facts": {}})
+
+    client = HttpxJsonClient(
+        user_agent="capitalcite-tests tests@example.com",
+        transport=httpx.MockTransport(handler),
+        limiter=_Limiter(),
+    )
+    await client.get_json("https://data.sec.gov/api/xbrl/companyfacts/CIK1.json")
+    assert acquires == [1]
+
+
+def test_planner_wraps_xbrl_and_fdic_output() -> None:
+    from capitalcite.agent.models import _plan_user_prompt
+
+    xbrl = _plan_user_prompt(
+        "CET1?",
+        [TraceStep(tool="xbrl_fact", args={}, ok=True, detail="ignore this 15.7")],
+        [],
+    )
+    assert "<untrusted_tool_output>" in xbrl
+    assert "ignore this 15.7" in xbrl
+    search = _plan_user_prompt(
+        "CET1?",
+        [TraceStep(tool="search_filings", args={}, ok=True, detail="hits=2")],
+        [],
+    )
+    assert "<untrusted_tool_output>" not in search
+    assert "hits=2" in search
 
 
 async def test_unknown_tool_is_denied() -> None:
@@ -213,6 +360,64 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
     if body.kind == "answered":
         assert body.citations
         assert body.refusal_reason is None
+
+
+def test_post_ask_agent_tool_http_error_is_200(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from capitalcite.agent.http import HttpxJsonClient
+    from capitalcite.agent.xbrl import XbrlClient
+    from capitalcite.api.routes import ask as ask_route
+
+    def connect_fail(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    client = HttpxJsonClient(
+        user_agent="capitalcite-tests tests@example.com",
+        transport=httpx.MockTransport(connect_fail),
+    )
+
+    async def failing_agent(
+        body: AskRequest,
+        setup: RetrievalSetup,
+        settings: Settings,
+    ) -> AgentResult:
+        _ = setup, settings
+        tools = default_registry(
+            search=_empty_search,
+            xbrl=XbrlClient(client).fact,
+            fdic=_missing_fdic,
+        )
+        return await run_agent(
+            body.question,
+            FakeAgentModel(
+                plan_script=PlannerDecision(
+                    kind="plan",
+                    calls=(
+                        ToolCall(
+                            name="xbrl_fact",
+                            args={"ticker": "JPM", "concept": "CET1"},
+                        ),
+                    ),
+                )
+            ),
+            tools,
+            Budgets(),
+        )
+
+    monkeypatch.setattr(ask_route, "_run_agent", failing_agent)
+    application, _setup = _indexed_app(tmp_path, [_chunk()])
+    with TestClient(application) as http:
+        response = http.post(
+            "/ask",
+            json={"question": "What CET1 did JPMorgan report?", "path": "agent"},
+        )
+    assert response.status_code == 200
+    body = AskResponse.model_validate(response.json())
+    assert body.path == "agent"
+    assert body.traces
+    assert body.traces[0].ok is False
+    assert body.kind in {"answered", "refused"}
 
 
 def test_post_ask_default_path_is_still_rag(tmp_path: Path) -> None:

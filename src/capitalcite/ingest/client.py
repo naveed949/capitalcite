@@ -13,7 +13,7 @@ import httpx
 
 from capitalcite.ingest.documents import IndexItem, choose_main_document, parse_filing_index
 from capitalcite.ingest.models import Company, Filing
-from capitalcite.ingest.rate_limit import RateLimiter
+from capitalcite.ingest.rate_limit import RateLimiter, shared_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class EdgarClient:
         self._client = client or httpx.AsyncClient(**kwargs)  # type: ignore[arg-type]
         if client is not None and "user-agent" not in {k.lower() for k in client.headers}:
             self._client.headers["User-Agent"] = user_agent
-        self._limiter = limiter or RateLimiter()
+        self._limiter = limiter if limiter is not None else shared_limiter()
         self._sleep = sleeper or asyncio.sleep
         self._max_attempts = max_attempts
 

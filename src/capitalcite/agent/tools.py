@@ -79,7 +79,15 @@ class ToolRegistry:
                 args=dict(args),
                 detail="unknown tool",
             )
-        return await runner(args)
+        try:
+            return await runner(args)
+        except Exception as exc:
+            return ToolResult(
+                ok=False,
+                tool=name,
+                args=dict(args),
+                detail=str(exc) or type(exc).__name__,
+            )
 
 
 def default_registry(

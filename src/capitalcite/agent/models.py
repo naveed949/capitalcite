@@ -250,9 +250,23 @@ def _plan_user_prompt(
     if not traces:
         lines.append("(none)")
     for step in traces:
-        lines.append(f"- {step.tool} ok={step.ok} {step.detail}")
+        lines.append(_format_trace(step))
     lines.append(f"Retrieved passages: {len(hits)}")
     return "\n".join(lines)
+
+
+_UNTRUSTED_TOOLS = frozenset({"xbrl_fact", "fdic_bankfind"})
+
+
+def _format_trace(step: TraceStep) -> str:
+    if step.tool in _UNTRUSTED_TOOLS:
+        return (
+            f"- {step.tool} ok={step.ok}\n"
+            "<untrusted_tool_output>\n"
+            f"{step.detail}\n"
+            "</untrusted_tool_output>"
+        )
+    return f"- {step.tool} ok={step.ok} {step.detail}"
 
 
 def _decision_from_content(content: str) -> PlannerDecision:

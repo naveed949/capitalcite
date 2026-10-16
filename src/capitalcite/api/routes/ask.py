@@ -32,6 +32,7 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.config import Settings, get_settings
+from capitalcite.ingest.rate_limit import shared_limiter
 from capitalcite.retrieval import (
     IndexNotBuilt,
     IndexUnavailable,
@@ -163,13 +164,17 @@ async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings
             filters=filters,
         )
 
-    json_client = HttpxJsonClient(user_agent=settings.sec_user_agent)
+    sec_client = HttpxJsonClient(
+        user_agent=settings.sec_user_agent,
+        limiter=shared_limiter(),
+    )
+    fdic_client = HttpxJsonClient(user_agent=settings.sec_user_agent)
     if selected == "fake":
         xbrl = FakeXbrlClient().fact
         fdic = FakeFdicClient().lookup
     else:
-        xbrl = XbrlClient(json_client).fact
-        fdic = FdicClient(json_client).lookup
+        xbrl = XbrlClient(sec_client).fact
+        fdic = FdicClient(fdic_client).lookup
     tools = default_registry(search=search, xbrl=xbrl, fdic=fdic)
     return await run_agent(
         body.question,

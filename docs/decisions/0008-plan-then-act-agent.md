@@ -30,8 +30,12 @@ later without teaching the synthesizer a new contract.
 The graph is plan → act* → synthesize, compiled with LangGraph `StateGraph`.
 The planner returns either a list of tool calls or `synthesize`. The act
 node runs one call at a time through `execute()`. Unknown tool names return
-a structured error. They do not raise. After the planned calls finish, the
-graph synthesizes. It does not keep chatting.
+a structured error. They do not raise. `calculate()` turns overflow and
+`DecimalException` into `ValueError`. `HttpxJsonClient.get_json` turns
+`httpx.HTTPError` into `ValueError`. `execute()` catches any leftover
+`Exception` as `ToolResult(ok=False)`. After the planned calls finish, the
+graph synthesizes. It does not keep chatting. An XBRL or FDIC outage is a
+failed trace and HTTP 200, not HTTP 500.
 
 That is plan-then-act, not ReAct. A comparison such as JPMorgan vs Bank of
 America at year-end 2024 is one plan with two `search_filings` calls, then
@@ -64,8 +68,10 @@ adds a loop without taking the model.
 ## Four tools, one registry
 
 `search_filings` wraps `retrieve()`. `calculator` is AST arithmetic with
-Decimal. `xbrl_fact` reads SEC companyfacts. `fdic_bankfind` reads the FDIC
-institutions API. Both HTTP tools take an injected JSON client.
+Decimal. `xbrl_fact` reads SEC companyfacts through the shared SEC `RateLimiter`.
+`fdic_bankfind` reads the FDIC institutions API. Both HTTP tools take an
+injected JSON client. Planner prompts wrap XBRL and FDIC details in
+`<untrusted_tool_output>` delimiters.
 `FakeXbrlClient` and `FakeFdicClient` keep pytest offline. `ASK_MODEL=fake`
 does not dial those APIs.
 
@@ -87,5 +93,7 @@ share this check because both end in `ground()`.
 
 The fail-closed policy file, the audit log, and Langfuse spans are issues
 #9–#11. RAGAS answer-quality cells stay TBD until a live LLM eval writes
-them. Live `path=agent` with `model=openai` is UNVERIFIED when
-`OPENAI_API_KEY` is empty, the same rule as #7.
+them. Retrieval recall@k on comparison and multi-hop items is scored for
+plain RAG versus the fake/heuristic planner. Live `path=agent` with
+`model=openai` is UNVERIFIED when `OPENAI_API_KEY` is empty, the same
+rule as #7.
