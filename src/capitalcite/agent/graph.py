@@ -12,6 +12,7 @@ from capitalcite.agent.tools import ToolExecutor
 from capitalcite.agent.types import AgentResult, Budgets, PlanStep, TraceStep
 from capitalcite.ask.service import ask
 from capitalcite.ask.types import Answer, ModelDraft, Refused
+from capitalcite.audit import AUDIT_UNAVAILABLE, AUDIT_UNAVAILABLE_DETAIL
 from capitalcite.retrieval.types import Hit
 from capitalcite.trace import ObservationKind, observation
 
@@ -151,7 +152,7 @@ def _compile(model: AgentModel, tools: ToolExecutor, min_score: float) -> Any:
         plan[state["cursor"]] = step.model_copy(update={"status": "done" if result.ok else "error"})
         hits = list(state["hits"])
         hits.extend(result.hits)
-        return {
+        update: dict[str, object] = {
             "plan": plan,
             "traces": traces,
             "hits": hits,
@@ -159,6 +160,10 @@ def _compile(model: AgentModel, tools: ToolExecutor, min_score: float) -> Any:
             "steps_used": state["steps_used"] + 1,
             "tokens_used": _charge(state, 8 + len(result.detail) // 4),
         }
+        if result.reason == AUDIT_UNAVAILABLE:
+            update["stop_reason"] = AUDIT_UNAVAILABLE_DETAIL
+            update["answer"] = Refused(refusal_reason=AUDIT_UNAVAILABLE_DETAIL)
+        return update
 
     async def synthesize_node(state: GraphState) -> dict[str, object]:
         reason = _over_budget(state)

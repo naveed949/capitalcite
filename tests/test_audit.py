@@ -1,0 +1,475 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from capitalcite.agent.audited import AuditingTools, request_trace_id
+from capitalcite.agent.graph import run_agent
+from capitalcite.agent.models import FakeAgentModel
+from capitalcite.agent.tools import ToolRegistry
+from capitalcite.agent.types import Budgets, PlannerDecision, ToolCall, ToolResult
+from capitalcite.ask.types import Refused
+from capitalcite.audit import (
+    AUDIT_UNAVAILABLE,
+    AUDIT_UNAVAILABLE_DETAIL,
+    GENESIS_HASH,
+    AuditLog,
+    AuditRecord,
+    verify,
+)
+from capitalcite.audit.digest import digest
+from capitalcite.cli import app
+from capitalcite.gate import Gate, load_policy
+from capitalcite.trace import (
+    MemoryExporter,
+    ObservationKind,
+    configure_for_tests,
+    current_trace_id,
+    observation,
+    reset_for_tests,
+)
+
+runner = CliRunner()
+_FIXED = datetime(2026, 10, 16, 12, 0, 0, tzinfo=UTC)
+
+
+def test_record_chains_from_genesis(tmp_path: Path) -> None:
+    log = AuditLog(tmp_path / "audit.jsonl", clock=lambda: _FIXED)
+    first = log.record(
+        trace_id="trace-a",
+        tool="calculator",
+        args={"expression": "1+1"},
+        decision="allowed",
+        output="2",
+    )
+    second = log.record(
+        trace_id="trace-a",
+        tool="shell",
+        args={"cmd": "ls"},
+        decision="denied",
+        reason="unknown_tool",
+        output="unknown tool",
+    )
+    assert first.reason is None
+    assert second.reason == "unknown_tool"
+    assert first.seq == 1
+    assert first.prev_hash == GENESIS_HASH
+    assert first.ts == "2026-10-16T12:00:00.000000Z"
+    assert second.seq == 2
+    assert second.prev_hash == first.hash
+    assert first.hash != second.hash
+    report = verify(tmp_path / "audit.jsonl")
+    assert report.ok is True
+    assert report.records == 2
+
+
+def test_verify_detects_mutated_record(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+    log.record(
+        trace_id="t",
+        tool="calculator",
+        args={"expression": "1"},
+        decision="allowed",
+        output="1",
+    )
+    log.record(
+        trace_id="t",
+        tool="calculator",
+        args={"expression": "2"},
+        decision="allowed",
+        output="2",
+    )
+    lines = path.read_text(encoding="utf-8").splitlines()
+    tampered = lines[0].replace("calculator", "shell", 1)
+    path.write_text(tampered + "\n" + lines[1] + "\n", encoding="utf-8")
+    report = verify(path)
+    assert report.ok is False
+    assert any("hash mismatch" in issue.reason for issue in report.issues)
+
+
+def test_verify_detects_removed_record(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+    log.record(trace_id="t", tool="a", args={}, decision="allowed", output="1")
+    log.record(trace_id="t", tool="b", args={}, decision="allowed", output="2")
+    log.record(
+        trace_id="t", tool="c", args={}, decision="denied", reason="unknown_tool", output="x"
+    )
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text(lines[0] + "\n" + lines[2] + "\n", encoding="utf-8")
+    report = verify(path)
+    assert report.ok is False
+    assert any(
+        "prev_hash mismatch" in issue.reason or "seq gap" in issue.reason for issue in report.issues
+    )
+
+
+def test_verify_detects_removed_last_record(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+    log.record(trace_id="t", tool="a", args={}, decision="allowed", output="1")
+    second = log.record(trace_id="t", tool="b", args={}, decision="allowed", output="2")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text(lines[0] + "\n", encoding="utf-8")
+    report = verify(path)
+    assert report.ok is False
+    assert any("tip hash mismatch" in issue.reason for issue in report.issues)
+    assert any("tip seq mismatch" in issue.reason for issue in report.issues)
+    tip = json.loads((tmp_path / "audit.jsonl.tip").read_text(encoding="utf-8"))
+    assert tip == {"hash": second.hash, "seq": 2}
+
+
+def test_verify_empty_file_with_leftover_tip_fails(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    AuditLog(path, clock=lambda: _FIXED).record(
+        trace_id="t", tool="a", args={}, decision="allowed", output="1"
+    )
+    path.write_text("", encoding="utf-8")
+    report = verify(path)
+    assert report.ok is False
+    assert any("tip present for empty log" in issue.reason for issue in report.issues)
+
+
+def test_verify_nonempty_missing_tip_fails(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    AuditLog(path, clock=lambda: _FIXED).record(
+        trace_id="t", tool="a", args={}, decision="allowed", output="1"
+    )
+    path.with_name("audit.jsonl.tip").unlink()
+    report = verify(path)
+    assert report.ok is False
+    assert any("missing tip" in issue.reason for issue in report.issues)
+
+
+def test_record_uses_tip_as_prev_without_scanning(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+    first = log.record(trace_id="t", tool="a", args={}, decision="allowed", output="1")
+    path.write_text("", encoding="utf-8")
+    second = log.record(trace_id="t", tool="b", args={}, decision="allowed", output="2")
+    assert second.seq == 2
+    assert second.prev_hash == first.hash
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1
+    report = verify(path)
+    assert report.ok is False
+
+
+def test_record_writes_sibling_tip(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+    first = log.record(trace_id="t", tool="a", args={}, decision="allowed", output="1")
+    tip = json.loads((tmp_path / "audit.jsonl.tip").read_text(encoding="utf-8"))
+    assert tip == {"hash": first.hash, "seq": 1}
+    second = log.record(
+        trace_id="t", tool="b", args={}, decision="denied", reason="unknown_tool", output="x"
+    )
+    tip = json.loads((tmp_path / "audit.jsonl.tip").read_text(encoding="utf-8"))
+    assert tip == {"hash": second.hash, "seq": 2}
+
+
+def test_verify_detects_inserted_record(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+    log.record(trace_id="t", tool="a", args={}, decision="allowed", output="1")
+    forged = AuditRecord(
+        seq=2,
+        ts="2026-10-16T12:00:00.000000Z",
+        trace_id="t",
+        tool="forged",
+        args_digest="a" * 64,
+        decision="allowed",
+        output_digest="b" * 64,
+        prev_hash="c" * 64,
+        hash="d" * 64,
+    )
+    path.write_text(
+        path.read_text(encoding="utf-8") + forged.model_dump_json() + "\n",
+        encoding="utf-8",
+    )
+    report = verify(path)
+    assert report.ok is False
+
+
+def test_verify_missing_file(tmp_path: Path) -> None:
+    report = verify(tmp_path / "missing.jsonl")
+    assert report.ok is False
+    assert report.records == 0
+    assert "missing" in report.issues[0].reason
+
+
+def test_verify_empty_file_is_ok(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    path.write_text("", encoding="utf-8")
+    report = verify(path)
+    assert report.ok is True
+    assert report.records == 0
+
+
+def test_same_args_share_a_digest(tmp_path: Path) -> None:
+    log = AuditLog(tmp_path / "audit.jsonl", clock=lambda: _FIXED)
+    a = log.record(
+        trace_id="t",
+        tool="calculator",
+        args={"b": 2, "a": 1},
+        decision="allowed",
+        output="ok",
+    )
+    b = log.record(
+        trace_id="t",
+        tool="calculator",
+        args={"a": 1, "b": 2},
+        decision="allowed",
+        output="ok",
+    )
+    assert a.args_digest == b.args_digest
+    assert a.output_digest == b.output_digest
+
+
+async def test_auditing_tools_writes_one_record_per_execute(tmp_path: Path) -> None:
+    ran: list[str] = []
+
+    async def add(args: Mapping[str, object]) -> ToolResult:
+        ran.append("calculator")
+        return ToolResult(ok=True, tool="calculator", args=dict(args), detail="2")
+
+    path = tmp_path / "audit.jsonl"
+    tools = AuditingTools(
+        Gate(load_policy(None), ToolRegistry({"calculator": add})),
+        AuditLog(path, clock=lambda: _FIXED),
+        "trace-live",
+    )
+    allowed = await tools.execute("calculator", {"expression": "1+1"})
+    denied = await tools.execute("shell", {"cmd": "ls"})
+    assert allowed.ok is True
+    assert allowed.detail == "2"
+    assert denied.ok is False
+    assert denied.detail == "unknown tool"
+    assert denied.reason == "unknown_tool"
+    assert ran == ["calculator"]
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 2
+    records = [AuditRecord.model_validate_json(line) for line in lines]
+    assert [row.decision for row in records] == ["allowed", "denied"]
+    assert [row.reason for row in records] == [None, "unknown_tool"]
+    assert [row.tool for row in records] == ["calculator", "shell"]
+    assert {row.trace_id for row in records} == {"trace-live"}
+    assert records[0].output_digest == digest("allow")
+    assert records[1].output_digest == digest("unknown tool")
+    report = verify(path)
+    assert report.ok is True
+    assert report.records == 2
+
+
+async def test_auditing_tools_records_gate_reasons(tmp_path: Path) -> None:
+    async def add(args: Mapping[str, object]) -> ToolResult:
+        return ToolResult(ok=True, tool="calculator", args=dict(args), detail="2")
+
+    path = tmp_path / "audit.jsonl"
+    tools = AuditingTools(
+        Gate(load_policy(None), ToolRegistry({"calculator": add})),
+        AuditLog(path, clock=lambda: _FIXED),
+        "trace-gate",
+    )
+    allowed = await tools.execute("calculator", {"expression": "1+1"})
+    unknown = await tools.execute("shell", {"cmd": "ls"})
+    invalid = await tools.execute("calculator", {"expression": "1+1", "cmd": "id"})
+    assert allowed.ok is True
+    assert unknown.reason == "unknown_tool"
+    assert invalid.reason == "invalid_args"
+    records = [
+        AuditRecord.model_validate_json(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [(row.decision, row.reason) for row in records] == [
+        ("allowed", None),
+        ("denied", "unknown_tool"),
+        ("denied", "invalid_args"),
+    ]
+    assert verify(path).ok is True
+
+
+async def test_audit_trace_id_matches_root_span(tmp_path: Path) -> None:
+    async def add(args: Mapping[str, object]) -> ToolResult:
+        return ToolResult(ok=True, tool="calculator", args=dict(args), detail="2")
+
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    path = tmp_path / "audit.jsonl"
+    try:
+        with observation("ask", ObservationKind.ASK):
+            root = current_trace_id()
+            tools = AuditingTools(
+                Gate(load_policy(None), ToolRegistry({"calculator": add})),
+                AuditLog(path, clock=lambda: _FIXED),
+                request_trace_id(),
+            )
+            await tools.execute("calculator", {"expression": "1+1"})
+    finally:
+        reset_for_tests()
+    assert root
+    ask_span = next(record for record in exporter.finished() if record.name == "ask")
+    record = AuditRecord.model_validate_json(path.read_text(encoding="utf-8").splitlines()[0])
+    assert record.trace_id == root
+    assert record.trace_id == ask_span.trace_id
+
+
+def test_request_trace_id_falls_back_when_tracing_off() -> None:
+    reset_for_tests()
+    with observation("ask", ObservationKind.ASK):
+        assert current_trace_id() is None
+        fallback = request_trace_id()
+    assert fallback
+    assert fallback != request_trace_id()
+
+
+async def test_auditing_tools_does_not_double_count_budget(tmp_path: Path) -> None:
+    policy = tmp_path / "tight.json"
+    policy.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "default": "deny",
+                "tools": {
+                    "calculator": {
+                        "max_calls": 1,
+                        "max_arg_bytes": 512,
+                        "args": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["expression"],
+                            "properties": {"expression": {"type": "string", "minLength": 1}},
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    async def add(args: Mapping[str, object]) -> ToolResult:
+        return ToolResult(ok=True, tool="calculator", args=dict(args), detail="2")
+
+    log_path = tmp_path / "audit.jsonl"
+    tools = AuditingTools(
+        Gate(load_policy(policy), ToolRegistry({"calculator": add})),
+        AuditLog(log_path, clock=lambda: _FIXED),
+        "trace-budget",
+    )
+    first = await tools.execute("calculator", {"expression": "1+1"})
+    second = await tools.execute("calculator", {"expression": "2+2"})
+    assert first.ok is True
+    assert second.ok is False
+    assert second.reason == "budget_exceeded"
+    records = [
+        AuditRecord.model_validate_json(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [(row.decision, row.reason) for row in records] == [
+        ("allowed", None),
+        ("denied", "budget_exceeded"),
+    ]
+
+
+async def test_audit_write_failure_does_not_run_the_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ran: list[str] = []
+
+    async def add(args: Mapping[str, object]) -> ToolResult:
+        ran.append("calculator")
+        return ToolResult(ok=True, tool="calculator", args=dict(args), detail="2")
+
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+
+    def boom(**kwargs: object) -> AuditRecord:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(log, "record", boom)
+    tools = AuditingTools(
+        Gate(load_policy(None), ToolRegistry({"calculator": add})),
+        log,
+        "trace-boom",
+    )
+    result = await tools.execute("calculator", {"expression": "1+1"})
+    assert ran == []
+    assert result.ok is False
+    assert result.reason == AUDIT_UNAVAILABLE
+    assert result.detail == AUDIT_UNAVAILABLE_DETAIL
+    assert not path.exists() or not path.read_text(encoding="utf-8").strip()
+
+
+async def test_audit_write_failure_refuses_the_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ran: list[str] = []
+
+    async def add(args: Mapping[str, object]) -> ToolResult:
+        ran.append("calculator")
+        return ToolResult(ok=True, tool="calculator", args=dict(args), detail="2")
+
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+
+    def boom(**kwargs: object) -> AuditRecord:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(log, "record", boom)
+    tools = AuditingTools(
+        Gate(load_policy(None), ToolRegistry({"calculator": add})),
+        log,
+        "trace-boom",
+    )
+    result = await run_agent(
+        "What is 1+1?",
+        FakeAgentModel(
+            plan_script=PlannerDecision(
+                kind="plan",
+                calls=(ToolCall(name="calculator", args={"expression": "1+1"}),),
+            )
+        ),
+        tools,
+        Budgets(max_steps=6, max_tokens=4000),
+    )
+    assert ran == []
+    assert isinstance(result.answer, Refused)
+    assert result.answer.refusal_reason == AUDIT_UNAVAILABLE_DETAIL
+    assert result.traces[0].detail == AUDIT_UNAVAILABLE_DETAIL
+
+
+def test_cli_verify_ok_and_fail(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    AuditLog(path, clock=lambda: _FIXED).record(
+        trace_id="t",
+        tool="calculator",
+        args={"expression": "1"},
+        decision="allowed",
+        output="1",
+    )
+    ok = runner.invoke(app, ["audit", "verify", "--path", str(path)])
+    assert ok.exit_code == 0
+    assert "audit ok records=1" in ok.stdout
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("calculator", "nope", 1), encoding="utf-8"
+    )
+    bad = runner.invoke(app, ["audit", "verify", "--path", str(path)])
+    assert bad.exit_code == 1
+    assert "audit fail" in (bad.stdout + bad.stderr)
+
+
+def test_cli_help_lists_audit() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "audit" in result.stdout
+    nested = runner.invoke(app, ["audit", "verify", "--help"])
+    assert nested.exit_code == 0
+    assert "--path" in nested.stdout

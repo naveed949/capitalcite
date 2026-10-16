@@ -56,7 +56,7 @@ flowchart LR
 | Agent | `POST /ask` with `path=agent` runs a LangGraph plan → tools → synthesizer loop. The synthesizer is still `ask()` / `ground()` / `guard`. The plan and tool trace are on the response. Step and token budgets refuse instead of guessing. | 🟡 `POST /ask` `path=agent` |
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, and `calculator`. Unknown names are denied. HTTP tools take an injected client so tests stay offline. | 🟡 agent tools |
 | Fail-closed gate | JSON allow-list per tool with argument schemas and per-request budgets. Unknown names, invalid args, and a policy-load failure are denies. `capitalcite gate decide` prints the decision. Denied calls do not run. | 🟡 `capitalcite gate` |
-| Audit log | Append-only, hash-chained JSONL of every tool call, decision, and input/output digest | ⬜ planned |
+| Audit log | Append-only, hash-chained JSONL of every gated tool call, plus a sibling head file so deleting the last line fails verify. The wrapper writes the gate decision before the tool runs and refuses with `audit unavailable` if that write fails. Records store the gate `decision` and `reason`. `trace_id` is `current_trace_id()` (UUID only when tracing is off). The chain is not keyed: anyone with write access can rebuild it. | 🟡 `capitalcite audit verify` |
 | Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
 | Evals in CI | RAGAS/DeepEval and behavioral contract tests; the PR fails on regression past a set threshold | ⬜ planned |
 | Deploy | Azure Container Apps | ⬜ planned |
@@ -168,6 +168,7 @@ curl -s localhost:8000/ask -H 'content-type: application/json' \
 uv run capitalcite eval --suite golden   # writes evals/results/<sha12>.json
 uv run capitalcite eval --suite golden --small   # FakeEmbedder, fixture corpus, no download
 uv run capitalcite gate decide --tool shell --args '{"cmd":"ls"}'
+uv run capitalcite audit verify --path data/audit.jsonl
 ```
 
 Ingest design: [docs/decisions/0002-edgar-ingester.md](docs/decisions/0002-edgar-ingester.md).
@@ -178,6 +179,7 @@ Structured answers: [docs/decisions/0007-structured-ask.md](docs/decisions/0007-
 Fail-closed tool gate: [docs/decisions/0009-fail-closed-tool-gate.md](docs/decisions/0009-fail-closed-tool-gate.md).
 Plan-then-act agent: [docs/decisions/0008-plan-then-act-agent.md](docs/decisions/0008-plan-then-act-agent.md).
 Langfuse tracing: [docs/decisions/0010-langfuse-tracing.md](docs/decisions/0010-langfuse-tracing.md).
+Audit log: [docs/decisions/0011-append-only-audit-log.md](docs/decisions/0011-append-only-audit-log.md).
 
 ### Observability
 
@@ -240,7 +242,7 @@ Everything below is public. Each link was checked on 2026-10-16.
 ## Layout
 
 ```
-src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask, agent, gate, agent, ask
+src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, retrieval, ask, agent, gate, audit
 tests/               pytest (recorded fixtures; no live network)
 docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records

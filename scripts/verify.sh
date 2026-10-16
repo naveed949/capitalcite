@@ -92,6 +92,8 @@ write qdrant.path "${QDRANT_PATH}"
 export LANGFUSE_TRACING_ENABLED=false
 export CAPITALCITE_TRACE_FILE="${ART}/spans.jsonl"
 write capitalcite.trace.file "${CAPITALCITE_TRACE_FILE}"
+export AUDIT_LOG_PATH="${ART}/audit.live.jsonl"
+write audit.path "${AUDIT_LOG_PATH}"
 
 uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
   >"${ART}/uvicorn.log" 2>&1 &
@@ -439,6 +441,147 @@ print(json.dumps(body, sort_keys=True))
 PY
 log "verify: capitalcite gate bench ok"
 cat "${ART}/gate.bench.body.json"
+log "verify: capitalcite audit verify --help"
+set +e
+uv run capitalcite audit verify --help >"${ART}/audit.help.out" 2>"${ART}/audit.help.err"
+audit_help_rc=$?
+set -e
+write audit.help.exit "${audit_help_rc}"
+if [[ "${audit_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite audit verify --help failed"
+  cat "${ART}/audit.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/audit.help.out" | grep -q -- "--path"; then
+  log "verify: audit verify --help missing --path"
+  cat "${ART}/audit.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite audit verify --help ok"
+
+log "verify: write audit fixture and capitalcite audit verify"
+uv run python - "${ART}/audit.fixture.jsonl" <<'PY'
+from pathlib import Path
+import sys
+
+from capitalcite.agent.audited import AuditingTools
+from capitalcite.agent.tools import ToolRegistry
+from capitalcite.agent.types import ToolResult
+from capitalcite.audit import AuditLog
+from capitalcite.gate import Gate, load_policy
+
+path = Path(sys.argv[1])
+
+
+async def add(args: dict[str, object]) -> ToolResult:
+    return ToolResult(ok=True, tool="calculator", args=dict(args), detail="2")
+
+
+async def main() -> None:
+    tools = AuditingTools(
+        Gate(load_policy(None), ToolRegistry({"calculator": add})),
+        AuditLog(path),
+        "verify-trace",
+    )
+    await tools.execute("calculator", {"expression": "1+1"})
+    await tools.execute("shell", {"cmd": "ls"})
+
+
+import asyncio
+
+asyncio.run(main())
+print(f"wrote {path}")
+PY
+
+set +e
+uv run capitalcite audit verify --path "${ART}/audit.fixture.jsonl" \
+  >"${ART}/audit.ok.out" 2>"${ART}/audit.ok.err"
+audit_ok_rc=$?
+set -e
+write audit.ok.exit "${audit_ok_rc}"
+if [[ "${audit_ok_rc}" -ne 0 ]]; then
+  log "verify: capitalcite audit verify failed on intact chain"
+  cat "${ART}/audit.ok.out" >&2 || true
+  cat "${ART}/audit.ok.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "audit ok records=2" "${ART}/audit.ok.out"; then
+  log "verify: audit verify stdout missing audit ok records=2"
+  cat "${ART}/audit.ok.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite audit verify intact chain ok"
+cat "${ART}/audit.ok.out"
+
+log "verify: tamper audit fixture and expect verify fail"
+cp "${ART}/audit.fixture.jsonl" "${ART}/audit.tampered.jsonl"
+cp "${ART}/audit.fixture.jsonl.tip" "${ART}/audit.tampered.jsonl.tip"
+uv run python - "${ART}/audit.tampered.jsonl" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+path.write_text(text.replace("calculator", "nope", 1), encoding="utf-8")
+PY
+set +e
+uv run capitalcite audit verify --path "${ART}/audit.tampered.jsonl" \
+  >"${ART}/audit.tamper.out" 2>"${ART}/audit.tamper.err"
+audit_tamper_rc=$?
+set -e
+write audit.tamper.exit "${audit_tamper_rc}"
+if [[ "${audit_tamper_rc}" -eq 0 ]]; then
+  log "verify: audit verify exited 0 on a tampered log"
+  cat "${ART}/audit.tamper.out" >&2 || true
+  exit 1
+fi
+if ! grep -q "audit fail" "${ART}/audit.tamper.err" "${ART}/audit.tamper.out"; then
+  log "verify: tampered audit verify did not print audit fail"
+  cat "${ART}/audit.tamper.out" >&2 || true
+  cat "${ART}/audit.tamper.err" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite audit verify detected tamper"
+cat "${ART}/audit.tamper.err" || true
+
+log "verify: drop last audit record and expect verify fail"
+cp "${ART}/audit.fixture.jsonl" "${ART}/audit.truncated.jsonl"
+cp "${ART}/audit.fixture.jsonl.tip" "${ART}/audit.truncated.jsonl.tip"
+uv run python - "${ART}/audit.truncated.jsonl" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+if len(lines) < 2:
+    raise SystemExit("verify: fixture must have at least two records")
+path.write_text(lines[0] + "\n", encoding="utf-8")
+PY
+set +e
+uv run capitalcite audit verify --path "${ART}/audit.truncated.jsonl" \
+  >"${ART}/audit.removed.out" 2>"${ART}/audit.removed.err"
+audit_removed_rc=$?
+set -e
+write audit.removed.exit "${audit_removed_rc}"
+if [[ "${audit_removed_rc}" -eq 0 ]]; then
+  log "verify: audit verify exited 0 after deleting the last record"
+  cat "${ART}/audit.removed.out" >&2 || true
+  exit 1
+fi
+if ! grep -q "audit fail" "${ART}/audit.removed.err" "${ART}/audit.removed.out"; then
+  log "verify: truncated audit verify did not print audit fail"
+  cat "${ART}/audit.removed.out" >&2 || true
+  cat "${ART}/audit.removed.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "tip hash mismatch" "${ART}/audit.removed.err" "${ART}/audit.removed.out"; then
+  log "verify: truncated audit verify did not report tip hash mismatch"
+  cat "${ART}/audit.removed.out" >&2 || true
+  cat "${ART}/audit.removed.err" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite audit verify detected removed last record"
+cat "${ART}/audit.removed.err" || true
 
 log "verify: capitalcite ingest --help"
 set +e
@@ -849,6 +992,7 @@ if [[ -f "${ART}/ingest.unreachable" ]]; then
   write ask.unreachable "POST /search was unverified; POST /ask needs the same index"
   write agent.unreachable "POST /search was unverified; POST /ask path=agent needs the same index"
   write spans.skipped "POST /ask was unverified; span JSONL needs a fake /ask"
+  write audit.agent.skipped "POST /ask path=agent was unverified; live one-record check needs traces"
   log "verify: POST /search UNVERIFIED (no ingested corpus)"
   log "verify: POST /ask UNVERIFIED (no ingested corpus)"
   log "verify: POST /ask path=agent UNVERIFIED (no ingested corpus)"
@@ -1395,6 +1539,88 @@ PY
     log "verify: POST /ask path=agent openai returned a response"
   fi
   log "verify: POST /ask path=agent fake path ok"
+
+  log "verify: live audit log vs agent traces"
+  set +e
+  uv run python - "${ART}" "${AUDIT_LOG_PATH}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from capitalcite.audit import AuditRecord, verify
+
+art = Path(sys.argv[1])
+log_path = Path(sys.argv[2])
+if not log_path.is_file():
+    sys.stderr.write(f"verify: live audit log missing: {log_path}\n")
+    sys.exit(1)
+report = verify(log_path)
+if not report.ok:
+    reasons = "; ".join(issue.reason for issue in report.issues)
+    sys.stderr.write(f"verify: live audit chain failed: {reasons}\n")
+    sys.exit(1)
+records = [
+    AuditRecord.model_validate_json(line)
+    for line in log_path.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+]
+for row in records:
+    if row.decision == "denied" and not row.reason:
+        sys.stderr.write(f"verify: denied seq={row.seq} missing reason\n")
+        sys.exit(1)
+    if row.decision == "allowed" and row.reason is not None:
+        sys.stderr.write(f"verify: allowed seq={row.seq} has reason={row.reason!r}\n")
+        sys.exit(1)
+expected = 0
+for name in ("agent.cc-h-055.body.json", "agent.cc-h-061.body.json"):
+    body = json.loads((art / name).read_text(encoding="utf-8"))
+    expected += len(body.get("traces") or [])
+openai_unverified = (art / "agent.openai.unverified").is_file()
+if openai_unverified:
+    if len(records) != expected:
+        sys.stderr.write(
+            f"verify: live audit records={len(records)} traces={expected}\n"
+        )
+        sys.exit(1)
+elif len(records) < expected:
+    sys.stderr.write(
+        f"verify: live audit records={len(records)} traces={expected}\n"
+    )
+    sys.exit(1)
+if any(not row.trace_id.strip() for row in records):
+    sys.stderr.write("verify: live audit record missing trace_id\n")
+    sys.exit(1)
+spans_path = art / "spans.jsonl"
+if not spans_path.is_file() or spans_path.stat().st_size == 0:
+    sys.stderr.write("verify: spans.jsonl missing for audit trace_id check\n")
+    sys.exit(1)
+ask_ids = {
+    str(row.get("trace_id") or "")
+    for line in spans_path.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+    for row in [json.loads(line)]
+    if row.get("name") == "ask" and not row.get("parent_id")
+}
+ask_ids.discard("")
+missing = sorted({row.trace_id for row in records if row.trace_id not in ask_ids})
+if missing:
+    sys.stderr.write(
+        "verify: audit trace_id not an ask root span: " + ", ".join(missing) + "\n"
+    )
+    sys.exit(1)
+print(f"audit live records={len(records)} traces={expected} ask_spans={len(ask_ids)}")
+PY
+  audit_agent_rc=$?
+  set -e
+  if [[ "${audit_agent_rc}" -ne 0 ]]; then
+    log "verify: live audit vs traces failed"
+    exit 1
+  fi
+  uv run capitalcite audit verify --path "${AUDIT_LOG_PATH}" \
+    >"${ART}/audit.agent.out" 2>"${ART}/audit.agent.err"
+  write audit.agent.exit "$?"
+  log "verify: live audit vs traces ok"
+  cat "${ART}/audit.agent.out"
 fi
 
 log "verify: quote-index sanity"
@@ -1656,6 +1882,15 @@ fi
   echo "gate.redteam.exit $(cat "${ART}/gate.redteam.exit")"
   echo "gate.bench.exit $(cat "${ART}/gate.bench.exit")"
   echo "gate.bench $(cat "${ART}/gate.bench.body.json")"
+  echo "audit.help.exit $(cat "${ART}/audit.help.exit")"
+  echo "audit.ok.exit $(cat "${ART}/audit.ok.exit")"
+  echo "audit.tamper.exit $(cat "${ART}/audit.tamper.exit")"
+  echo "audit.removed.exit $(cat "${ART}/audit.removed.exit")"
+  if [[ -f "${ART}/audit.agent.skipped" ]]; then
+    echo "audit agent skipped ($(cat "${ART}/audit.agent.skipped"))"
+  elif [[ -f "${ART}/audit.agent.exit" ]]; then
+    echo "audit.agent.exit $(cat "${ART}/audit.agent.exit")"
+  fi
   echo "ingest.help.exit $(cat "${ART}/ingest.help.exit")"
   if [[ -f "${ART}/ingest.unreachable" ]]; then
     echo "ingest unreachable ($(cat "${ART}/ingest.unreachable"))"

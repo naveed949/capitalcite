@@ -144,6 +144,11 @@ class Settings(BaseSettings):
         ),
     )
 
+    audit_log_path: Path = Field(
+        default=Path("data/audit.jsonl"),
+        description="Append-only hash-chained JSONL of gated tool calls.",
+    )
+
     @field_validator("qdrant_url")
     @classmethod
     def qdrant_url_stripped(cls, value: str) -> str:

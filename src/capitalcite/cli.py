@@ -63,6 +63,33 @@ golden_app = typer.Typer(
 )
 app.add_typer(golden_app, name="golden")
 
+audit_app = typer.Typer(
+    help="Verify the append-only hash-chained audit log. No network.",
+    no_args_is_help=True,
+)
+app.add_typer(audit_app, name="audit")
+
+
+@audit_app.command("verify")
+def audit_verify(
+    path: Path = typer.Option(
+        Path("data/audit.jsonl"),
+        "--path",
+        help="JSONL hash chain written by gated tool calls.",
+    ),
+) -> None:
+    """Detect a tampered, inserted, or removed audit record. Offline."""
+    from capitalcite.audit import verify
+
+    report = verify(path)
+    if report.ok:
+        typer.echo(f"audit ok records={report.records}")
+        return
+    for issue in report.issues:
+        seq = f"seq={issue.seq} " if issue.seq is not None else ""
+        typer.echo(f"audit fail {seq}reason={issue.reason}", err=True)
+    raise typer.Exit(code=1)
+
 
 gate_app = typer.Typer(
     help="Fail-closed tool gate. No network.",

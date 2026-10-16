@@ -104,6 +104,19 @@ class Gate:
             return _deny(name, recorded, DenyReason.invalid_args)
         return Decision(kind="allow", tool=name, args=recorded, detail="allow")
 
+    async def run(self, decision: Decision, args: Mapping[str, object] | None = None) -> ToolResult:
+        """Apply a prior decide() result. Does not spend budget again."""
+        if decision.kind == "deny":
+            return ToolResult(
+                ok=False,
+                tool=decision.tool,
+                args=decision.args,
+                detail=decision.detail,
+                reason=decision.reason,
+            )
+        payload = args if args is not None else decision.args
+        return await self._inner.execute(decision.tool, payload)
+
     async def execute(self, name: str, args: Mapping[str, object]) -> ToolResult:
         try:
             decision = self.decide(name, args)
@@ -115,15 +128,7 @@ class Gate:
                 detail=_DETAIL[DenyReason.gate_error],
                 reason=DenyReason.gate_error,
             )
-        if decision.kind == "deny":
-            return ToolResult(
-                ok=False,
-                tool=name,
-                args=decision.args,
-                detail=decision.detail,
-                reason=decision.reason,
-            )
-        return await self._inner.execute(name, args)
+        return await self.run(decision, args)
 
 
 def _record_args(args: object) -> dict[str, object]:
