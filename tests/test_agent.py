@@ -411,6 +411,7 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
     assert [row.tool for row in records] == [step.tool for step in body.traces]
     assert all(row.trace_id for row in records)
     assert len({row.trace_id for row in records}) == 1
+    assert all(row.decision == "allowed" and row.reason is None for row in records)
 
 
 def test_post_ask_agent_tool_http_error_is_200(

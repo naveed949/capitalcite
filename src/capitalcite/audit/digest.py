@@ -1,5 +1,3 @@
-"""Canonical JSON SHA-256. Digests are hex, lowercase, 64 characters."""
-
 from __future__ import annotations
 
 import hashlib
@@ -24,7 +22,6 @@ def sha256_hex(data: bytes) -> str:
 
 
 def digest(value: object) -> str:
-    """SHA-256 hex of canonical JSON. Used for args, outputs, and chain hashes."""
     return sha256_hex(canonical_json(value).encode("utf-8"))
 
 

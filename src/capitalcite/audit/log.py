@@ -1,8 +1,7 @@
-"""Append-only JSONL hash chain. AuditLog is the only writer."""
-
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -11,7 +10,8 @@ from typing import TextIO
 
 from pydantic import ValidationError
 
-from capitalcite.audit.digest import digest, sha256_json
+from capitalcite.atomic import atomic_write_text
+from capitalcite.audit.digest import canonical_json, digest, sha256_json
 from capitalcite.audit.types import (
     GENESIS_HASH,
     AuditRecord,
@@ -27,9 +27,46 @@ def utc_iso(moment: datetime) -> str:
     return moment.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-class AuditLog:
-    """One JSONL file. `record` appends one chained line. `verify` walks the file."""
+def _tip_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.tip")
 
+
+def _write_tip(path: Path, *, seq: int, record_hash: str) -> None:
+    atomic_write_text(path, canonical_json({"hash": record_hash, "seq": seq}) + "\n")
+
+
+def _check_tip(path: Path, *, records: int, last_hash: str, last_seq: int) -> list[VerifyIssue]:
+    tip_path = _tip_path(path)
+    if records == 0:
+        if tip_path.is_file():
+            return [
+                VerifyIssue(seq=None, reason=f"tip present for empty log: {tip_path}"),
+            ]
+        return []
+    if not tip_path.is_file():
+        return [VerifyIssue(seq=last_seq, reason=f"missing tip: {tip_path}")]
+    try:
+        raw = json.loads(tip_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return [VerifyIssue(seq=last_seq, reason=f"invalid tip: {exc}")]
+    if not isinstance(raw, dict):
+        return [VerifyIssue(seq=last_seq, reason="invalid tip: not an object")]
+    issues: list[VerifyIssue] = []
+    if raw.get("hash") != last_hash:
+        issues.append(
+            VerifyIssue(seq=last_seq, reason=f"tip hash mismatch at seq {last_seq}"),
+        )
+    if raw.get("seq") != last_seq:
+        issues.append(
+            VerifyIssue(
+                seq=last_seq,
+                reason=f"tip seq mismatch: expected {last_seq}, got {raw.get('seq')}",
+            ),
+        )
+    return issues
+
+
+class AuditLog:
     def __init__(
         self,
         path: Path,
@@ -90,13 +127,13 @@ class AuditLog:
                 handle.write(chained.model_dump_json() + "\n")
                 handle.flush()
                 os.fsync(handle.fileno())
+                _write_tip(_tip_path(self.path), seq=chained.seq, record_hash=chained.hash)
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         return chained
 
 
 def verify(path: Path) -> VerifyReport:
-    """Walk the chain. An empty file is valid. A missing file is not."""
     if not path.is_file():
         return VerifyReport(
             ok=False,
@@ -107,41 +144,51 @@ def verify(path: Path) -> VerifyReport:
     prev_hash = GENESIS_HASH
     expected_seq = 1
     records = 0
-    raw_lines = path.read_text(encoding="utf-8").splitlines()
-    for line_no, raw in enumerate(raw_lines, start=1):
-        if not raw.strip():
-            issues.append(VerifyIssue(seq=None, reason=f"blank line at {path}:{line_no}"))
-            continue
+    last_hash = GENESIS_HASH
+    last_seq = 0
+    with path.open(encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
         try:
-            record = AuditRecord.model_validate_json(raw)
-        except ValidationError as exc:
-            issues.append(
-                VerifyIssue(seq=None, reason=f"invalid record at {path}:{line_no}: {exc}")
-            )
-            continue
-        records += 1
-        payload = record.model_dump(mode="json", exclude={"hash"})
-        expected_hash = sha256_json(payload)
-        if record.hash != expected_hash:
-            issues.append(
-                VerifyIssue(seq=record.seq, reason=f"hash mismatch at seq {record.seq}"),
-            )
-        if record.prev_hash != prev_hash:
-            issues.append(
-                VerifyIssue(
-                    seq=record.seq,
-                    reason=f"prev_hash mismatch at seq {record.seq}",
-                ),
-            )
-        if record.seq != expected_seq:
-            issues.append(
-                VerifyIssue(
-                    seq=record.seq,
-                    reason=f"seq gap: expected {expected_seq}, got {record.seq}",
-                ),
-            )
-        prev_hash = record.hash
-        expected_seq = record.seq + 1
+            raw_lines = handle.read().splitlines()
+            for line_no, raw in enumerate(raw_lines, start=1):
+                if not raw.strip():
+                    issues.append(VerifyIssue(seq=None, reason=f"blank line at {path}:{line_no}"))
+                    continue
+                try:
+                    record = AuditRecord.model_validate_json(raw)
+                except ValidationError as exc:
+                    issues.append(
+                        VerifyIssue(seq=None, reason=f"invalid record at {path}:{line_no}: {exc}")
+                    )
+                    continue
+                records += 1
+                payload = record.model_dump(mode="json", exclude={"hash"})
+                expected_hash = sha256_json(payload)
+                if record.hash != expected_hash:
+                    issues.append(
+                        VerifyIssue(seq=record.seq, reason=f"hash mismatch at seq {record.seq}"),
+                    )
+                if record.prev_hash != prev_hash:
+                    issues.append(
+                        VerifyIssue(
+                            seq=record.seq,
+                            reason=f"prev_hash mismatch at seq {record.seq}",
+                        ),
+                    )
+                if record.seq != expected_seq:
+                    issues.append(
+                        VerifyIssue(
+                            seq=record.seq,
+                            reason=f"seq gap: expected {expected_seq}, got {record.seq}",
+                        ),
+                    )
+                prev_hash = record.hash
+                last_hash = record.hash
+                last_seq = record.seq
+                expected_seq = record.seq + 1
+            issues.extend(_check_tip(path, records=records, last_hash=last_hash, last_seq=last_seq))
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     return VerifyReport(ok=not issues, records=records, issues=tuple(issues))
 
 

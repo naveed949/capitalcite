@@ -1,5 +1,3 @@
-"""Append-only hash-chained audit log of gated tool calls."""
-
 from capitalcite.audit.log import AuditLog, utc_iso, verify
 from capitalcite.audit.types import (
     GENESIS_HASH,

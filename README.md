@@ -56,7 +56,7 @@ flowchart LR
 | Agent | `POST /ask` with `path=agent` runs a LangGraph plan → tools → synthesizer loop. The synthesizer is still `ask()` / `ground()` / `guard`. The plan and tool trace are on the response. Step and token budgets refuse instead of guessing. | 🟡 `POST /ask` `path=agent` |
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, and `calculator`. Unknown names are denied. HTTP tools take an injected client so tests stay offline. | 🟡 agent tools |
 | Fail-closed gate | JSON allow-list per tool with argument schemas and per-request budgets. Unknown names, invalid args, and a policy-load failure are denies. `capitalcite gate decide` prints the decision. Denied calls do not run. | 🟡 `capitalcite gate` |
-| Audit log | Append-only, hash-chained JSONL of every gated tool call. `capitalcite audit verify` walks the chain. Args and outputs are digests. `trace_id` is the request root span id, or a UUID when tracing is off. | 🟡 `capitalcite audit verify` |
+| Audit log | Append-only, hash-chained JSONL of every gated tool call, plus a sibling head file so deleting the last line fails verify. Records store the gate `decision` and `reason`. `trace_id` is the request root span id, or a UUID when tracing is off. | 🟡 `capitalcite audit verify` |
 | Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
 | Evals in CI | RAGAS/DeepEval and behavioral contract tests; the PR fails on regression past a set threshold | ⬜ planned |
 | Deploy | Azure Container Apps | ⬜ planned |

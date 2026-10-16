@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ from capitalcite.agent.tools import ToolRegistry
 from capitalcite.agent.types import ToolResult
 from capitalcite.audit import GENESIS_HASH, AuditLog, AuditRecord, verify
 from capitalcite.cli import app
+from capitalcite.gate import Gate, load_policy
 
 runner = CliRunner()
 _FIXED = datetime(2026, 10, 16, 12, 0, 0, tzinfo=UTC)
@@ -86,6 +88,56 @@ def test_verify_detects_removed_record(tmp_path: Path) -> None:
     assert any(
         "prev_hash mismatch" in issue.reason or "seq gap" in issue.reason for issue in report.issues
     )
+
+
+def test_verify_detects_removed_last_record(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+    log.record(trace_id="t", tool="a", args={}, decision="allowed", output="1")
+    second = log.record(trace_id="t", tool="b", args={}, decision="allowed", output="2")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    path.write_text(lines[0] + "\n", encoding="utf-8")
+    report = verify(path)
+    assert report.ok is False
+    assert any("tip hash mismatch" in issue.reason for issue in report.issues)
+    assert any("tip seq mismatch" in issue.reason for issue in report.issues)
+    tip = json.loads((tmp_path / "audit.jsonl.tip").read_text(encoding="utf-8"))
+    assert tip == {"hash": second.hash, "seq": 2}
+
+
+def test_verify_empty_file_with_leftover_tip_fails(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    AuditLog(path, clock=lambda: _FIXED).record(
+        trace_id="t", tool="a", args={}, decision="allowed", output="1"
+    )
+    path.write_text("", encoding="utf-8")
+    report = verify(path)
+    assert report.ok is False
+    assert any("tip present for empty log" in issue.reason for issue in report.issues)
+
+
+def test_verify_nonempty_missing_tip_fails(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    AuditLog(path, clock=lambda: _FIXED).record(
+        trace_id="t", tool="a", args={}, decision="allowed", output="1"
+    )
+    path.with_name("audit.jsonl.tip").unlink()
+    report = verify(path)
+    assert report.ok is False
+    assert any("missing tip" in issue.reason for issue in report.issues)
+
+
+def test_record_writes_sibling_tip(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    log = AuditLog(path, clock=lambda: _FIXED)
+    first = log.record(trace_id="t", tool="a", args={}, decision="allowed", output="1")
+    tip = json.loads((tmp_path / "audit.jsonl.tip").read_text(encoding="utf-8"))
+    assert tip == {"hash": first.hash, "seq": 1}
+    second = log.record(
+        trace_id="t", tool="b", args={}, decision="denied", reason="unknown_tool", output="x"
+    )
+    tip = json.loads((tmp_path / "audit.jsonl.tip").read_text(encoding="utf-8"))
+    assert tip == {"hash": second.hash, "seq": 2}
 
 
 def test_verify_detects_inserted_record(tmp_path: Path) -> None:
@@ -171,6 +223,35 @@ async def test_auditing_tools_writes_one_record_per_execute(tmp_path: Path) -> N
     report = verify(path)
     assert report.ok is True
     assert report.records == 2
+
+
+async def test_auditing_tools_records_gate_reasons(tmp_path: Path) -> None:
+    async def add(args: Mapping[str, object]) -> ToolResult:
+        return ToolResult(ok=True, tool="calculator", args=dict(args), detail="2")
+
+    path = tmp_path / "audit.jsonl"
+    tools = AuditingTools(
+        Gate(load_policy(None), ToolRegistry({"calculator": add})),
+        AuditLog(path, clock=lambda: _FIXED),
+        "trace-gate",
+    )
+    allowed = await tools.execute("calculator", {"expression": "1+1"})
+    unknown = await tools.execute("shell", {"cmd": "ls"})
+    invalid = await tools.execute("calculator", {"expression": "1+1", "cmd": "id"})
+    assert allowed.ok is True
+    assert unknown.reason == "unknown_tool"
+    assert invalid.reason == "invalid_args"
+    records = [
+        AuditRecord.model_validate_json(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [(row.decision, row.reason) for row in records] == [
+        ("allowed", None),
+        ("denied", "unknown_tool"),
+        ("denied", "invalid_args"),
+    ]
+    assert verify(path).ok is True
 
 
 def test_cli_verify_ok_and_fail(tmp_path: Path) -> None:

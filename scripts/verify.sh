@@ -468,6 +468,7 @@ from capitalcite.agent.audited import AuditingTools
 from capitalcite.agent.tools import ToolRegistry
 from capitalcite.agent.types import ToolResult
 from capitalcite.audit import AuditLog
+from capitalcite.gate import Gate, load_policy
 
 path = Path(sys.argv[1])
 
@@ -477,7 +478,11 @@ async def add(args: dict[str, object]) -> ToolResult:
 
 
 async def main() -> None:
-    tools = AuditingTools(ToolRegistry({"calculator": add}), AuditLog(path), "verify-trace")
+    tools = AuditingTools(
+        Gate(load_policy(None), ToolRegistry({"calculator": add})),
+        AuditLog(path),
+        "verify-trace",
+    )
     await tools.execute("calculator", {"expression": "1+1"})
     await tools.execute("shell", {"cmd": "ls"})
 
@@ -510,6 +515,7 @@ cat "${ART}/audit.ok.out"
 
 log "verify: tamper audit fixture and expect verify fail"
 cp "${ART}/audit.fixture.jsonl" "${ART}/audit.tampered.jsonl"
+cp "${ART}/audit.fixture.jsonl.tip" "${ART}/audit.tampered.jsonl.tip"
 uv run python - "${ART}/audit.tampered.jsonl" <<'PY'
 from pathlib import Path
 import sys
@@ -537,6 +543,45 @@ if ! grep -q "audit fail" "${ART}/audit.tamper.err" "${ART}/audit.tamper.out"; t
 fi
 log "verify: capitalcite audit verify detected tamper"
 cat "${ART}/audit.tamper.err" || true
+
+log "verify: drop last audit record and expect verify fail"
+cp "${ART}/audit.fixture.jsonl" "${ART}/audit.truncated.jsonl"
+cp "${ART}/audit.fixture.jsonl.tip" "${ART}/audit.truncated.jsonl.tip"
+uv run python - "${ART}/audit.truncated.jsonl" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+if len(lines) < 2:
+    raise SystemExit("verify: fixture must have at least two records")
+path.write_text(lines[0] + "\n", encoding="utf-8")
+PY
+set +e
+uv run capitalcite audit verify --path "${ART}/audit.truncated.jsonl" \
+  >"${ART}/audit.removed.out" 2>"${ART}/audit.removed.err"
+audit_removed_rc=$?
+set -e
+write audit.removed.exit "${audit_removed_rc}"
+if [[ "${audit_removed_rc}" -eq 0 ]]; then
+  log "verify: audit verify exited 0 after deleting the last record"
+  cat "${ART}/audit.removed.out" >&2 || true
+  exit 1
+fi
+if ! grep -q "audit fail" "${ART}/audit.removed.err" "${ART}/audit.removed.out"; then
+  log "verify: truncated audit verify did not print audit fail"
+  cat "${ART}/audit.removed.out" >&2 || true
+  cat "${ART}/audit.removed.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "tip hash mismatch" "${ART}/audit.removed.err" "${ART}/audit.removed.out"; then
+  log "verify: truncated audit verify did not report tip hash mismatch"
+  cat "${ART}/audit.removed.out" >&2 || true
+  cat "${ART}/audit.removed.err" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite audit verify detected removed last record"
+cat "${ART}/audit.removed.err" || true
 
 log "verify: capitalcite ingest --help"
 set +e
@@ -1519,6 +1564,13 @@ records = [
     for line in log_path.read_text(encoding="utf-8").splitlines()
     if line.strip()
 ]
+for row in records:
+    if row.decision == "denied" and not row.reason:
+        sys.stderr.write(f"verify: denied seq={row.seq} missing reason\n")
+        sys.exit(1)
+    if row.decision == "allowed" and row.reason is not None:
+        sys.stderr.write(f"verify: allowed seq={row.seq} has reason={row.reason!r}\n")
+        sys.exit(1)
 expected = 0
 for name in ("agent.cc-h-055.body.json", "agent.cc-h-061.body.json"):
     body = json.loads((art / name).read_text(encoding="utf-8"))
@@ -1815,6 +1867,7 @@ fi
   echo "audit.help.exit $(cat "${ART}/audit.help.exit")"
   echo "audit.ok.exit $(cat "${ART}/audit.ok.exit")"
   echo "audit.tamper.exit $(cat "${ART}/audit.tamper.exit")"
+  echo "audit.removed.exit $(cat "${ART}/audit.removed.exit")"
   if [[ -f "${ART}/audit.agent.skipped" ]]; then
     echo "audit agent skipped ($(cat "${ART}/audit.agent.skipped"))"
   elif [[ -f "${ART}/audit.agent.exit" ]]; then

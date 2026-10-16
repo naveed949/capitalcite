@@ -22,16 +22,25 @@ JSON is sorted keys and compact separators, the same rule
 `retrieval.hashing.config_hash` already uses for index config.
 
 `verify` walks the file and recomputes. A changed field fails the hash.
-A deleted line fails `prev_hash` or `seq`. An inserted line fails both.
-A missing file fails. An empty file is a valid unused log (`records=0`).
-Args and outputs are stored as digests, not payloads, because the issue
-asked for digests and because a filing quote does not belong in an
-ops log.
+A deleted middle line fails `prev_hash` or `seq`. An inserted line fails
+both. A missing file fails. An empty file with no sibling tip is a valid
+unused log (`records=0`). Args and outputs are stored as digests, not
+payloads, because the issue asked for digests and because a filing quote
+does not belong in an ops log.
+
+A deleted last line does not break the remaining chain. The leftover
+prefix is a valid shorter log. A sibling `<log>.tip` stores the last
+`seq` and `hash` as canonical JSON. `verify` fails when a non-empty log
+has no tip, when the tip's seq or hash disagrees with the last line, or
+when an empty log still has a tip. Copying the JSONL without the tip
+fails for the same reason.
 
 The write is one full JSON line plus a newline, then `fsync`, under an
-exclusive flock. `atomic_write_*` replaces a whole file. Replacing the
-log on every call would lose history if the process died between
-truncate and rename. Append is the operation that matches append-only.
+exclusive flock, then `atomic_write_*` of the tip while still holding
+the lock. `atomic_write_*` replaces a whole file. Replacing the log on
+every call would lose history if the process died between truncate and
+rename. Append is the operation that matches append-only. The tip is a
+one-record witness, so replace is the right write for that file.
 
 ## JSONL, not the Langfuse Postgres
 
@@ -41,36 +50,32 @@ trail there couples tamper evidence to a compose service tests do not
 run. Dual JSONL/Postgres backends would be two ways to do one task.
 
 A hash-chained JSONL file lives under `AUDIT_LOG_PATH`
-(default `data/audit.jsonl`, gitignored). Pytest and
-`capitalcite audit verify` need no Docker. If deploy later requires
-SQL, the public surface stays `record` and `verify`. The file is an
-implementation.
+(default `data/audit.jsonl`, gitignored) with a sibling
+`audit.jsonl.tip`. Pytest and `capitalcite audit verify` need no Docker.
+If deploy later requires SQL, the public surface stays `record` and
+`verify`. The file is an implementation.
 
-## One writer, a wrapper, not execute()
+## One writer, a wrapper around the gate
 
-`ToolRegistry.execute` is the choke point for tool names, but it is not
-the gate. `ok` is tool success. An unknown name is the only deny today
-(`detail == "unknown tool"`). A calculator overflow is an allowed call
-that failed. Issue #9 will wrap `execute` with a policy. If #10 wrote
-inside `execute`, a later gate that records its own decision would
-double-write every allow.
+ADR 0009 put `Gate` on `execute`. `ok` is tool success. A deny is
+`ToolResult.reason` set to a `DenyReason` (`unknown_tool`,
+`invalid_args`, `args_too_large`, `budget_exceeded`,
+`policy_load_failed`, `gate_error`). A calculator overflow is an
+allowed call that failed (`reason` is null).
 
-`AuditLog.record` does not know tools. `AuditingTools.execute` calls
-the inner registry, maps unknown-tool to `denied` and every dispatched
-call to `allowed`, writes one line, and returns the `ToolResult`.
-`run_agent` types that as `ToolExecutor`. `_run_agent` mints a UUID
-`trace_id` for the request and wraps the default registry. Issue #9
-replaces `AuditingTools` with the gate. The gate calls `record` itself
-and must not also wrap with `AuditingTools`. Issue #11 replaces the
-UUID with a Langfuse trace id. The field name stays `trace_id`.
+`AuditLog.record` does not know tools. `AuditingTools.execute` wraps
+`Gate`, copies `reason` onto the JSONL line, maps a set reason to
+`denied` and a missing reason to `allowed`, and returns the
+`ToolResult`. Gate does not write the log. `_run_agent` constructs
+`AuditingTools(Gate(policy, registry), log, trace_id)` once per
+request. `trace_id` is a UUID until #11 supplies a Langfuse id.
 
 Budget skips never reach `execute`. They are not gated calls and they
 do not write.
 
 ## What this leaves out
 
-The fail-closed policy file is issue #9. Langfuse spans are issue #11.
-This change does not import those SDKs. Concurrent multi-process
-writers share one flock. That is enough for one API process. It is not
-a distributed ledger. Live `path=agent` with `model=openai` stays
-UNVERIFIED without `OPENAI_API_KEY`.
+Langfuse spans are issue #11. This change does not import that SDK.
+Concurrent multi-process writers share one flock. That is enough for
+one API process. It is not a distributed ledger. Live `path=agent`
+with `model=openai` stays UNVERIFIED without `OPENAI_API_KEY`.
