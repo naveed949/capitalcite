@@ -177,14 +177,19 @@ async def build_index(setup: RetrievalSetup, input_dir: Path) -> IndexReceipt:
         pid = point_id(chunk.doc_id, chunk.chunker.value, chunk.start, chunk.end)
         by_id[pid] = chunk
     ordered = list(by_id.items())
-    embeddings = await _embed_batched(setup.embedder, [chunk.text for _, chunk in ordered])
-    points = [
-        _point(pid, chunk, embedding, setup.config)
-        for (pid, chunk), embedding in zip(ordered, embeddings, strict=True)
-    ]
-    for batch in _batches(points, _UPSERT_BATCH):
-        await _call(client.upsert(collection_name=name, points=list(batch)), collection=name)
-    await _delete_orphans(client, name, set(by_id))
+    wanted = set(by_id)
+    existing = await _point_ids(client, name)
+    if existing == wanted:
+        logger.info("index reuse collection=%s points=%s", name, len(wanted))
+    else:
+        embeddings = await _embed_batched(setup.embedder, [chunk.text for _, chunk in ordered])
+        points = [
+            _point(pid, chunk, embedding, setup.config)
+            for (pid, chunk), embedding in zip(ordered, embeddings, strict=True)
+        ]
+        for batch in _batches(points, _UPSERT_BATCH):
+            await _call(client.upsert(collection_name=name, points=list(batch)), collection=name)
+        await _delete_orphans(client, name, wanted)
     counted = await _call(client.count(collection_name=name, exact=True), collection=name)
     total = int(counted.count)
     if total != len(by_id):
@@ -376,13 +381,10 @@ def _sparse(embedding: TextEmbedding) -> SparseVector:
 async def _embed_batched(embedder: Embedder, texts: list[str]) -> list[TextEmbedding]:
     if not texts:
         return []
-    embeddings: list[TextEmbedding] = []
-    for batch in _batches(texts, _UPSERT_BATCH):
-        vectors = await embedder.embed_documents(list(batch))
-        if len(vectors) != len(batch):
-            raise RetrievalError("embedder returned a different number of vectors than texts")
-        embeddings.extend(vectors)
-    return embeddings
+    vectors = await embedder.embed_documents(texts)
+    if len(vectors) != len(texts):
+        raise RetrievalError("embedder returned a different number of vectors than texts")
+    return list(vectors)
 
 
 async def _ensure_collection(
@@ -477,11 +479,7 @@ def _hits(points: Sequence[ScoredPoint]) -> list[Hit]:
     return hits
 
 
-async def _delete_orphans(
-    client: AsyncQdrantClient,
-    name: str,
-    kept: set[str],
-) -> None:
+async def _point_ids(client: AsyncQdrantClient, name: str) -> set[str]:
     seen: set[str] = set()
     offset = None
     while True:
@@ -501,6 +499,15 @@ async def _delete_orphans(
             seen.add(str(record.id))
         if offset is None:
             break
+    return seen
+
+
+async def _delete_orphans(
+    client: AsyncQdrantClient,
+    name: str,
+    kept: set[str],
+) -> None:
+    seen = await _point_ids(client, name)
     stale = [pid for pid in seen if pid not in kept]
     for batch in _batches(stale, _SCROLL_BATCH):
         await _call(

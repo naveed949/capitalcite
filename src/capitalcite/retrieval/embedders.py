@@ -122,8 +122,10 @@ class FastEmbedEmbedder:
     async def embed_documents(self, texts: list[str]) -> list[TextEmbedding]:
         if not texts:
             return []
-        vectors = await asyncio.to_thread(self._passage_vectors, texts)
-        sparse = await asyncio.to_thread(_sparse_documents, texts)
+        vectors, sparse = await asyncio.gather(
+            asyncio.to_thread(self._passage_vectors, texts),
+            asyncio.to_thread(_sparse_documents, texts),
+        )
         return [
             TextEmbedding(dense=dense, sparse=sparse_vec)
             for dense, sparse_vec in zip(vectors, sparse, strict=True)
@@ -140,7 +142,7 @@ class FastEmbedEmbedder:
 
     def _passage_vectors(self, texts: list[str]) -> list[tuple[float, ...]]:
         model = self._load()
-        embedded = model.embed(texts)
+        embedded = model.embed(texts, **_fastembed_document_kwargs(len(texts)))
         vectors = [tuple(float(value) for value in vector) for vector in embedded]
         if len(vectors) != len(texts):
             raise RetrievalError("fastembed returned a different number of vectors than texts")
@@ -170,6 +172,7 @@ _LOCAL: dict[EmbedderName, FastEmbedEmbedder] = {}
 _LOCAL_LOCK = threading.Lock()
 _SPARSE: FastSparseEmbedding | None = None
 _SPARSE_LOCK = threading.Lock()
+_OPENAI_BATCH = 256
 
 
 class OpenAIEmbedder:
@@ -207,18 +210,24 @@ class OpenAIEmbedder:
     async def _embed(self, texts: list[str]) -> list[tuple[float, ...]]:
         import httpx
 
+        out: list[tuple[float, ...]] = []
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    "https://api.openai.com/v1/embeddings",
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={"model": self._model_name, "input": texts},
-                )
+                for start in range(0, len(texts), _OPENAI_BATCH):
+                    batch = texts[start : start + _OPENAI_BATCH]
+                    response = await client.post(
+                        "https://api.openai.com/v1/embeddings",
+                        headers={"Authorization": f"Bearer {self._api_key}"},
+                        json={"model": self._model_name, "input": batch},
+                    )
+                    if response.status_code != 200:
+                        raise RetrievalError(f"openai embeddings HTTP {response.status_code}")
+                    out.extend(
+                        _parse_openai(response.json(), expected=len(batch), width=self.dense_size)
+                    )
         except httpx.HTTPError as exc:
             raise RetrievalError("openai embeddings request failed") from exc
-        if response.status_code != 200:
-            raise RetrievalError(f"openai embeddings HTTP {response.status_code}")
-        return _parse_openai(response.json(), expected=len(texts), width=self.dense_size)
+        return out
 
 
 def build_embedder(settings_embedder: EmbedderName, api_key: str | None) -> Embedder:
@@ -258,9 +267,17 @@ def _load_sparse() -> FastSparseEmbedding:
     return loaded
 
 
+def _fastembed_document_kwargs(n: int) -> dict[str, int]:
+    """Batch and, for large passage sets, use every core once."""
+    kwargs: dict[str, int] = {"batch_size": 256}
+    if n >= 32:
+        kwargs["parallel"] = 0
+    return kwargs
+
+
 def _sparse_documents(texts: list[str]) -> list[SparseTermVector]:
     model = _load_sparse()
-    embedded = list(model.embed(texts))
+    embedded = list(model.embed(texts, **_fastembed_document_kwargs(len(texts))))
     if len(embedded) != len(texts):
         raise RetrievalError("fastembed bm25 returned a different number of vectors than texts")
     return [_from_fastembed_sparse(item) for item in embedded]

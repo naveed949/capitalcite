@@ -48,6 +48,7 @@ from capitalcite.retrieval.types import (
     CorruptChunks,
     EmbedderNotConfigured,
     ExactPeriod,
+    TextEmbedding,
     YearPeriod,
 )
 
@@ -303,6 +304,30 @@ async def test_rebuild_is_idempotent_and_drops_orphans(tmp_path: Path) -> None:
         assert [hit.chunk.doc_id for hit in hits] == []
         kept = await retrieve(setup, "tier one capital", mode=RetrievalMode.BM25, k=5)
         assert [hit.chunk.doc_id for hit in kept] == ["doc-keep"]
+    finally:
+        await client.close()
+
+
+async def test_rebuild_skips_embed_when_point_ids_match(tmp_path: Path) -> None:
+    class Counting(FakeEmbedder):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def embed_documents(self, texts: list[str]) -> list[TextEmbedding]:
+            self.calls += 1
+            return await super().embed_documents(texts)
+
+    embedder = Counting()
+    _write_chunks(tmp_path, [_chunk(doc_id="doc-keep", text="tier one capital buffer")])
+    client = AsyncQdrantClient(":memory:")
+    try:
+        setup = setup_retrieval(_settings(), client=client, embedder=embedder)
+        first = await build_index(setup, tmp_path)
+        assert first.point_count == 1
+        assert embedder.calls == 1
+        second = await build_index(setup, tmp_path)
+        assert second.point_count == 1
+        assert embedder.calls == 1
     finally:
         await client.close()
 

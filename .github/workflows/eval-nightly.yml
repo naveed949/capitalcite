@@ -10,6 +10,8 @@ on:
       - "evals/baselines/nightly.json"
       - "src/capitalcite/eval/baseline.py"
       - "src/capitalcite/eval/runner.py"
+      - "src/capitalcite/retrieval/embedders.py"
+      - "src/capitalcite/retrieval/service.py"
 
 concurrency:
   group: eval-nightly
@@ -70,12 +72,12 @@ jobs:
   full:
     name: twelve-filing golden matrix
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     env:
       SEC_USER_AGENT: capitalcite-ci ci@example.com
       APP_ENV: test
       FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
-      OMP_NUM_THREADS: 4
+      QDRANT_PATH: ${{ github.workspace }}/.cache/qdrant-eval
     steps:
       - uses: actions/checkout@v4
 
@@ -101,8 +103,16 @@ jobs:
           path: .cache/fastembed
           key: fastembed-bge-small-en-v1.5-bm25-v1
 
+      - name: Restore eval index
+        id: qdrant
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/qdrant-eval
+          key: qdrant-eval-bge-small-section-fixed-v1
+
       - name: Ingest twelve 10-Ks
         id: ingest
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           expected=12
@@ -146,6 +156,7 @@ jobs:
 
       - name: Warm FastEmbed models
         if: steps.ingest.outputs.unverified != 'true'
+        timeout-minutes: 5
         run: |
           uv run python -c "
           from fastembed import TextEmbedding
@@ -164,6 +175,14 @@ jobs:
 
       - name: Twelve-filing matrix vs nightly baseline
         if: steps.ingest.outputs.unverified != 'true'
+        timeout-minutes: 50
         run: |
           uv run capitalcite eval --suite golden --input-dir data --embedder bge-small \
             --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"
+
+      - name: Save eval index
+        if: success() && steps.qdrant.outputs.cache-hit != 'true' && steps.ingest.outputs.unverified != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/qdrant-eval
+          key: qdrant-eval-bge-small-section-fixed-v1

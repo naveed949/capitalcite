@@ -75,12 +75,14 @@ Nightly therefore ingests the twelve 10-Ks itself
 (`JPM,BAC,WFC,C` × `10-K` × `2023-2025`) with
 `SEC_USER_AGENT=capitalcite-ci ci@example.com`. EDGAR is public. The
 filings cache under `actions/cache` keyed on that filing list.
-FastEmbed models cache under `FASTEMBED_CACHE_PATH`. Caches are saved
-after ingest and model warmup so a later eval timeout still leaves
-the next run warm. `capitalcite eval --suite golden` then re-chunks,
-indexes embedded Qdrant with `bge-small`, and compares Recall@5 hit
-counts to `evals/baselines/nightly.json`. Two chunkers embed ~12k and
-~17k passages on a 4-core runner; the job timeout is 180 minutes.
+FastEmbed models cache under `FASTEMBED_CACHE_PATH`. The eval index
+caches under `QDRANT_PATH`; `build_index` skips re-embed when point
+ids already match. Caches save after ingest, model warmup, and a
+successful eval. `capitalcite eval --suite golden` re-chunks, indexes
+embedded Qdrant with `bge-small` (all-core FastEmbed passage embed),
+and compares Recall@5 to `evals/baselines/nightly.json`. Ingest is
+bounded by five EDGAR retries and a 10-minute step timeout. The job
+timeout is 90 minutes; the eval step is 50.
 
 UNVERIFIED (exit 0) is only ingest exit 2: `EdgarAccessError` or
 `EdgarUnavailableError` (403, 429 after retries, 5xx, transport). A

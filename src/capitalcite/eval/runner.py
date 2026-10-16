@@ -111,8 +111,11 @@ async def run_suite(
     ) as span:
         with tempfile.TemporaryDirectory(prefix="capitalcite-eval-") as tmp:
             work_root = Path(tmp)
-            qdrant_dir = work_root / "qdrant"
-            qdrant_dir.mkdir()
+            if small or settings.qdrant_path is None:
+                qdrant_dir = work_root / "qdrant"
+            else:
+                qdrant_dir = settings.qdrant_path
+            qdrant_dir.mkdir(parents=True, exist_ok=True)
             for chunker in chunkers:
                 work = work_root / chunker.value
                 summary = run_chunk(
