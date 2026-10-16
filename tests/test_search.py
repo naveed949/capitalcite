@@ -93,11 +93,11 @@ def test_post_search_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
     closed = {"count": 0}
     original = client.close
 
-    async def close() -> None:
+    async def close(*_args: object, **_kwargs: object) -> None:
         closed["count"] += 1
         await original()
 
-    client.close = close  # type: ignore[method-assign]
+    monkeypatch.setattr(client, "close", close)
     setup = setup_retrieval(_settings(), client=client, embedder=FakeEmbedder())
     monkeypatch.setattr(
         "capitalcite.api.routes.search.create_retrieval_setup",
