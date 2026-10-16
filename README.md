@@ -92,7 +92,22 @@ Generated from `evals/results/8b63d12acd50.json` (sha `8b63d12acd50`, embedder `
 | Plain RAG | TBD | TBD | TBD | TBD | TBD |
 | Agent (plan-then-act) | TBD | TBD | TBD | TBD | TBD |
 
-Faithfulness, relevancy, numeric exact-match, and citation accuracy stay UNVERIFIED until a live LLM eval writes them. The fake-model agent path is measured as graph steps on golden comparison and multi-hop items, not as those scores.
+Faithfulness, relevancy, numeric exact-match, and citation accuracy stay UNVERIFIED until a live LLM eval writes them.
+
+### Agent vs RAG (retrieval)
+
+Comparison and multi-hop handwritten items. The agent row is the fake planner that searches each named ticker and year. It is not a live LLM.
+
+<!-- BEGIN AGENT RAG EVAL -->
+
+| System | n | Recall@5 | Recall@10 | Planner |
+|---|---:|---:|---:|---|
+| Plain RAG (section/hybrid) | 15 | 0.267 | 0.333 | — |
+| Agent | 15 | 0.400 | 0.600 | fake/heuristic planner |
+
+Comparison and multi-hop handwritten items only. Answer quality stays UNVERIFIED.
+
+<!-- END AGENT RAG EVAL -->
 
 ### Gate & safety
 
