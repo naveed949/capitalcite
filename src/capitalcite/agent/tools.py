@@ -107,8 +107,6 @@ def default_registry(
     fdic: FdicFn,
     graph: GraphStore | None = None,
 ) -> ToolRegistry:
-    """Named tools. Callers inject HTTP and retrieval."""
-
     async def search_filings(args: Mapping[str, object]) -> ToolResult:
         try:
             parsed = SearchFilingsArgs.model_validate(args)

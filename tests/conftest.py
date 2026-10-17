@@ -15,7 +15,6 @@ os.environ.setdefault("LOG_LEVEL", "WARNING")
 os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
-# A developer .env with NEO4J_URI must not open Bolt during pytest.
 os.environ["NEO4J_URI"] = ""
 os.environ["NEO4J_PASSWORD"] = ""
 # Rich/Typer help wrapping follows COLUMNS. CI/non-TTY widths truncate

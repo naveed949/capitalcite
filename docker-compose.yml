@@ -2,7 +2,6 @@
 #
 #   docker compose up -d          # Qdrant + Langfuse stack
 #   docker compose up -d qdrant   # vectors only (use Langfuse Cloud via LANGFUSE_HOST)
-#   docker compose --profile graph up -d neo4j  # optional entity graph
 #
 # Langfuse self-host is the current architecture (web, worker, Postgres,
 # ClickHouse, Redis, MinIO). See docs/decisions/0001-scaffold.md.
@@ -192,8 +191,6 @@ services:
       retries: 10
 
   neo4j:
-    # Optional. Not started by `docker compose up -d`.
-    #   docker compose --profile graph up -d neo4j
     image: docker.io/neo4j:5.26-community
     profiles: ["graph"]
     restart: unless-stopped
