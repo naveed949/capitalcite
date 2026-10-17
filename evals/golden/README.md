@@ -8,6 +8,7 @@ retrieval and answers against it. Nothing here is a model output.
 | Path | Role |
 |---|---|
 | `v1.jsonl` | One item per line. Source of truth for questions and gold answers. |
+| `ci.jsonl` | Three fixture-aligned items for `capitalcite check`. Not part of the published 112-item mix. |
 | `passages/*.txt` | Excerpts the author actually read. Every `evidence.quote` is a substring of the passage for that `doc_id`. |
 | `author.py` | Original excerpt-based generator. Do not re-run it over v1: the committed JSONL was rebuilt from parsed `document.md` after the WFC primary-document fix. CI does not run it. |
 

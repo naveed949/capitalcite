@@ -13,6 +13,26 @@ import typer
 from capitalcite.chunking.models import ChunkerName
 from capitalcite.chunking.service import run_chunk
 from capitalcite.config import Settings, get_settings
+from capitalcite.eval.baseline import (
+    DEFAULT_NIGHTLY,
+    Baseline,
+    Thresholds,
+    TrackedRate,
+    compare,
+    compare_nightly,
+    load_nightly,
+    snapshot_nightly,
+    write_nightly,
+)
+from capitalcite.eval.cache_key import eval_index_cache_key
+from capitalcite.eval.check import (
+    DEFAULT_BASELINE,
+    CheckFailed,
+    CheckReport,
+    load_baseline,
+    run_check,
+    write_baseline,
+)
 from capitalcite.eval.models import EvalReport
 from capitalcite.eval.report import load_reports, render_markdown, update_readme
 from capitalcite.eval.runner import EvalFailed, EvalUnverified, run_suite
@@ -521,12 +541,53 @@ def eval_cmd(
         "--readme",
         help="Rewrite the README retrieval table from this run or --from-results.",
     ),
+    baseline: Path | None = typer.Option(
+        None,
+        "--baseline",
+        help="Committed twelve-filing Recall@5 snapshot. Forbidden with --small.",
+    ),
+    write_baseline_file: bool = typer.Option(
+        False,
+        "--write-baseline",
+        help="Rewrite --baseline (or evals/baselines/nightly.json) from this run.",
+    ),
+    print_cache_key: bool = typer.Option(
+        False,
+        "--print-cache-key",
+        help="Print the eval Qdrant cache key (config hash + accessions) and exit.",
+    ),
 ) -> None:
     """Score handwritten gold with span-overlap recall@k, MRR, and nDCG.
 
     Full mode re-chunks raw filings, embeds them, and writes
     ``evals/results/<sha12>.json``. ``--small`` is the CI path.
     """
+    if small and (baseline is not None or write_baseline_file):
+        typer.echo("error: --small does not take --baseline", err=True)
+        raise typer.Exit(code=1)
+    if small and print_cache_key:
+        typer.echo("error: --small does not take --print-cache-key", err=True)
+        raise typer.Exit(code=1)
+    if print_cache_key:
+        if from_results is not None:
+            typer.echo("error: --print-cache-key does not take --from-results", err=True)
+            raise typer.Exit(code=1)
+        settings = _eval_settings(False)
+        source = input_dir if input_dir is not None else settings.data_dir
+        chunkers = tuple(chunker) if chunker else (ChunkerName.SECTION, ChunkerName.FIXED)
+        chosen_embedder = embedder if embedder is not None else EmbedderName.BGE_SMALL
+        try:
+            key = eval_index_cache_key(
+                source,
+                chunkers=chunkers,
+                embedder=chosen_embedder,
+                settings=settings,
+            )
+        except ValueError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(key)
+        raise typer.Exit(code=0)
     if from_results is not None:
         try:
             reports = load_reports(from_results)
@@ -541,6 +602,7 @@ def eval_cmd(
                 except ValueError as exc:
                     typer.echo(f"error: {exc}", err=True)
                     raise typer.Exit(code=1) from exc
+            _gate_nightly(stored, baseline=baseline, write_baseline=write_baseline_file)
         return
 
     settings = _eval_settings(small)
@@ -596,6 +658,165 @@ def eval_cmd(
         except ValueError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
+    _gate_nightly(report, baseline=baseline, write_baseline=write_baseline_file)
+
+
+@app.command("check")
+def check_cmd(
+    baseline: Path = typer.Option(
+        DEFAULT_BASELINE,
+        "--baseline",
+        help="Committed snapshot. PRs fail when a gated rate drops past its item budget.",
+    ),
+    out: Path | None = typer.Option(
+        None,
+        "--out",
+        help="Optional directory for check.json.",
+    ),
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Call OpenAI on one contract item. Skips as UNVERIFIED without OPENAI_API_KEY.",
+    ),
+    write_baseline_file: bool = typer.Option(
+        False,
+        "--write-baseline",
+        help="Rewrite --baseline from this run. CI still requires the eval-baseline label.",
+    ),
+) -> None:
+    """Fail if retrieval, contracts, or gate red-team regress against the baseline."""
+    settings = _eval_settings(True)
+    configure_logging(settings.log_level)
+    configure_settings(settings)
+    committed: Baseline | None = None
+    if baseline.is_file():
+        try:
+            committed = load_baseline(baseline)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    elif not write_baseline_file:
+        typer.echo(f"error: missing baseline {baseline}", err=True)
+        raise typer.Exit(code=1)
+    seed = committed if committed is not None else _bootstrap_baseline()
+    report: CheckReport | None = None
+    try:
+
+        async def _run() -> CheckReport:
+            return await run_check(committed=seed, live=live)
+
+        report = asyncio.run(_run())
+    except CheckFailed as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except EvalFailed as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except EvalUnverified as exc:
+        typer.echo(f"unverified: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    finally:
+        shutdown()
+    if report is None:
+        raise typer.Exit(code=1)
+    pack_ok = (
+        report.redteam_failed == 0
+        and all(case.ok for case in report.contracts)
+        and report.live.kind != "failed"
+    )
+    if write_baseline_file:
+        if not pack_ok:
+            _echo_check_failures(report)
+            typer.echo("error: refusing to write baseline from a failed pack", err=True)
+            raise typer.Exit(code=1)
+        write_baseline(baseline, report.snapshot)
+        typer.echo(f"wrote baseline {baseline}")
+        report = report.model_copy(update={"compare": compare(report.snapshot, report.snapshot)})
+    if out is not None:
+        from capitalcite.atomic import atomic_write_text
+
+        out.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(out / "check.json", report.model_dump_json(indent=2) + "\n")
+    live_status = report.live
+    typer.echo(
+        "check "
+        f"ok={str(report.ok).lower()} "
+        f"quote_sanity={report.snapshot.quote_sanity.hits}/"
+        f"{report.snapshot.quote_sanity.items} "
+        f"fixture={report.snapshot.fixture.hits}/{report.snapshot.fixture.items} "
+        f"redteam_failed={report.redteam_failed} "
+        f"live={live_status.kind}"
+    )
+    if live_status.kind == "unverified":
+        typer.echo(f"unverified: {live_status.detail}", err=True)
+    if not report.ok:
+        _echo_check_failures(report)
+        raise typer.Exit(code=1)
+
+
+def _echo_check_failures(report: CheckReport) -> None:
+    for failure in report.compare.failures:
+        typer.echo(f"fail {failure.metric}: {failure.detail}", err=True)
+    for case in report.contracts:
+        if not case.ok:
+            typer.echo(
+                f"fail contract {case.id}: expected {case.expected} got {case.observed}",
+                err=True,
+            )
+    if report.redteam_failed:
+        typer.echo(f"fail redteam failed={report.redteam_failed}", err=True)
+    if report.live.kind == "failed":
+        typer.echo(f"fail live: {report.live.detail}", err=True)
+
+
+def _bootstrap_baseline() -> Baseline:
+    return Baseline(
+        quote_sanity=TrackedRate(hits=0, items=0),
+        fixture=TrackedRate(hits=0, items=0),
+        small_n_items=0,
+        small_arms=0,
+        small_embedder_id="bootstrap",
+        thresholds=Thresholds(),
+    )
+
+
+def _gate_nightly(
+    report: EvalReport,
+    *,
+    baseline: Path | None,
+    write_baseline: bool,
+) -> None:
+    if not write_baseline and baseline is None:
+        return
+    if report.small:
+        typer.echo("error: --small does not take --baseline", err=True)
+        raise typer.Exit(code=1)
+    snapshot = snapshot_nightly(report)
+    target = baseline if baseline is not None else DEFAULT_NIGHTLY
+    if write_baseline:
+        write_nightly(target, snapshot)
+        typer.echo(f"wrote baseline {target}")
+        committed = snapshot
+    elif not target.is_file():
+        typer.echo(f"error: missing baseline {target}", err=True)
+        raise typer.Exit(code=1)
+    else:
+        try:
+            committed = load_nightly(target)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    compared = compare_nightly(snapshot, committed)
+    typer.echo(
+        "eval-baseline "
+        f"ok={str(compared.ok).lower()} "
+        f"arms={len(snapshot.arms)} "
+        f"items={snapshot.n_items}"
+    )
+    if not compared.ok:
+        for failure in compared.failures:
+            typer.echo(f"fail {failure.metric}: {failure.detail}", err=True)
+        raise typer.Exit(code=1)
 
 
 def _eval_settings(small: bool) -> Settings:

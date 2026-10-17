@@ -1667,6 +1667,25 @@ if ! plain "${ART}/eval.help.out" | grep -q -- "--suite" \
 fi
 log "verify: capitalcite eval --help ok"
 
+log "verify: capitalcite check --help"
+set +e
+uv run capitalcite check --help >"${ART}/check.help.out" 2>"${ART}/check.help.err"
+check_help_rc=$?
+set -e
+write check.help.exit "${check_help_rc}"
+if [[ "${check_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite check --help failed"
+  cat "${ART}/check.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/check.help.out" | grep -q -- "--baseline" \
+  || ! plain "${ART}/check.help.out" | grep -q -- "--live"; then
+  log "verify: check --help missing --baseline or --live"
+  cat "${ART}/check.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite check --help ok"
+
 log "verify: capitalcite eval --suite golden --small"
 set +e
 uv run capitalcite eval --suite golden --small --out "${ART}/eval-small" \
@@ -1688,6 +1707,67 @@ if ! grep -q "Recall@5" "${ART}/eval-small.out" \
 fi
 log "verify: capitalcite eval --small ok"
 cat "${ART}/eval-small.out"
+
+log "verify: capitalcite check"
+set +e
+uv run capitalcite check --out "${ART}/check" \
+  >"${ART}/check.out" 2>"${ART}/check.err"
+check_rc=$?
+set -e
+write check.exit "${check_rc}"
+if [[ "${check_rc}" -ne 0 ]]; then
+  log "verify: capitalcite check failed"
+  cat "${ART}/check.out" >&2 || true
+  cat "${ART}/check.err" >&2 || true
+  exit 1
+fi
+if ! grep -q "ok=true" "${ART}/check.out" \
+  || ! grep -q "redteam_failed=0" "${ART}/check.out"; then
+  log "verify: check stdout missing ok=true or redteam_failed=0"
+  cat "${ART}/check.out" >&2 || true
+  exit 1
+fi
+if [[ ! -f "${ART}/check/check.json" ]]; then
+  log "verify: check did not write check.json"
+  exit 1
+fi
+log "verify: capitalcite check ok"
+cat "${ART}/check.out"
+
+log "verify: capitalcite check --live"
+set +e
+uv run capitalcite check --live --out "${ART}/check-live" \
+  >"${ART}/check.live.out" 2>"${ART}/check.live.err"
+check_live_rc=$?
+set -e
+write check.live.exit "${check_live_rc}"
+KEY_FOR_CHECK="$(uv run python -c 'import os; print("yes" if os.environ.get("OPENAI_API_KEY","").strip() else "no")')"
+if [[ "${KEY_FOR_CHECK}" == "no" ]]; then
+  if [[ "${check_live_rc}" -ne 0 ]]; then
+    log "verify: check --live without a key should exit 0 as UNVERIFIED"
+    cat "${ART}/check.live.out" >&2 || true
+    cat "${ART}/check.live.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -q "unverified" "${ART}/check.live.out" "${ART}/check.live.err"; then
+    log "verify: check --live without a key did not print unverified"
+    cat "${ART}/check.live.out" >&2 || true
+    cat "${ART}/check.live.err" >&2 || true
+    exit 1
+  fi
+  write check.live.unverified "OPENAI_API_KEY is empty. capitalcite check --live skipped the OpenAI contract."
+  log "verify: capitalcite check --live UNVERIFIED (no OPENAI_API_KEY)"
+  cat "${ART}/check.live.unverified"
+else
+  if [[ "${check_live_rc}" -ne 0 ]]; then
+    log "verify: capitalcite check --live failed"
+    cat "${ART}/check.live.out" >&2 || true
+    cat "${ART}/check.live.err" >&2 || true
+    exit 1
+  fi
+  log "verify: capitalcite check --live ok"
+  cat "${ART}/check.live.out"
+fi
 
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
@@ -1945,6 +2025,13 @@ fi
   fi
   echo "eval.help.exit $(cat "${ART}/eval.help.exit")"
   echo "eval-small.exit $(cat "${ART}/eval-small.exit")"
+  echo "check.help.exit $(cat "${ART}/check.help.exit")"
+  echo "check.exit $(cat "${ART}/check.exit")"
+  if [[ -f "${ART}/check.live.unverified" ]]; then
+    echo "check live unverified ($(cat "${ART}/check.live.unverified"))"
+  else
+    echo "check.live.exit $(cat "${ART}/check.live.exit")"
+  fi
   if [[ -f "${ART}/eval.skipped" ]]; then
     echo "eval skipped ($(cat "${ART}/eval.skipped"))"
   else

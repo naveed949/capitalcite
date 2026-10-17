@@ -1,0 +1,312 @@
+name: Eval nightly
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/eval-nightly.yml"
+      - "evals/baselines/nightly.json"
+      - "src/capitalcite/eval/baseline.py"
+      - "src/capitalcite/eval/cache_key.py"
+      - "src/capitalcite/eval/runner.py"
+      - "src/capitalcite/retrieval/embedders.py"
+      - "src/capitalcite/retrieval/service.py"
+
+concurrency:
+  group: eval-nightly
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: deterministic regression pack
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --frozen --all-groups
+
+      - name: capitalcite check
+        run: uv run capitalcite check --out "${RUNNER_TEMP}/check"
+
+  live:
+    name: live LLM eval
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --frozen --all-groups
+
+      - name: Live OpenAI contract
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "UNVERIFIED: OPENAI_API_KEY is empty"
+            exit 0
+          fi
+          uv run capitalcite check --live --out "${RUNNER_TEMP}/check-live"
+
+  full:
+    name: twelve-filing section/hybrid
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    outputs:
+      # Hyphens in needs.*.outputs.* are subtraction. Keep these identifiers.
+      cache_hit: ${{ steps.qdrant.outputs.cache-hit }}
+      cache_key: ${{ steps.cachekey.outputs.key }}
+      unverified: ${{ steps.ingest.outputs.unverified }}
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
+      QDRANT_PATH: ${{ github.workspace }}/.cache/qdrant-eval
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --frozen --all-groups
+
+      - name: Restore EDGAR filings
+        id: edgar
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw/edgar
+          key: edgar-jpm-bac-wfc-c-10k-2023-2025-v1
+
+      - name: Restore FastEmbed models
+        id: fastembed
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-en-v1.5-bm25-v1
+
+      - name: Ingest twelve 10-Ks
+        id: ingest
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          expected=12
+          count=0
+          if [ -d data/raw/edgar ]; then
+            count="$(find data/raw/edgar -name metadata.json | wc -l | tr -d ' ')"
+          fi
+          if [ "${count}" = "${expected}" ]; then
+            echo "cache hit: ${count} filings"
+          else
+            echo "cache miss: ${count} filings; ingesting"
+            set +e
+            uv run capitalcite ingest \
+              --tickers JPM,BAC,WFC,C \
+              --forms 10-K \
+              --years 2023-2025 \
+              --output-dir data
+            ingest_rc=$?
+            set -e
+            count=0
+            if [ -d data/raw/edgar ]; then
+              count="$(find data/raw/edgar -name metadata.json | wc -l | tr -d ' ')"
+            fi
+            if [ "${count}" != "${expected}" ]; then
+              if [ "${ingest_rc}" = "2" ]; then
+                echo "UNVERIFIED: EDGAR outage or rate-limit (ingest exit 2, filings=${count})"
+                echo "unverified=true" >> "${GITHUB_OUTPUT}"
+                exit 0
+              fi
+              echo "::error::expected ${expected} filings, have ${count}, ingest exit ${ingest_rc}"
+              exit 1
+            fi
+          fi
+
+      - name: Save EDGAR filings
+        if: steps.edgar.outputs.cache-hit != 'true' && steps.ingest.outputs.unverified != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: data/raw/edgar
+          key: edgar-jpm-bac-wfc-c-10k-2023-2025-v1
+
+      - name: Warm FastEmbed models
+        if: steps.ingest.outputs.unverified != 'true'
+        timeout-minutes: 5
+        run: |
+          uv run python -c "
+          from fastembed import TextEmbedding
+          from fastembed.sparse import SparseTextEmbedding
+          TextEmbedding('BAAI/bge-small-en-v1.5')
+          SparseTextEmbedding('Qdrant/bm25')
+          print('fastembed ready')
+          "
+
+      - name: Save FastEmbed models
+        if: steps.fastembed.outputs.cache-hit != 'true' && steps.ingest.outputs.unverified != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-en-v1.5-bm25-v1
+
+      - name: Eval index cache key
+        id: cachekey
+        if: steps.ingest.outputs.unverified != 'true'
+        run: |
+          set -euo pipefail
+          key="$(uv run capitalcite eval --suite golden --print-cache-key \
+            --input-dir data --chunker section --embedder bge-small | tail -n 1)"
+          if [ -z "${key}" ] || [ "${#key}" -ne 64 ]; then
+            echo "::error::expected 64-char cache key, got '${key}'"
+            exit 1
+          fi
+          echo "key=${key}" >> "${GITHUB_OUTPUT}"
+          echo "eval index cache key ${key}"
+
+      - name: Restore eval index
+        id: qdrant
+        if: steps.ingest.outputs.unverified != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/qdrant-eval
+          key: qdrant-eval-${{ steps.cachekey.outputs.key }}
+
+      - name: Drop Qdrant lockfiles
+        if: steps.qdrant.outputs.cache-hit == 'true'
+        run: find .cache/qdrant-eval \( -name '*.lock' -o -name 'LOCK' \) -delete
+
+      - name: Twelve-filing section/hybrid vs nightly baseline (warm)
+        if: steps.ingest.outputs.unverified != 'true' && steps.qdrant.outputs.cache-hit == 'true'
+        timeout-minutes: 20
+        run: |
+          uv run capitalcite eval --suite golden --input-dir data \
+            --chunker section --mode hybrid --embedder bge-small \
+            --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"
+
+      - name: Twelve-filing section/hybrid vs nightly baseline (cold)
+        if: steps.ingest.outputs.unverified != 'true' && steps.qdrant.outputs.cache-hit != 'true'
+        timeout-minutes: 330
+        run: |
+          uv run capitalcite eval --suite golden --input-dir data \
+            --chunker section --mode hybrid --embedder bge-small \
+            --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"
+
+      - name: Save eval index
+        if: success() && steps.qdrant.outputs.cache-hit != 'true' && steps.ingest.outputs.unverified != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/qdrant-eval
+          key: qdrant-eval-${{ steps.cachekey.outputs.key }}
+
+  warm:
+    name: twelve-filing section/hybrid (cache hit)
+    needs: full
+    if: needs.full.result == 'success' && needs.full.outputs.unverified != 'true' && needs.full.outputs.cache_hit != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.cache/fastembed
+      QDRANT_PATH: ${{ github.workspace }}/.cache/qdrant-eval
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and dev tools
+        run: uv sync --frozen --all-groups
+
+      - name: Restore EDGAR filings
+        id: edgar
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw/edgar
+          key: edgar-jpm-bac-wfc-c-10k-2023-2025-v1
+
+      - name: Restore FastEmbed models
+        id: fastembed
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/fastembed
+          key: fastembed-bge-small-en-v1.5-bm25-v1
+
+      - name: Require restored filings and models
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.edgar.outputs.cache-hit }}" != "true" ]; then
+            echo "::error::warm job expected EDGAR cache hit"
+            exit 1
+          fi
+          if [ "${{ steps.fastembed.outputs.cache-hit }}" != "true" ]; then
+            echo "::error::warm job expected FastEmbed cache hit"
+            exit 1
+          fi
+          count="$(find data/raw/edgar -name metadata.json | wc -l | tr -d ' ')"
+          if [ "${count}" != "12" ]; then
+            echo "::error::warm job expected 12 filings, have ${count}"
+            exit 1
+          fi
+
+      - name: Eval index cache key
+        id: cachekey
+        run: |
+          set -euo pipefail
+          key="$(uv run capitalcite eval --suite golden --print-cache-key \
+            --input-dir data --chunker section --embedder bge-small | tail -n 1)"
+          expected="${{ needs.full.outputs.cache_key }}"
+          if [ "${key}" != "${expected}" ]; then
+            echo "::error::cache key ${key} != cold job ${expected}"
+            exit 1
+          fi
+          echo "key=${key}" >> "${GITHUB_OUTPUT}"
+          echo "eval index cache key ${key}"
+
+      - name: Restore eval index
+        id: qdrant
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/qdrant-eval
+          key: qdrant-eval-${{ steps.cachekey.outputs.key }}
+
+      - name: Require eval index cache hit
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.qdrant.outputs.cache-hit }}" != "true" ]; then
+            echo "::error::warm job expected Qdrant cache hit after cold save"
+            exit 1
+          fi
+          find .cache/qdrant-eval \( -name '*.lock' -o -name 'LOCK' \) -delete
+
+      - name: Twelve-filing section/hybrid vs nightly baseline (warm)
+        timeout-minutes: 15
+        run: |
+          uv run capitalcite eval --suite golden --input-dir data \
+            --chunker section --mode hybrid --embedder bge-small \
+            --baseline evals/baselines/nightly.json --out "${RUNNER_TEMP}/eval-full"

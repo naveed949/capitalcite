@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "n_items": 77,
+  "embedder_id": "fastembed:BAAI/bge-small-en-v1.5",
+  "sparse_id": "fastembed:Qdrant/bm25:k1=1.2:b=0.75:avgdl=256.0",
+  "arms": [
+    {
+      "chunker": "section",
+      "mode": "hybrid",
+      "recall_at_5": {
+        "hits": 13,
+        "items": 77,
+        "rate": 0.16883116883116883
+      }
+    }
+  ],
+  "thresholds": {
+    "max_drop_items": 1
+  }
+}
