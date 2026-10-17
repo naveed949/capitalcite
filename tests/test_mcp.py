@@ -114,6 +114,17 @@ async def test_mcp_calculator_is_unknown_tool(tmp_path: Path) -> None:
     assert _records(session.log.path)[0].decision == "denied"
 
 
+async def test_mcp_graph_query_is_unknown_tool(tmp_path: Path) -> None:
+    session, _setup = await _indexed_session(tmp_path)
+    async with Client(build_server(session)) as client:
+        result = await client.call_tool("graph_query", {"kind": "subsidiaries", "ticker": "JPM"})
+    body = result.structured_content
+    assert isinstance(body, dict)
+    assert body["ok"] is False
+    assert body["reason"] == "unknown_tool"
+    assert _records(session.log.path)[0].decision == "denied"
+
+
 async def test_mcp_ask_answers_with_grounded_citation(tmp_path: Path) -> None:
     exporter = MemoryExporter()
     configure_for_tests(exporter)
