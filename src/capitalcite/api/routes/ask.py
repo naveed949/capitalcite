@@ -36,6 +36,7 @@ from capitalcite.audit import AuditLog
 from capitalcite.config import Settings, get_settings
 from capitalcite.gate import Gate, load_policy
 from capitalcite.ingest.rate_limit import shared_limiter
+from capitalcite.kg import open_store
 from capitalcite.retrieval import (
     IndexNotBuilt,
     IndexUnavailable,
@@ -196,21 +197,26 @@ async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings
     else:
         xbrl = XbrlClient(sec_client).fact
         fdic = FdicClient(fdic_client).lookup
-    tools = AuditingTools(
-        Gate(
-            load_policy(settings.gate_policy),
-            default_registry(search=search, xbrl=xbrl, fdic=fdic),
-        ),
-        AuditLog(settings.audit_log_path),
-        request_trace_id(),
-    )
-    return await run_agent(
-        body.question,
-        model,
-        tools,
-        Budgets(max_steps=settings.ask_max_steps, max_tokens=settings.ask_max_tokens),
-        min_score=settings.ask_min_hit_score,
-    )
+    graph = open_store(settings)
+    try:
+        tools = AuditingTools(
+            Gate(
+                load_policy(settings.gate_policy),
+                default_registry(search=search, xbrl=xbrl, fdic=fdic, graph=graph),
+            ),
+            AuditLog(settings.audit_log_path),
+            request_trace_id(),
+        )
+        return await run_agent(
+            body.question,
+            model,
+            tools,
+            Budgets(max_steps=settings.ask_max_steps, max_tokens=settings.ask_max_tokens),
+            min_score=settings.ask_min_hit_score,
+        )
+    finally:
+        if graph is not None:
+            await graph.close()
 
 
 def _model_for(body: AskRequest, settings: Settings, *, hits_exist: bool) -> StructuredModel:

@@ -190,8 +190,28 @@ services:
       timeout: 5s
       retries: 10
 
+  neo4j:
+    image: docker.io/neo4j:5.26-community
+    profiles: ["graph"]
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-change-me-neo4j}
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 25s
+
 volumes:
   qdrant_data:
+  neo4j_data:
   langfuse_postgres_data:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:

@@ -9,13 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from capitalcite.ask.types import Answer
 from capitalcite.retrieval.types import Hit
 
-ToolName = Literal["search_filings", "xbrl_fact", "fdic_bankfind", "calculator"]
+ToolName = Literal["search_filings", "xbrl_fact", "fdic_bankfind", "calculator", "graph_query"]
 AskPath = Literal["rag", "agent"]
 TOOL_NAMES: tuple[ToolName, ...] = (
     "search_filings",
     "xbrl_fact",
     "fdic_bankfind",
     "calculator",
+    "graph_query",
 )
 
 

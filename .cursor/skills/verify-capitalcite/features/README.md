@@ -59,6 +59,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Audit log](./audit.md) covers `capitalcite audit verify`.
 - [Behavioral regression check](./check.md) covers `capitalcite check` against `evals/baselines/ci.json`.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
+- [Optional entity graph](./graph.md) covers `capitalcite graph` and `eval --suite graph --small`.
 
 ## Extending the map
 

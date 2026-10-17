@@ -15,6 +15,8 @@ os.environ.setdefault("LOG_LEVEL", "WARNING")
 os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
+os.environ["NEO4J_URI"] = ""
+os.environ["NEO4J_PASSWORD"] = ""
 # Rich/Typer help wrapping follows COLUMNS. CI/non-TTY widths truncate
 # "--tickers" to "--ticke…". Pin a wide dumb terminal for all tests.
 os.environ["COLUMNS"] = "120"

@@ -129,7 +129,7 @@ def test_api_and_cli_do_not_import_store_clients() -> None:
         root / "api" / "routes" / "ask.py",
         root / "api" / "routes" / "health.py",
     )
-    banned = ("qdrant_client", "fastembed")
+    banned = ("qdrant_client", "fastembed", "from neo4j", "import neo4j")
     for path in files:
         text = path.read_text(encoding="utf-8")
         for needle in banned:

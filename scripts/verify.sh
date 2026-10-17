@@ -1769,6 +1769,75 @@ else
   cat "${ART}/check.live.out"
 fi
 
+log "verify: capitalcite graph --help"
+set +e
+uv run capitalcite graph --help >"${ART}/graph.help.out" 2>"${ART}/graph.help.err"
+graph_help_rc=$?
+set -e
+write graph.help.exit "${graph_help_rc}"
+if [[ "${graph_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite graph --help failed"
+  cat "${ART}/graph.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/graph.help.out" | grep -q "load" \
+  || ! plain "${ART}/graph.help.out" | grep -q "query"; then
+  log "verify: graph --help missing load or query"
+  cat "${ART}/graph.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite graph --help ok"
+
+log "verify: capitalcite graph load --backend memory"
+set +e
+uv run capitalcite graph load --backend memory >"${ART}/graph.load.out" 2>"${ART}/graph.load.err"
+graph_load_rc=$?
+set -e
+write graph.load.exit "${graph_load_rc}"
+if [[ "${graph_load_rc}" -ne 0 ]] || ! grep -q "backend=memory" "${ART}/graph.load.out" \
+  || ! grep -q "banks=8" "${ART}/graph.load.out"; then
+  log "verify: graph load --backend memory failed"
+  cat "${ART}/graph.load.out" >&2 || true
+  cat "${ART}/graph.load.err" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite graph load ok"
+cat "${ART}/graph.load.out"
+
+log "verify: capitalcite graph query --kind subsidiaries --ticker JPM"
+set +e
+uv run capitalcite graph query --kind subsidiaries --ticker JPM \
+  >"${ART}/graph.query.out" 2>"${ART}/graph.query.err"
+graph_query_rc=$?
+set -e
+write graph.query.exit "${graph_query_rc}"
+if [[ "${graph_query_rc}" -ne 0 ]] || ! grep -q "852218" "${ART}/graph.query.out"; then
+  log "verify: graph query subsidiaries JPM failed"
+  cat "${ART}/graph.query.out" >&2 || true
+  cat "${ART}/graph.query.err" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite graph query ok"
+cat "${ART}/graph.query.out"
+
+log "verify: capitalcite eval --suite graph --small"
+set +e
+uv run capitalcite eval --suite graph --small --out "${ART}/eval-graph" \
+  >"${ART}/eval-graph-small.out" 2>"${ART}/eval-graph-small.err"
+eval_graph_rc=$?
+set -e
+write eval-graph-small.exit "${eval_graph_rc}"
+if [[ "${eval_graph_rc}" -ne 0 ]] \
+  || ! grep -q "graph_exact=" "${ART}/eval-graph-small.out" \
+  || ! grep -q "fixture_substring_hit_rate=" "${ART}/eval-graph-small.out"; then
+  log "verify: eval --suite graph --small failed"
+  cat "${ART}/eval-graph-small.out" >&2 || true
+  cat "${ART}/eval-graph-small.err" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite eval --suite graph --small ok"
+cat "${ART}/eval-graph-small.out"
+
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
 import json
@@ -1904,6 +1973,9 @@ for needle in (
         errors.append(f"missing {needle}")
 if "qdrant/qdrant:v1.16.2" not in text:
     errors.append("missing qdrant/qdrant:v1.16.2")
+compose_src = Path("docker-compose.yml").read_text(encoding="utf-8")
+if "neo4j:5.26-community" not in compose_src:
+    errors.append("missing neo4j:5.26-community in docker-compose.yml")
 if re.search(r"langfuse/langfuse:4\s*$", text, re.M) or re.search(
     r"langfuse/langfuse-worker:4\s*$", text, re.M
 ):
@@ -2032,6 +2104,10 @@ fi
   else
     echo "check.live.exit $(cat "${ART}/check.live.exit")"
   fi
+  echo "graph.help.exit $(cat "${ART}/graph.help.exit")"
+  echo "graph.load.exit $(cat "${ART}/graph.load.exit")"
+  echo "graph.query.exit $(cat "${ART}/graph.query.exit")"
+  echo "eval-graph-small.exit $(cat "${ART}/eval-graph-small.exit")"
   if [[ -f "${ART}/eval.skipped" ]]; then
     echo "eval skipped ($(cat "${ART}/eval.skipped"))"
   else

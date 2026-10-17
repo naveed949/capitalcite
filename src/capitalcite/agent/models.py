@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -95,6 +96,9 @@ class FakeAgentModel:
                 if year:
                     args["period"] = year
                 calls.append(ToolCall(name="search_filings", args=args))
+        graph_call = _graph_call(question, traces)
+        if graph_call is not None:
+            calls.insert(0, graph_call)
         if calls:
             return PlannerDecision(kind="plan", calls=tuple(calls))
         if not traces:
@@ -252,13 +256,68 @@ def _hits_for_question(question: str, hits: Sequence[Hit]) -> list[tuple[int, Hi
     return chosen
 
 
+_GRAPH_HINTS = (
+    "subsidiary",
+    "subsidiaries",
+    "rssd",
+    "holding company",
+    "parent company",
+    "parent of",
+    " lei",
+)
+_RSSD = re.compile(r"\bRSSD\s+(\d+)\b", re.IGNORECASE)
+
+
+def _graph_call(question: str, traces: Sequence[TraceStep]) -> ToolCall | None:
+    if any(step.tool == "graph_query" for step in traces):
+        return None
+    lowered = question.lower()
+    if not any(hint in lowered for hint in _GRAPH_HINTS):
+        return None
+    if "parent" in lowered:
+        kind = "parent"
+    elif "filing" in lowered:
+        kind = "filings"
+    elif "path" in lowered:
+        kind = "path"
+    elif "cet1" in lowered or "ratio" in lowered or "metric" in lowered:
+        kind = "metric"
+    else:
+        kind = "subsidiaries"
+    args: dict[str, object] = {"kind": kind}
+    tickers = sorted(tickers_named(question))
+    if tickers:
+        args["ticker"] = tickers[0]
+    match = _RSSD.search(question)
+    if match:
+        args["rssd"] = match.group(1)
+    if kind == "metric" and "cet1" in lowered:
+        args["name"] = "CET1"
+    years = sorted(years_named(question))
+    if years and kind in {"metric", "filings"}:
+        args["period"] = str(years[0])
+    if kind == "filings":
+        args["form"] = "10-K"
+    if (
+        kind in {"subsidiaries", "parent", "filings", "metric"}
+        and "ticker" not in args
+        and "rssd" not in args
+    ):
+        return None
+    if kind == "path" and ("ticker" not in args or "rssd" not in args):
+        return None
+    return ToolCall(name="graph_query", args=args)
+
+
 def _plan_system_prompt() -> str:
     schema = json.dumps(PlannerDecision.model_json_schema())
     return (
         "You plan tool calls for questions about U.S. bank filings. "
         "Available tools: search_filings (query, optional ticker, form, period, k), "
         "xbrl_fact (ticker, concept, optional period), "
-        "fdic_bankfind (query), calculator (expression). "
+        "fdic_bankfind (query), calculator (expression), "
+        "graph_query (kind subsidiaries|parent|filings|metric|path, ticker or rssd). "
+        "Use graph_query for holding-company structure, RSSD, LEI, or subsidiary joins. "
         "For a comparison or multi-hop question, search each bank and year separately. "
         "When you have enough retrieved passages, return kind synthesize and no calls. "
         "Return one JSON object. "
@@ -280,7 +339,7 @@ def _plan_user_prompt(
     return "\n".join(lines)
 
 
-_UNTRUSTED_TOOLS = frozenset({"xbrl_fact", "fdic_bankfind"})
+_UNTRUSTED_TOOLS = frozenset({"xbrl_fact", "fdic_bankfind", "graph_query"})
 
 
 def _format_trace(step: TraceStep) -> str:

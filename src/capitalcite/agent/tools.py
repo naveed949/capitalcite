@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from capitalcite.agent.calculator import calculate
 from capitalcite.agent.types import TOOL_NAMES, ToolResult
+from capitalcite.kg.types import GraphQuery, GraphStore
 from capitalcite.retrieval.types import Hit, SearchFilters, parse_filters
 from capitalcite.trace import ObservationKind, observation, tool_attrs
 
@@ -104,9 +105,8 @@ def default_registry(
     search: SearchFn,
     xbrl: XbrlFn,
     fdic: FdicFn,
+    graph: GraphStore | None = None,
 ) -> ToolRegistry:
-    """Four named tools. Callers inject HTTP and retrieval."""
-
     async def search_filings(args: Mapping[str, object]) -> ToolResult:
         try:
             parsed = SearchFilingsArgs.model_validate(args)
@@ -185,12 +185,34 @@ def default_registry(
             value=rendered,
         )
 
+    async def graph_query(args: Mapping[str, object]) -> ToolResult:
+        if graph is None:
+            return ToolResult(
+                ok=False,
+                tool="graph_query",
+                args=dict(args),
+                detail="graph not configured",
+            )
+        try:
+            parsed = GraphQuery.model_validate(args)
+        except ValidationError as exc:
+            return _invalid("graph_query", args, str(exc))
+        result = await graph.query(parsed)
+        return ToolResult(
+            ok=result.ok,
+            tool="graph_query",
+            args=dict(args),
+            detail=result.detail,
+            value=result.detail,
+        )
+
     return ToolRegistry(
         {
             "search_filings": search_filings,
             "xbrl_fact": xbrl_fact,
             "fdic_bankfind": fdic_bankfind,
             "calculator": calculator,
+            "graph_query": graph_query,
         }
     )
 
@@ -204,4 +226,5 @@ assert set(TOOL_NAMES) == {
     "xbrl_fact",
     "fdic_bankfind",
     "calculator",
+    "graph_query",
 }

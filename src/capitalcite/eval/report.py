@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from capitalcite.atomic import atomic_write_text
 from capitalcite.eval.models import ArmResult, EvalReport, ItemScore
 
@@ -86,9 +88,15 @@ def load_reports(source: Path) -> tuple[EvalReport, ...]:
     if source.is_file():
         return (load_report(source),)
     files = sorted(source.glob("*.json"))
-    if not files:
+    reports: list[EvalReport] = []
+    for path in files:
+        try:
+            reports.append(load_report(path))
+        except ValidationError:
+            continue
+    if not reports:
         raise FileNotFoundError(f"no eval JSON under {source}")
-    return tuple(load_report(path) for path in files)
+    return tuple(reports)
 
 
 def update_readme(readme: Path, report: EvalReport) -> None:

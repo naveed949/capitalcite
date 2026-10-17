@@ -33,6 +33,7 @@ from capitalcite.eval.check import (
     run_check,
     write_baseline,
 )
+from capitalcite.eval.graph_eval import render_graph_markdown, run_graph_suite, update_readme_graph
 from capitalcite.eval.models import EvalReport
 from capitalcite.eval.report import load_reports, render_markdown, update_readme
 from capitalcite.eval.runner import EvalFailed, EvalUnverified, run_suite
@@ -88,6 +89,12 @@ audit_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(audit_app, name="audit")
+
+graph_app = typer.Typer(
+    help="Optional entity graph. Memory backend needs no Neo4j.",
+    no_args_is_help=True,
+)
+app.add_typer(graph_app, name="graph")
 
 
 @audit_app.command("verify")
@@ -243,6 +250,121 @@ def golden_validate(
         f"skipped_benchmark={report.skipped_benchmark} "
         "recall=handwritten-only"
     )
+
+
+@graph_app.command("load")
+def graph_load(
+    backend: str = typer.Option("memory", "--backend", help="memory or neo4j."),
+    input_path: Path = typer.Option(
+        Path("evals/golden/graph_snapshot.json"),
+        "--input",
+        help="GraphSnapshot JSON.",
+    ),
+) -> None:
+    """MERGE the snapshot. Running twice keeps the same counts."""
+    from capitalcite.kg import GraphStore, MemoryGraphStore, load_snapshot, open_store
+
+    if backend not in {"memory", "neo4j"}:
+        typer.echo("error: --backend must be memory or neo4j", err=True)
+        raise typer.Exit(code=1)
+
+    async def _run() -> str:
+        snapshot = load_snapshot(input_path)
+        store: GraphStore
+        if backend == "memory":
+            store = MemoryGraphStore()
+        else:
+            settings = get_settings()
+            opened = open_store(settings)
+            if opened is None:
+                raise EvalUnverified("NEO4J_URI is empty")
+            store = opened
+        try:
+            receipt = await store.load(snapshot)
+        finally:
+            await store.close()
+        return (
+            "graph-load "
+            f"backend={receipt.backend} "
+            f"banks={receipt.banks} "
+            f"filings={receipt.filings} "
+            f"metrics={receipt.metrics} "
+            f"edges={receipt.edges}"
+        )
+
+    try:
+        typer.echo(asyncio.run(_run()))
+    except EvalUnverified as exc:
+        typer.echo(f"unverified: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except (OSError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
+@graph_app.command("query")
+def graph_query_cmd(
+    kind: str = typer.Option(..., "--kind", help="subsidiaries, parent, filings, metric, or path."),
+    ticker: str | None = typer.Option(None, "--ticker"),
+    rssd: str | None = typer.Option(None, "--rssd"),
+    name: str | None = typer.Option(None, "--name", help="Metric name."),
+    period: str | None = typer.Option(None, "--period"),
+    form: str | None = typer.Option(None, "--form"),
+    depth: int | None = typer.Option(None, "--depth", min=1, max=4, help="1 to 4 hops."),
+    backend: str = typer.Option("memory", "--backend", help="memory or neo4j."),
+    input_path: Path = typer.Option(
+        Path("evals/golden/graph_snapshot.json"),
+        "--input",
+        help="Snapshot loaded into memory before the query.",
+    ),
+) -> None:
+    """Run one typed graph_query. Memory loads the snapshot in process."""
+    from capitalcite.kg import (
+        GraphQuery,
+        GraphQueryKind,
+        GraphStore,
+        MemoryGraphStore,
+        load_snapshot,
+        open_store,
+    )
+
+    async def _run() -> str:
+        query = GraphQuery(
+            kind=GraphQueryKind(kind),
+            ticker=ticker,
+            rssd=rssd,
+            name=name,
+            period=period,
+            form=form,
+            depth=depth if depth is not None else 1,
+        )
+        store: GraphStore
+        if backend == "memory":
+            store = MemoryGraphStore()
+            await store.load(load_snapshot(input_path))
+        elif backend == "neo4j":
+            settings = get_settings()
+            opened = open_store(settings)
+            if opened is None:
+                raise EvalUnverified("NEO4J_URI is empty")
+            store = opened
+        else:
+            raise ValueError("--backend must be memory or neo4j")
+        try:
+            result = await store.query(query)
+        finally:
+            await store.close()
+        status = "ok" if result.ok else "fail"
+        return f"graph-query {status} {result.detail}"
+
+    try:
+        typer.echo(asyncio.run(_run()))
+    except EvalUnverified as exc:
+        typer.echo(f"unverified: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except (OSError, ValueError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command("ingest")
@@ -494,7 +616,7 @@ def index_cmd(
 
 @app.command("eval")
 def eval_cmd(
-    suite: str = typer.Option(..., "--suite", help="Only golden is defined."),
+    suite: str = typer.Option(..., "--suite", help="golden or graph."),
     small: bool = typer.Option(
         False,
         "--small",
@@ -608,6 +730,39 @@ def eval_cmd(
     settings = _eval_settings(small)
     configure_logging(settings.log_level)
     configure_settings(settings)
+    if suite == "graph":
+        try:
+
+            async def _graph() -> object:
+                return await run_graph_suite(out_dir=out)
+
+            graph_report = asyncio.run(_graph())
+        except (OSError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        finally:
+            shutdown()
+        from capitalcite.eval.graph_eval import GraphEvalReport
+
+        assert isinstance(graph_report, GraphEvalReport)
+        typer.echo(
+            "eval "
+            f"suite=graph "
+            f"n={graph_report.n} "
+            f"fixture_substring_hit_rate={graph_report.fixture_substring_hit_rate:.3f} "
+            f"graph_exact={graph_report.graph_exact:.3f} "
+            f"delta={graph_report.delta:.3f} "
+            f"out={out}"
+        )
+        typer.echo(render_graph_markdown(graph_report), nl=False)
+        if readme is not None:
+            try:
+                update_readme_graph(readme, graph_report)
+            except ValueError as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(code=1) from exc
+        return
+
     chunkers = tuple(chunker) if chunker else (ChunkerName.SECTION, ChunkerName.FIXED)
     report: EvalReport | None = None
     try:
