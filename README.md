@@ -210,7 +210,7 @@ Hybrid search ranks passages that are close in wording or embedding space. It lo
 
 ## Local quickstart (fake model)
 
-This path does not call OpenAI and does not need Docker. It chunks the checked-in fixture 10-K excerpts, indexes them with local FastEmbed `bge-small` into embedded Qdrant, and answers with `ASK_MODEL=fake`. Time from a fresh clone to `GET /health` plus search / ask / agent / gate deny must stay under 15 minutes.
+This path does not call OpenAI and does not need Docker. It chunks the checked-in fixture 10-K excerpts, indexes them with local FastEmbed `bge-small` into embedded Qdrant, and answers with `ASK_MODEL=fake`. This run timed a fresh clone of this branch at **11 seconds** on a 4-core VM with warm `uv` and Hugging Face caches ([`docs/demo/quickstart-timing.log`](docs/demo/quickstart-timing.log)). A cold FastEmbed download of `bge-small` on the same VM was 67 MB in about one second. The budget is 15 minutes.
 
 ```bash
 git clone https://github.com/naveed949/capitalcite && cd capitalcite
