@@ -46,7 +46,7 @@
     {
       "metric": "latency.rag_openai",
       "value": "UNVERIFIED",
-      "reason": "OPENAI_API_KEY is empty. Fake-model latency is in 7388ac3eea43-latency.json once measured."
+      "reason": "OPENAI_API_KEY is empty. Fake-model latency is in 7388ac3eea43-latency.json."
     },
     {
       "metric": "cost.openai",

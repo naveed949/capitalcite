@@ -41,7 +41,9 @@ Compose Qdrant, Langfuse `:3000`, live EDGAR ingest of twelve 10-Ks,
 UNVERIFIED when this run cannot execute them.
 
 The 15-minute clock is that default path, timed from a fresh clone in
-this change. The recording under `docs/demo/` is the same commands.
+this change at 11 seconds on a 4-core VM with warm `uv` and Hugging
+Face caches (`docs/demo/quickstart-timing.log`). The recording under
+`docs/demo/` is the same commands.
 
 ## Numbers come from JSON this run wrote
 

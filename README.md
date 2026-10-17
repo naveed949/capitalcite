@@ -12,9 +12,11 @@ Numbers in the tables below come from JSON under [`evals/results/`](evals/result
 
 ## Demo
 
-Terminal recording of the fake-model path. Fixture corpus, local `bge-small`, embedded Qdrant, `ASK_MODEL=fake`. No API key. No Docker.
+Fake-model path on the fixture 10-K excerpts: chunk, index, `/health`, `/search`, `/ask`, agent, gate deny. Local `bge-small`, embedded Qdrant, `ASK_MODEL=fake`. No API key. No Docker.
 
-The recording is [`docs/demo/quickstart.cast`](docs/demo/quickstart.cast). Replay it with `asciinema play docs/demo/quickstart.cast`. Re-record with [`docs/demo/record.sh`](docs/demo/record.sh), which runs [`docs/demo/quickstart.sh`](docs/demo/quickstart.sh).
+![Fake-model quickstart: chunk, index, search, ask, agent, and a gate deny](docs/demo/quickstart.gif)
+
+Source cast: [`docs/demo/quickstart.cast`](docs/demo/quickstart.cast). Replay with `asciinema play docs/demo/quickstart.cast`. Re-record with [`docs/demo/record.sh`](docs/demo/record.sh), which runs [`docs/demo/quickstart.sh`](docs/demo/quickstart.sh).
 
 ## Architecture
 
