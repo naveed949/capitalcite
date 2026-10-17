@@ -73,6 +73,22 @@ write summary.txt "timestamp ${TS}"
 log "verify: uv sync --frozen"
 uv sync --frozen
 
+log "verify: write-up numbers"
+set +e
+uv run python "${ROOT}/scripts/check_writeup_numbers.py" \
+  >"${ART}/writeup-numbers.out" 2>"${ART}/writeup-numbers.err"
+writeup_numbers_rc=$?
+set -e
+write writeup-numbers.exit "${writeup_numbers_rc}"
+if [[ "${writeup_numbers_rc}" -ne 0 ]]; then
+  log "verify: write-up numbers failed"
+  cat "${ART}/writeup-numbers.out" >&2 || true
+  cat "${ART}/writeup-numbers.err" >&2 || true
+  exit 1
+fi
+log "verify: write-up numbers ok"
+cat "${ART}/writeup-numbers.out"
+
 PORT="$(uv run python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
 write port "${PORT}"
 log "verify: launching uvicorn on 127.0.0.1:${PORT}"
@@ -2110,6 +2126,7 @@ fi
 
 {
   echo "timestamp ${TS}"
+  echo "writeup-numbers.exit $(cat "${ART}/writeup-numbers.exit")"
   echo "port ${PORT}"
   echo "uvicorn.pid ${UVICORN_PID}"
   echo "health.http $(cat "${ART}/health.http")"

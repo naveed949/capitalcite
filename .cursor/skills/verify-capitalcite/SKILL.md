@@ -157,6 +157,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `check.help.out` / `check.help.exit` | `capitalcite check --help` (must list `--baseline` and `--live`) |
 | `check.out` / `check.exit` / `check/check.json` | Deterministic regression pack vs the committed baseline |
 | `check.live.unverified` **or** `check.live.out` | `--live` without a key, or a grounded live run |
+| `writeup-numbers.out` / `writeup-numbers.err` / `writeup-numbers.exit` | `scripts/check_writeup_numbers.py`. Exit 0. Every number in `docs/writeup.md` and `docs/resume-bullets.md` is a README lexeme or a linked results projection |
 | `eval.help.out` / `eval.help.exit` | `capitalcite eval --help` (must list `--suite` and `--small`) |
 | `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |
 | `graph.help.out` / `graph.load.out` / `graph.query.out` / `eval-graph-small.out` | Memory-backend graph load/query and `eval --suite graph --small`. Live Bolt is UNVERIFIED |

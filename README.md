@@ -286,6 +286,7 @@ Regression CI: [ADR 0013](docs/decisions/0013-eval-regression-ci.md).
 Optional entity graph: [ADR 0014](docs/decisions/0014-optional-entity-graph.md).
 MCP server: [ADR 0015](docs/decisions/0015-mcp-server.md).
 This README: [ADR 0016](docs/decisions/0016-readme-demo.md).
+Write-up and resume bullets: [ADR 0017](docs/decisions/0017-writeup.md).
 
 The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -339,6 +340,8 @@ src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, ret
 tests/               pytest (recorded fixtures; no live network)
 docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records
+docs/writeup.md      portfolio write-up with measured numbers
+docs/resume-bullets.md  resume bullets and the number map
 docs/demo/           fake-model terminal recording and the script that produced it
 evals/               golden set, baselines, and results
 data/                raw and parsed filings (gitignored contents)
