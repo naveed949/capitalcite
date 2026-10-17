@@ -1,0 +1,70 @@
+{
+  "git_sha": "7388ac3eea430b6ce44e318c79aa9fd87ed71e99",
+  "recorded_at": "2026-10-17T08:13:24Z",
+  "corpus": "tests/fixtures/chunking/corpus via data/ parsed chunks, 12 points, ASK_MODEL=fake, QDRANT_PATH embedded",
+  "n_timed": 10,
+  "warmup": 1,
+  "note": "Ballpark on this 4-core VM. Fake model quotes the first hit. Not OpenAI. Median of 10 timed requests after 1 warmup. Limiter is retrieve() plus JSON encode on one process, not the gate.",
+  "rag": {
+    "kinds": [
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered"
+    ],
+    "p50_ms": 13.907162000123208,
+    "p95_ms": 15.684612999848468,
+    "min_ms": 13.318773999799305,
+    "max_ms": 75.06762499997421,
+    "samples_ms": [
+      15.684612999848468,
+      14.923057000032713,
+      13.764974999958213,
+      13.884732999940752,
+      13.599764999980835,
+      13.929591000305663,
+      75.06762499997421,
+      14.27287799970145,
+      13.615028999993228,
+      13.318773999799305
+    ]
+  },
+  "agent": {
+    "kinds": [
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered",
+      "answered"
+    ],
+    "p50_ms": 20.593791500004954,
+    "p95_ms": 21.336894999876677,
+    "min_ms": 19.473767999897973,
+    "max_ms": 21.412411000255815,
+    "samples_ms": [
+      20.26525400015089,
+      21.412411000255815,
+      20.09023500022522,
+      20.8200509996459,
+      20.743918999869493,
+      21.336894999876677,
+      20.284193999941635,
+      20.978634000130114,
+      19.473767999897973,
+      20.443664000140416
+    ]
+  }
+}

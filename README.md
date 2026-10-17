@@ -72,19 +72,19 @@ Twelve 10-Ks, FastEmbed `bge-small`, span-overlap on 77 handwritten items. `--sm
 
 | Chunking | Embedding | Retrieval | n | Recall@5 | MRR@5 | nDCG@5 | Recall@10 | MRR@10 | nDCG@10 |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|
-| section | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| section | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| section | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| fixed | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| fixed | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
-| fixed | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| section | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | 0.078 | 0.043 | 0.047 | 0.156 | 0.053 | 0.070 |
+| section | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.182 | 0.089 | 0.103 | 0.286 | 0.101 | 0.133 |
+| section | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.169 | 0.096 | 0.098 | 0.299 | 0.114 | 0.140 |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | 0.169 | 0.118 | 0.103 | 0.208 | 0.124 | 0.118 |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.130 | 0.071 | 0.080 | 0.195 | 0.079 | 0.097 |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.195 | 0.114 | 0.114 | 0.234 | 0.120 | 0.127 |
 | section | - | hybrid + rerank | - | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
 
-Twelve-filing `capitalcite eval --suite golden --embedder bge-small` was still embedding in this run when the page was drafted. This block is replaced by `make eval-report` once [`evals/results/7388ac3eea43.json`](evals/results/7388ac3eea43.json) exists. Until then the cells are UNVERIFIED, not copies of `8b63d12acd50.json`. minilm is UNVERIFIED (a second full embed was not run). RAGAS context precision/recall is UNVERIFIED (no LLM key).
+Generated from [`evals/results/7388ac3eea43.json`](evals/results/7388ac3eea43.json) (sha `7388ac3eea43`, embedder `fastembed:BAAI/bge-small-en-v1.5`, sparse `fastembed:Qdrant/bm25:k1=1.2:b=0.75:avgdl=256.0`, fastembed `0.8.1`, qdrant-client `1.19.1`). Noise floor: n=77, one item is 0.013 recall. RAGAS context precision/recall is UNVERIFIED (no LLM key). minilm is UNVERIFIED (a second full embed is not cheap on this corpus).
 
 <!-- END RETRIEVAL EVAL -->
 
-Source for the six-arm table, once written: [`evals/results/7388ac3eea43.json`](evals/results/7388ac3eea43.json).
+Every retrieval cell in that table comes from [`evals/results/7388ac3eea43.json`](evals/results/7388ac3eea43.json).
 
 ### Answer quality
 
@@ -103,12 +103,14 @@ Comparison and multi-hop handwritten items. The agent row is the fake planner th
 
 | System | n | Recall@5 | Recall@10 | Planner |
 |---|---:|---:|---:|---|
-| Plain RAG (section/hybrid) | - | UNVERIFIED | UNVERIFIED | - |
-| Agent | — | UNVERIFIED | UNVERIFIED | fake/heuristic planner |
+| Plain RAG (section/hybrid) | 15 | 0.267 | 0.333 | - |
+| Agent | 15 | 0.400 | 0.600 | fake/heuristic planner |
 
-Filled from the twelve-filing eval JSON when that run finishes. `--small` agent-vs-RAG on the fixture HTML was 0.000 / 0.000 and is not this table.
+Comparison and multi-hop handwritten items only. Answer quality stays UNVERIFIED.
 
 <!-- END AGENT RAG EVAL -->
+
+Source: [`evals/results/7388ac3eea43.json`](evals/results/7388ac3eea43.json). `--small` on the fixture HTML is not this table.
 
 ### Entity graph vs fixture-corpus substring
 
@@ -140,13 +142,19 @@ Delta (graph minus fixture substring) = 1.000. Generated from [`evals/results/73
 
 | Path | p50 latency | p95 latency | Cost / query |
 |---|---|---|---|
-| RAG (`ASK_MODEL=fake`) | UNVERIFIED | UNVERIFIED | [0](evals/results/7388ac3eea43-unverified.json) |
-| Agent (`ASK_MODEL=fake`) | UNVERIFIED | UNVERIFIED | [0](evals/results/7388ac3eea43-unverified.json) |
+| RAG (`ASK_MODEL=fake`) | [14 ms](evals/results/7388ac3eea43-latency.json) | [16 ms](evals/results/7388ac3eea43-latency.json) | [0](evals/results/7388ac3eea43-unverified.json) |
+| Agent (`ASK_MODEL=fake`) | [21 ms](evals/results/7388ac3eea43-latency.json) | [21 ms](evals/results/7388ac3eea43-latency.json) | [0](evals/results/7388ac3eea43-unverified.json) |
 | Gate `decide()` | [0.018 ms](evals/results/7388ac3eea43-gate.json) | [0.020 ms](evals/results/7388ac3eea43-gate.json) | [0](evals/results/7388ac3eea43-gate.json) |
 
-Gate numbers are `capitalcite gate bench --n 2000` on this VM (4 cores). RAG and agent p50/p95 stay UNVERIFIED until the fake-model HTTP path is timed in this run and written to `evals/results/7388ac3eea43-latency.json`. Live OpenAI latency and cost stay UNVERIFIED.
+RAG and agent are 10 timed `POST /ask` calls after one warmup on the 12-point fixture index, `ASK_MODEL=fake`, this 4-core VM. Median / 95th percentile. One RAG sample was 75 ms (max, not p95). The limiter is retrieve plus JSON on one process, not the gate. Live OpenAI latency and cost stay UNVERIFIED. Gate numbers are `capitalcite gate bench --n 2000`.
 
-`make eval-report` rewrites the retrieval and agent-vs-RAG blocks from `evals/results/*.json`.
+Rewrite the retrieval and agent-vs-RAG blocks from the twelve-filing JSON:
+
+```bash
+uv run capitalcite eval --suite golden --from-results evals/results/7388ac3eea43.json --readme README.md
+```
+
+Do not point `--from-results` at the whole `evals/results/` directory. `*-small.json` would overwrite the table with fixture zeros.
 
 ## Tradeoffs and what I'd do next
 
@@ -160,7 +168,7 @@ A fixed window of 512 tokens with 64 tokens of overlap is easy to reproduce. It 
 
 Section-aware splitting cuts on Item headings first. An Item that fits the budget stays one chunk. An Item that does not is split with the recursive splitter, and every piece keeps that Item name. Tables are atomic. A table that overflows is split on row boundaries with the header repeated so each piece is still valid markdown.
 
-Both chunkers are scored on the same 77 spanned items. The label is span overlap on `document.md`, not the section string. n=77 means one item is 0.013 recall. A 0.02 gap is noise. Read the six-arm table above, not a ranking of two strategies on a gap that small.
+Both chunkers are scored on the same 77 spanned items. The label is span overlap on `document.md`, not the section string. n=77 means one item is 0.013 recall. A 0.02 gap is noise. This run: section/hybrid Recall@5 = 0.169, fixed/hybrid = 0.195 ([`7388ac3eea43.json`](evals/results/7388ac3eea43.json)). That is two items. Do not rank the chunkers on it. Section BM25 at 0.182 vs section dense at 0.078 is eight items and is the one gap that survives the noise floor.
 
 Recursive splitting exists in the CLI. It is not a third default arm. That would be another re-chunk and another embed of 12k-plus points.
 
@@ -194,7 +202,7 @@ This run: 5/5 red-team cases passed ([`7388ac3eea43-gate.json`](evals/results/73
 
 `path=rag` is one retrieve then `ask()` / `ground()` / `guard`. `path=agent` is LangGraph plan → gated tools → the same synthesizer. The agent does not get a second way to emit an answer. A hallucinated figure after four successful searches is still a refusal.
 
-On comparison and multi-hop items the fake planner searches each named ticker and year. That is more retrieves, not a smarter generator. The agent-vs-RAG table above is retrieval only. Answer quality stays UNVERIFIED without a live LLM.
+On comparison and multi-hop items the fake planner searches each named ticker and year. That is more retrieves, not a smarter generator. This run, n=15, section/hybrid: RAG Recall@5 = 0.267, agent = 0.400 ([`7388ac3eea43.json`](evals/results/7388ac3eea43.json)). The table is retrieval only. Answer quality stays UNVERIFIED without a live LLM.
 
 Hybrid search ranks passages that are close in wording or embedding space. It loses on identity joins: parent to subsidiary, ticker to RSSD. Reciprocal rank fusion cannot walk `PARENT_OF`. `graph_query` is a fifth tool with a typed `kind` enum, not Cypher from the model. Blank `NEO4J_URI` returns `graph not configured` and leaves the 77-item baseline alone. This run's graph suite is 1.000 exact on the memory snapshot vs 0.000 substring hit on the fixture HTML ([`7388ac3eea43-graph.json`](evals/results/7388ac3eea43-graph.json)).
 
