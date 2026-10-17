@@ -38,9 +38,7 @@ def main() -> None:
             print(f"  answer: {answer}")
         plan = body.get("plan") or []
         if plan:
-            tools = ", ".join(
-                str(step.get("tool")) for step in plan if isinstance(step, dict)
-            )
+            tools = ", ".join(str(step.get("tool")) for step in plan if isinstance(step, dict))
             print(f"  plan: {tools} steps_used={body.get('steps_used')}")
         return
     print(json.dumps(body, sort_keys=True))
