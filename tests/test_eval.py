@@ -364,6 +364,31 @@ def test_from_results_skips_graph_json(tmp_path: Path) -> None:
     assert reports[0].suite == "golden"
 
 
+def test_load_reports_stale_filename_does_not_win(tmp_path: Path) -> None:
+    from capitalcite.eval.report import load_reports
+    from capitalcite.eval.runner import _git_sha
+
+    head = _git_sha()
+    assert head != "unknown"
+    (tmp_path / "aaa.json").write_text(_sample_report_json(git_sha=head), encoding="utf-8")
+    (tmp_path / "zzz.json").write_text(
+        _sample_report_json(git_sha="a" * 40),
+        encoding="utf-8",
+    )
+    reports = load_reports(tmp_path)
+    assert len(reports) == 1
+    assert reports[0].git_sha == head
+
+
+def test_load_reports_published_matrix_beats_stale_ancestors() -> None:
+    from capitalcite.eval.report import load_reports
+
+    reports = load_reports(Path("evals/results"))
+    assert len(reports) == 1
+    assert reports[0].git_sha.startswith("7388ac3eea43")
+    assert reports[0].small is False
+
+
 def test_update_readme_replaces_markers(tmp_path: Path) -> None:
     from capitalcite.eval.report import load_report
 
@@ -568,7 +593,7 @@ def _chunk(*, doc_id: str, start: int, end: int) -> Chunk:
     )
 
 
-def _sample_report_json() -> str:
+def _sample_report_json(*, git_sha: str = "b" * 40) -> str:
     from capitalcite.eval.models import ArmResult, EvalReport
 
     scores = (
@@ -590,7 +615,7 @@ def _sample_report_json() -> str:
         item_scores=scores,
     )
     report = EvalReport(
-        git_sha="b" * 40,
+        git_sha=git_sha,
         suite="golden",
         small=False,
         k=5,
