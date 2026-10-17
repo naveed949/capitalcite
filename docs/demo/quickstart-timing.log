@@ -1,0 +1,28 @@
+fresh clone timing log
+host=cursor nproc=4
+huggingface_cache=/home/ubuntu/.cache/huggingface (warm from this VM's earlier bge-small download)
+uv_cache=warm
+start 2026-10-17T08:14:23Z
+clone=/tmp/cc-fresh from local branch cursor/readme-demo-polish-a8db
+README path: Local quickstart (fake model). No Docker. No OPENAI_API_KEY.
+
+STEP git clone local branch t+0s
+STEP uv sync --frozen t+0s
+STEP cp .env.example .env and set fake-model vars t+1s
+  SEC_USER_AGENT=capitalcite-timing you@example.com
+  ASK_MODEL=fake
+  QDRANT_PATH=data/qdrant
+  LANGFUSE_TRACING_ENABLED=false
+STEP capitalcite chunk --input-dir tests/fixtures/chunking/corpus --output-dir data --chunker section t+1s
+STEP capitalcite index --input-dir data --chunker section --embedder bge-small t+5s
+STEP uvicorn + GET /health + POST /search + POST /ask fake + POST /ask path=agent + gate decide shell t+7s
+health={"status":"ok","service":"capitalcite","version":"0.1.0"}
+search point_count 12 hits 3
+ask kind answered path rag
+agent kind answered path agent plan 1
+gate={"kind":"deny","tool":"shell","reason":"unknown_tool"}
+end 2026-10-17T08:14:34Z
+total_sec=11
+total_min=0.18
+
+A first-ever FastEmbed download on this VM earlier in the run was 67.2 MB in about 1 s. Adding that plus a cold `uv` binary install still stays well under 15 minutes.

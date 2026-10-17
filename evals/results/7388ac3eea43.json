@@ -1,0 +1,3570 @@
+{
+  "schema_version": 1,
+  "git_sha": "7388ac3eea430b6ce44e318c79aa9fd87ed71e99",
+  "suite": "golden",
+  "small": false,
+  "k": 5,
+  "n_items": 77,
+  "embedder_id": "fastembed:BAAI/bge-small-en-v1.5",
+  "sparse_id": "fastembed:Qdrant/bm25:k1=1.2:b=0.75:avgdl=256.0",
+  "fastembed_version": "0.8.1",
+  "qdrant_client_version": "1.19.1",
+  "arms": [
+    {
+      "config_hash": "3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880",
+      "collection_name": "filings-3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880",
+      "embedder_id": "fastembed:BAAI/bge-small-en-v1.5",
+      "chunker": "section",
+      "chunk_size": 512,
+      "chunk_overlap": 64,
+      "mode": "dense",
+      "k": 5,
+      "rrf_k": 60,
+      "point_count": 12431,
+      "metrics": {
+        "items": 77,
+        "recall_at_5": 0.07792207792207792,
+        "recall_at_10": 0.15584415584415584,
+        "mrr_at_5": 0.04264069264069264,
+        "mrr_at_10": 0.052648938363224075,
+        "ndcg_at_5": 0.04682308598437501,
+        "ndcg_at_10": 0.07018333996438594,
+        "misses_at_5": [
+          "cc-h-001",
+          "cc-h-002",
+          "cc-h-003",
+          "cc-h-004",
+          "cc-h-005",
+          "cc-h-006",
+          "cc-h-007",
+          "cc-h-008",
+          "cc-h-009",
+          "cc-h-010",
+          "cc-h-011",
+          "cc-h-012",
+          "cc-h-013",
+          "cc-h-014",
+          "cc-h-015",
+          "cc-h-016",
+          "cc-h-017",
+          "cc-h-018",
+          "cc-h-019",
+          "cc-h-020",
+          "cc-h-021",
+          "cc-h-022",
+          "cc-h-023",
+          "cc-h-024",
+          "cc-h-025",
+          "cc-h-026",
+          "cc-h-027",
+          "cc-h-028",
+          "cc-h-029",
+          "cc-h-030",
+          "cc-h-031",
+          "cc-h-032",
+          "cc-h-033",
+          "cc-h-034",
+          "cc-h-035",
+          "cc-h-037",
+          "cc-h-038",
+          "cc-h-039",
+          "cc-h-040",
+          "cc-h-041",
+          "cc-h-042",
+          "cc-h-043",
+          "cc-h-044",
+          "cc-h-046",
+          "cc-h-047",
+          "cc-h-048",
+          "cc-h-049",
+          "cc-h-051",
+          "cc-h-052",
+          "cc-h-053",
+          "cc-h-054",
+          "cc-h-055",
+          "cc-h-056",
+          "cc-h-057",
+          "cc-h-059",
+          "cc-h-060",
+          "cc-h-061",
+          "cc-h-062",
+          "cc-h-063",
+          "cc-h-064",
+          "cc-h-066",
+          "cc-h-067",
+          "cc-h-068",
+          "cc-h-069",
+          "cc-h-070",
+          "cc-h-071",
+          "cc-t-001",
+          "cc-t-002",
+          "cc-t-003",
+          "cc-t-005",
+          "cc-t-006"
+        ]
+      },
+      "item_scores": [
+        {
+          "item_id": "cc-h-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-002",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-004",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-005",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-007",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-008",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-009",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-010",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-011",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-012",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-013",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-014",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-015",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-016",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-017",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-018",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-019",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-020",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-021",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-022",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-023",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-024",
+          "gold_spans": 1,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-h-025",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-026",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-027",
+          "gold_spans": 1,
+          "covered_at": [
+            7
+          ],
+          "first_rank": 7
+        },
+        {
+          "item_id": "cc-h-028",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-029",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-030",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-031",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-032",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-033",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-034",
+          "gold_spans": 1,
+          "covered_at": [
+            6
+          ],
+          "first_rank": 6
+        },
+        {
+          "item_id": "cc-h-035",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-036",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-037",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-038",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-039",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-040",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-041",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-042",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-043",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-044",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-045",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-046",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-047",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-048",
+          "gold_spans": 1,
+          "covered_at": [
+            9
+          ],
+          "first_rank": 9
+        },
+        {
+          "item_id": "cc-h-049",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-050",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-051",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-052",
+          "gold_spans": 2,
+          "covered_at": [
+            10
+          ],
+          "first_rank": 10
+        },
+        {
+          "item_id": "cc-h-053",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-054",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-055",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-056",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-057",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-058",
+          "gold_spans": 2,
+          "covered_at": [
+            5
+          ],
+          "first_rank": 5
+        },
+        {
+          "item_id": "cc-h-059",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-060",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-061",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-062",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-063",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-064",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-065",
+          "gold_spans": 1,
+          "covered_at": [
+            4
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-h-066",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-067",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-068",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-069",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-070",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-071",
+          "gold_spans": 1,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-t-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-002",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-004",
+          "gold_spans": 2,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-t-005",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        }
+      ]
+    },
+    {
+      "config_hash": "3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880",
+      "collection_name": "filings-3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880",
+      "embedder_id": "fastembed:BAAI/bge-small-en-v1.5",
+      "chunker": "section",
+      "chunk_size": 512,
+      "chunk_overlap": 64,
+      "mode": "bm25",
+      "k": 5,
+      "rrf_k": 60,
+      "point_count": 12431,
+      "metrics": {
+        "items": 77,
+        "recall_at_5": 0.18181818181818182,
+        "recall_at_10": 0.2857142857142857,
+        "mrr_at_5": 0.08917748917748917,
+        "mrr_at_10": 0.1014378478664193,
+        "ndcg_at_5": 0.1027689399425688,
+        "ndcg_at_10": 0.1326080122578022,
+        "misses_at_5": [
+          "cc-h-001",
+          "cc-h-002",
+          "cc-h-003",
+          "cc-h-004",
+          "cc-h-005",
+          "cc-h-006",
+          "cc-h-007",
+          "cc-h-008",
+          "cc-h-009",
+          "cc-h-010",
+          "cc-h-011",
+          "cc-h-012",
+          "cc-h-013",
+          "cc-h-014",
+          "cc-h-015",
+          "cc-h-017",
+          "cc-h-018",
+          "cc-h-019",
+          "cc-h-020",
+          "cc-h-021",
+          "cc-h-022",
+          "cc-h-023",
+          "cc-h-024",
+          "cc-h-029",
+          "cc-h-030",
+          "cc-h-031",
+          "cc-h-033",
+          "cc-h-034",
+          "cc-h-038",
+          "cc-h-039",
+          "cc-h-040",
+          "cc-h-041",
+          "cc-h-042",
+          "cc-h-043",
+          "cc-h-044",
+          "cc-h-045",
+          "cc-h-046",
+          "cc-h-047",
+          "cc-h-049",
+          "cc-h-051",
+          "cc-h-052",
+          "cc-h-053",
+          "cc-h-054",
+          "cc-h-055",
+          "cc-h-056",
+          "cc-h-058",
+          "cc-h-061",
+          "cc-h-062",
+          "cc-h-063",
+          "cc-h-064",
+          "cc-h-065",
+          "cc-h-066",
+          "cc-h-067",
+          "cc-h-068",
+          "cc-h-069",
+          "cc-h-070",
+          "cc-h-071",
+          "cc-t-001",
+          "cc-t-002",
+          "cc-t-003",
+          "cc-t-004",
+          "cc-t-005",
+          "cc-t-006"
+        ]
+      },
+      "item_scores": [
+        {
+          "item_id": "cc-h-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-002",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-004",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-005",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-007",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-008",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-009",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-010",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-011",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-012",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-013",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-014",
+          "gold_spans": 1,
+          "covered_at": [
+            10
+          ],
+          "first_rank": 10
+        },
+        {
+          "item_id": "cc-h-015",
+          "gold_spans": 1,
+          "covered_at": [
+            7
+          ],
+          "first_rank": 7
+        },
+        {
+          "item_id": "cc-h-016",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-017",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-018",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-019",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-020",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-021",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-022",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-023",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-024",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-025",
+          "gold_spans": 1,
+          "covered_at": [
+            4
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-h-026",
+          "gold_spans": 1,
+          "covered_at": [
+            5
+          ],
+          "first_rank": 5
+        },
+        {
+          "item_id": "cc-h-027",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-028",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-029",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-030",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-031",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-032",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-033",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-034",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-035",
+          "gold_spans": 1,
+          "covered_at": [
+            4
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-h-036",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-037",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-038",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-039",
+          "gold_spans": 1,
+          "covered_at": [
+            7
+          ],
+          "first_rank": 7
+        },
+        {
+          "item_id": "cc-h-040",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-041",
+          "gold_spans": 1,
+          "covered_at": [
+            9
+          ],
+          "first_rank": 9
+        },
+        {
+          "item_id": "cc-h-042",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-043",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-044",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-045",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-046",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-047",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-048",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-049",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-050",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-051",
+          "gold_spans": 1,
+          "covered_at": [
+            9
+          ],
+          "first_rank": 9
+        },
+        {
+          "item_id": "cc-h-052",
+          "gold_spans": 2,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-h-053",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-054",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-055",
+          "gold_spans": 2,
+          "covered_at": [
+            10
+          ],
+          "first_rank": 10
+        },
+        {
+          "item_id": "cc-h-056",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-057",
+          "gold_spans": 2,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-058",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-059",
+          "gold_spans": 2,
+          "covered_at": [
+            4,
+            9
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-h-060",
+          "gold_spans": 2,
+          "covered_at": [
+            4
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-h-061",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-062",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-063",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-064",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-065",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-066",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-067",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-068",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-069",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-070",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-071",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-002",
+          "gold_spans": 2,
+          "covered_at": [
+            9
+          ],
+          "first_rank": 9
+        },
+        {
+          "item_id": "cc-t-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-004",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-005",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        }
+      ]
+    },
+    {
+      "config_hash": "3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880",
+      "collection_name": "filings-3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880",
+      "embedder_id": "fastembed:BAAI/bge-small-en-v1.5",
+      "chunker": "section",
+      "chunk_size": 512,
+      "chunk_overlap": 64,
+      "mode": "hybrid",
+      "k": 5,
+      "rrf_k": 60,
+      "point_count": 12431,
+      "metrics": {
+        "items": 77,
+        "recall_at_5": 0.16883116883116883,
+        "recall_at_10": 0.2987012987012987,
+        "mrr_at_5": 0.09567099567099567,
+        "mrr_at_10": 0.11442486085343227,
+        "ndcg_at_5": 0.09820199831114318,
+        "ndcg_at_10": 0.13980586040644738,
+        "misses_at_5": [
+          "cc-h-001",
+          "cc-h-002",
+          "cc-h-003",
+          "cc-h-004",
+          "cc-h-005",
+          "cc-h-006",
+          "cc-h-007",
+          "cc-h-008",
+          "cc-h-009",
+          "cc-h-010",
+          "cc-h-011",
+          "cc-h-012",
+          "cc-h-013",
+          "cc-h-014",
+          "cc-h-016",
+          "cc-h-017",
+          "cc-h-018",
+          "cc-h-019",
+          "cc-h-020",
+          "cc-h-021",
+          "cc-h-022",
+          "cc-h-023",
+          "cc-h-024",
+          "cc-h-025",
+          "cc-h-028",
+          "cc-h-029",
+          "cc-h-030",
+          "cc-h-031",
+          "cc-h-032",
+          "cc-h-033",
+          "cc-h-034",
+          "cc-h-035",
+          "cc-h-037",
+          "cc-h-038",
+          "cc-h-039",
+          "cc-h-040",
+          "cc-h-041",
+          "cc-h-042",
+          "cc-h-043",
+          "cc-h-044",
+          "cc-h-046",
+          "cc-h-047",
+          "cc-h-049",
+          "cc-h-051",
+          "cc-h-053",
+          "cc-h-054",
+          "cc-h-055",
+          "cc-h-056",
+          "cc-h-057",
+          "cc-h-058",
+          "cc-h-059",
+          "cc-h-061",
+          "cc-h-062",
+          "cc-h-063",
+          "cc-h-064",
+          "cc-h-065",
+          "cc-h-066",
+          "cc-h-067",
+          "cc-h-068",
+          "cc-h-069",
+          "cc-t-001",
+          "cc-t-002",
+          "cc-t-003",
+          "cc-t-006"
+        ]
+      },
+      "item_scores": [
+        {
+          "item_id": "cc-h-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-002",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-004",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-005",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-007",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-008",
+          "gold_spans": 1,
+          "covered_at": [
+            6
+          ],
+          "first_rank": 6
+        },
+        {
+          "item_id": "cc-h-009",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-010",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-011",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-012",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-013",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-014",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-015",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-016",
+          "gold_spans": 1,
+          "covered_at": [
+            10
+          ],
+          "first_rank": 10
+        },
+        {
+          "item_id": "cc-h-017",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-018",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-019",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-020",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-021",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-022",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-023",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-024",
+          "gold_spans": 1,
+          "covered_at": [
+            6
+          ],
+          "first_rank": 6
+        },
+        {
+          "item_id": "cc-h-025",
+          "gold_spans": 1,
+          "covered_at": [
+            6
+          ],
+          "first_rank": 6
+        },
+        {
+          "item_id": "cc-h-026",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-027",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-028",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-029",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-030",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-031",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-032",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-033",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-034",
+          "gold_spans": 1,
+          "covered_at": [
+            7
+          ],
+          "first_rank": 7
+        },
+        {
+          "item_id": "cc-h-035",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-036",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-037",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-038",
+          "gold_spans": 1,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-h-039",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-040",
+          "gold_spans": 1,
+          "covered_at": [
+            10
+          ],
+          "first_rank": 10
+        },
+        {
+          "item_id": "cc-h-041",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-042",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-043",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-044",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-045",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-046",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-047",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-048",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-049",
+          "gold_spans": 1,
+          "covered_at": [
+            6
+          ],
+          "first_rank": 6
+        },
+        {
+          "item_id": "cc-h-050",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-051",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-052",
+          "gold_spans": 2,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-053",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-054",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-055",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-056",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-057",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-058",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-059",
+          "gold_spans": 2,
+          "covered_at": [
+            6
+          ],
+          "first_rank": 6
+        },
+        {
+          "item_id": "cc-h-060",
+          "gold_spans": 2,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-061",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-062",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-063",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-064",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-065",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-066",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-067",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-068",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-069",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-070",
+          "gold_spans": 2,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-071",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-t-001",
+          "gold_spans": 1,
+          "covered_at": [
+            7
+          ],
+          "first_rank": 7
+        },
+        {
+          "item_id": "cc-t-002",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-004",
+          "gold_spans": 2,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-t-005",
+          "gold_spans": 2,
+          "covered_at": [
+            5
+          ],
+          "first_rank": 5
+        },
+        {
+          "item_id": "cc-t-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        }
+      ]
+    },
+    {
+      "config_hash": "b95a2e0587bce93f3541408204cff48f899cb157fe91ea322a2c939055c33bc7",
+      "collection_name": "filings-b95a2e0587bce93f3541408204cff48f899cb157fe91ea322a2c939055c33bc7",
+      "embedder_id": "fastembed:BAAI/bge-small-en-v1.5",
+      "chunker": "fixed",
+      "chunk_size": 512,
+      "chunk_overlap": 64,
+      "mode": "dense",
+      "k": 5,
+      "rrf_k": 60,
+      "point_count": 16690,
+      "metrics": {
+        "items": 77,
+        "recall_at_5": 0.16883116883116883,
+        "recall_at_10": 0.2077922077922078,
+        "mrr_at_5": 0.1183982683982684,
+        "mrr_at_10": 0.12380952380952381,
+        "ndcg_at_5": 0.10295929685789212,
+        "ndcg_at_10": 0.11817634409762003,
+        "misses_at_5": [
+          "cc-h-001",
+          "cc-h-002",
+          "cc-h-003",
+          "cc-h-004",
+          "cc-h-005",
+          "cc-h-006",
+          "cc-h-007",
+          "cc-h-008",
+          "cc-h-009",
+          "cc-h-010",
+          "cc-h-011",
+          "cc-h-012",
+          "cc-h-013",
+          "cc-h-014",
+          "cc-h-015",
+          "cc-h-016",
+          "cc-h-017",
+          "cc-h-018",
+          "cc-h-019",
+          "cc-h-020",
+          "cc-h-021",
+          "cc-h-022",
+          "cc-h-023",
+          "cc-h-024",
+          "cc-h-025",
+          "cc-h-026",
+          "cc-h-027",
+          "cc-h-028",
+          "cc-h-029",
+          "cc-h-030",
+          "cc-h-031",
+          "cc-h-032",
+          "cc-h-033",
+          "cc-h-034",
+          "cc-h-035",
+          "cc-h-036",
+          "cc-h-038",
+          "cc-h-039",
+          "cc-h-040",
+          "cc-h-041",
+          "cc-h-042",
+          "cc-h-043",
+          "cc-h-046",
+          "cc-h-047",
+          "cc-h-049",
+          "cc-h-050",
+          "cc-h-051",
+          "cc-h-052",
+          "cc-h-053",
+          "cc-h-054",
+          "cc-h-055",
+          "cc-h-056",
+          "cc-h-059",
+          "cc-h-060",
+          "cc-h-061",
+          "cc-h-062",
+          "cc-h-065",
+          "cc-h-066",
+          "cc-h-067",
+          "cc-h-068",
+          "cc-h-071",
+          "cc-t-001",
+          "cc-t-003",
+          "cc-t-006"
+        ]
+      },
+      "item_scores": [
+        {
+          "item_id": "cc-h-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-002",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-004",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-005",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-007",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-008",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-009",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-010",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-011",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-012",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-013",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-014",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-015",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-016",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-017",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-018",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-019",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-020",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-021",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-022",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-023",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-024",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-025",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-026",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-027",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-028",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-029",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-030",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-031",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-032",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-033",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-034",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-035",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-036",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-037",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-038",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-039",
+          "gold_spans": 1,
+          "covered_at": [
+            6
+          ],
+          "first_rank": 6
+        },
+        {
+          "item_id": "cc-h-040",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-041",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-042",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-043",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-044",
+          "gold_spans": 1,
+          "covered_at": [
+            5
+          ],
+          "first_rank": 5
+        },
+        {
+          "item_id": "cc-h-045",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-046",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-047",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-048",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-049",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-050",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-051",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-052",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-053",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-054",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-055",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-056",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-057",
+          "gold_spans": 2,
+          "covered_at": [
+            1,
+            9
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-058",
+          "gold_spans": 2,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-059",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-060",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-061",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-062",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-063",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-064",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-065",
+          "gold_spans": 1,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-h-066",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-067",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-068",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-069",
+          "gold_spans": 2,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-070",
+          "gold_spans": 2,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-071",
+          "gold_spans": 1,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-t-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-002",
+          "gold_spans": 2,
+          "covered_at": [
+            4
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-t-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-004",
+          "gold_spans": 2,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-t-005",
+          "gold_spans": 2,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-t-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        }
+      ]
+    },
+    {
+      "config_hash": "b95a2e0587bce93f3541408204cff48f899cb157fe91ea322a2c939055c33bc7",
+      "collection_name": "filings-b95a2e0587bce93f3541408204cff48f899cb157fe91ea322a2c939055c33bc7",
+      "embedder_id": "fastembed:BAAI/bge-small-en-v1.5",
+      "chunker": "fixed",
+      "chunk_size": 512,
+      "chunk_overlap": 64,
+      "mode": "bm25",
+      "k": 5,
+      "rrf_k": 60,
+      "point_count": 16690,
+      "metrics": {
+        "items": 77,
+        "recall_at_5": 0.12987012987012986,
+        "recall_at_10": 0.19480519480519481,
+        "mrr_at_5": 0.07142857142857142,
+        "mrr_at_10": 0.07941661513090084,
+        "ndcg_at_5": 0.08029738406908851,
+        "ndcg_at_10": 0.09745216125874427,
+        "misses_at_5": [
+          "cc-h-001",
+          "cc-h-002",
+          "cc-h-003",
+          "cc-h-004",
+          "cc-h-005",
+          "cc-h-006",
+          "cc-h-007",
+          "cc-h-008",
+          "cc-h-009",
+          "cc-h-010",
+          "cc-h-011",
+          "cc-h-012",
+          "cc-h-013",
+          "cc-h-014",
+          "cc-h-015",
+          "cc-h-016",
+          "cc-h-017",
+          "cc-h-018",
+          "cc-h-019",
+          "cc-h-020",
+          "cc-h-022",
+          "cc-h-023",
+          "cc-h-024",
+          "cc-h-025",
+          "cc-h-026",
+          "cc-h-027",
+          "cc-h-028",
+          "cc-h-029",
+          "cc-h-030",
+          "cc-h-031",
+          "cc-h-032",
+          "cc-h-033",
+          "cc-h-034",
+          "cc-h-036",
+          "cc-h-038",
+          "cc-h-040",
+          "cc-h-041",
+          "cc-h-042",
+          "cc-h-043",
+          "cc-h-044",
+          "cc-h-045",
+          "cc-h-046",
+          "cc-h-047",
+          "cc-h-049",
+          "cc-h-051",
+          "cc-h-052",
+          "cc-h-053",
+          "cc-h-054",
+          "cc-h-056",
+          "cc-h-058",
+          "cc-h-059",
+          "cc-h-060",
+          "cc-h-061",
+          "cc-h-062",
+          "cc-h-063",
+          "cc-h-065",
+          "cc-h-066",
+          "cc-h-067",
+          "cc-h-068",
+          "cc-h-069",
+          "cc-h-070",
+          "cc-h-071",
+          "cc-t-001",
+          "cc-t-002",
+          "cc-t-003",
+          "cc-t-005",
+          "cc-t-006"
+        ]
+      },
+      "item_scores": [
+        {
+          "item_id": "cc-h-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-002",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-004",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-005",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-007",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-008",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-009",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-010",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-011",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-012",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-013",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-014",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-015",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-016",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-017",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-018",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-019",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-020",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-021",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-022",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-023",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-024",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-025",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-026",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-027",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-028",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-029",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-030",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-031",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-032",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-033",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-034",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-035",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-036",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-037",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-038",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-039",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-040",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-041",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-042",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-043",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-044",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-045",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-046",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-047",
+          "gold_spans": 1,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-h-048",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-049",
+          "gold_spans": 1,
+          "covered_at": [
+            9
+          ],
+          "first_rank": 9
+        },
+        {
+          "item_id": "cc-h-050",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-051",
+          "gold_spans": 1,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-h-052",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-053",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-054",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-055",
+          "gold_spans": 2,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-056",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-057",
+          "gold_spans": 2,
+          "covered_at": [
+            1,
+            3
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-058",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-059",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-060",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-061",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-062",
+          "gold_spans": 2,
+          "covered_at": [
+            9
+          ],
+          "first_rank": 9
+        },
+        {
+          "item_id": "cc-h-063",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-064",
+          "gold_spans": 1,
+          "covered_at": [
+            4
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-h-065",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-066",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-067",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-068",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-069",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-070",
+          "gold_spans": 2,
+          "covered_at": [
+            7
+          ],
+          "first_rank": 7
+        },
+        {
+          "item_id": "cc-h-071",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-002",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-004",
+          "gold_spans": 2,
+          "covered_at": [
+            4
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-t-005",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        }
+      ]
+    },
+    {
+      "config_hash": "b95a2e0587bce93f3541408204cff48f899cb157fe91ea322a2c939055c33bc7",
+      "collection_name": "filings-b95a2e0587bce93f3541408204cff48f899cb157fe91ea322a2c939055c33bc7",
+      "embedder_id": "fastembed:BAAI/bge-small-en-v1.5",
+      "chunker": "fixed",
+      "chunk_size": 512,
+      "chunk_overlap": 64,
+      "mode": "hybrid",
+      "k": 5,
+      "rrf_k": 60,
+      "point_count": 16690,
+      "metrics": {
+        "items": 77,
+        "recall_at_5": 0.19480519480519481,
+        "recall_at_10": 0.23376623376623376,
+        "mrr_at_5": 0.11406926406926407,
+        "mrr_at_10": 0.11971243042671614,
+        "ndcg_at_5": 0.11370172357483274,
+        "ndcg_at_10": 0.12675374172063902,
+        "misses_at_5": [
+          "cc-h-001",
+          "cc-h-002",
+          "cc-h-003",
+          "cc-h-004",
+          "cc-h-005",
+          "cc-h-006",
+          "cc-h-007",
+          "cc-h-008",
+          "cc-h-009",
+          "cc-h-010",
+          "cc-h-011",
+          "cc-h-012",
+          "cc-h-013",
+          "cc-h-014",
+          "cc-h-015",
+          "cc-h-016",
+          "cc-h-017",
+          "cc-h-018",
+          "cc-h-019",
+          "cc-h-020",
+          "cc-h-022",
+          "cc-h-023",
+          "cc-h-024",
+          "cc-h-025",
+          "cc-h-026",
+          "cc-h-027",
+          "cc-h-028",
+          "cc-h-029",
+          "cc-h-030",
+          "cc-h-031",
+          "cc-h-032",
+          "cc-h-033",
+          "cc-h-034",
+          "cc-h-035",
+          "cc-h-036",
+          "cc-h-038",
+          "cc-h-040",
+          "cc-h-041",
+          "cc-h-042",
+          "cc-h-043",
+          "cc-h-044",
+          "cc-h-046",
+          "cc-h-047",
+          "cc-h-049",
+          "cc-h-051",
+          "cc-h-052",
+          "cc-h-053",
+          "cc-h-054",
+          "cc-h-055",
+          "cc-h-056",
+          "cc-h-058",
+          "cc-h-059",
+          "cc-h-060",
+          "cc-h-061",
+          "cc-h-062",
+          "cc-h-065",
+          "cc-h-066",
+          "cc-h-067",
+          "cc-h-068",
+          "cc-t-001",
+          "cc-t-003",
+          "cc-t-006"
+        ]
+      },
+      "item_scores": [
+        {
+          "item_id": "cc-h-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-002",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-004",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-005",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-007",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-008",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-009",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-010",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-011",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-012",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-013",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-014",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-015",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-016",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-017",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-018",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-019",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-020",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-021",
+          "gold_spans": 1,
+          "covered_at": [
+            4
+          ],
+          "first_rank": 4
+        },
+        {
+          "item_id": "cc-h-022",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-023",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-024",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-025",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-026",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-027",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-028",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-029",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-030",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-031",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-032",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-033",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-034",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-035",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-036",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-037",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-038",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-039",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-040",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-041",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-042",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-043",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-044",
+          "gold_spans": 1,
+          "covered_at": [
+            8
+          ],
+          "first_rank": 8
+        },
+        {
+          "item_id": "cc-h-045",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-046",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-047",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-048",
+          "gold_spans": 1,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-049",
+          "gold_spans": 1,
+          "covered_at": [
+            7
+          ],
+          "first_rank": 7
+        },
+        {
+          "item_id": "cc-h-050",
+          "gold_spans": 1,
+          "covered_at": [
+            5
+          ],
+          "first_rank": 5
+        },
+        {
+          "item_id": "cc-h-051",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-052",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-053",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-054",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-055",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-056",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-057",
+          "gold_spans": 2,
+          "covered_at": [
+            1,
+            3
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-058",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-059",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-060",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-061",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-062",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-063",
+          "gold_spans": 1,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-064",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-h-065",
+          "gold_spans": 1,
+          "covered_at": [
+            6
+          ],
+          "first_rank": 6
+        },
+        {
+          "item_id": "cc-h-066",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-067",
+          "gold_spans": 2,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-068",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-h-069",
+          "gold_spans": 2,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-h-070",
+          "gold_spans": 2,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-h-071",
+          "gold_spans": 1,
+          "covered_at": [
+            3
+          ],
+          "first_rank": 3
+        },
+        {
+          "item_id": "cc-t-001",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-002",
+          "gold_spans": 2,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-t-003",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        },
+        {
+          "item_id": "cc-t-004",
+          "gold_spans": 2,
+          "covered_at": [
+            1
+          ],
+          "first_rank": 1
+        },
+        {
+          "item_id": "cc-t-005",
+          "gold_spans": 2,
+          "covered_at": [
+            2
+          ],
+          "first_rank": 2
+        },
+        {
+          "item_id": "cc-t-006",
+          "gold_spans": 1,
+          "covered_at": [],
+          "first_rank": null
+        }
+      ]
+    }
+  ],
+  "agent_vs_rag": {
+    "label": "fake/heuristic planner",
+    "n": 15,
+    "chunker": "section",
+    "mode": "hybrid",
+    "rag_recall_at_5": 0.26666666666666666,
+    "rag_recall_at_10": 0.3333333333333333,
+    "agent_recall_at_5": 0.4,
+    "agent_recall_at_10": 0.6,
+    "item_ids": [
+      "cc-h-052",
+      "cc-h-053",
+      "cc-h-054",
+      "cc-h-055",
+      "cc-h-056",
+      "cc-h-057",
+      "cc-h-058",
+      "cc-h-059",
+      "cc-h-060",
+      "cc-h-061",
+      "cc-h-062",
+      "cc-h-067",
+      "cc-h-069",
+      "cc-h-070",
+      "cc-h-071"
+    ]
+  }
+}

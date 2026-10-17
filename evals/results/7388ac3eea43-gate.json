@@ -1,0 +1,44 @@
+{
+  "git_sha": "7388ac3eea430b6ce44e318c79aa9fd87ed71e99",
+  "recorded_at": "2026-10-17T07:16:03Z",
+  "command": "uv run capitalcite gate redteam && uv run capitalcite gate bench --n 2000",
+  "redteam": {
+    "passed": 5,
+    "failed": 0,
+    "cases": [
+      {
+        "id": "deny-unknown-does-not-run",
+        "passed": true,
+        "detail": "shell denied and runner was not called"
+      },
+      {
+        "id": "injection-shell",
+        "passed": true,
+        "detail": "hostile planner requested shell; gate denied"
+      },
+      {
+        "id": "injection-extra-args",
+        "passed": true,
+        "detail": "extra calculator args denied; runner was not called"
+      },
+      {
+        "id": "policy-load-failure",
+        "passed": true,
+        "detail": "broken policy denied calculator; runner was not called"
+      },
+      {
+        "id": "fake-planner-ignores-doc-injection",
+        "passed": true,
+        "detail": "fake planner only called search_filings"
+      }
+    ]
+  },
+  "bench": {
+    "n": 2000,
+    "p50_ms": 0.017610000213608146,
+    "p95_ms": 0.019721000171557534,
+    "allow_p95_ms": 0.02103099996020319,
+    "deny_p95_ms": 0.015473000075871823,
+    "note": "Re-run on an idle 4-core VM after the twelve-filing embed finished."
+  }
+}
