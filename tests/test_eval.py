@@ -356,7 +356,7 @@ def test_from_results_skips_graph_json(tmp_path: Path) -> None:
     (tmp_path / "matrix.json").write_text(_sample_report_json(), encoding="utf-8")
     (tmp_path / "deadbeef-graph.json").write_text(
         '{"suite":"graph","git_sha":"deadbeef","n":6,'
-        '"hybrid_hit_rate":0,"graph_exact":1,"delta":1,"items":[]}\n',
+        '"fixture_substring_hit_rate":0,"graph_exact":1,"delta":1,"items":[]}\n',
         encoding="utf-8",
     )
     reports = load_reports(tmp_path)

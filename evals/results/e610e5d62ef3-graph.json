@@ -2,43 +2,43 @@
   "suite": "graph",
   "git_sha": "e610e5d62ef36fdd13f18322ff7e446720b25226",
   "n": 6,
-  "hybrid_hit_rate": 0.0,
+  "fixture_substring_hit_rate": 0.0,
   "graph_exact": 1.0,
   "delta": 1.0,
   "items": [
     {
       "item_id": "cc-g-001",
-      "hybrid_hit": false,
+      "fixture_substring_hit": false,
       "graph_exact": true,
       "detail": "Bank rssd=852218 name=JPMORGAN CHASE BANK, NATIONAL ASSOCIATION"
     },
     {
       "item_id": "cc-g-002",
-      "hybrid_hit": false,
+      "fixture_substring_hit": false,
       "graph_exact": true,
       "detail": "Bank rssd=1951350 name=CITIGROUP INC. ticker=C cik=0000831001 is_bhc=true"
     },
     {
       "item_id": "cc-g-003",
-      "hybrid_hit": false,
+      "fixture_substring_hit": false,
       "graph_exact": true,
       "detail": "Bank rssd=480228 name=BANK OF AMERICA, NATIONAL ASSOCIATION"
     },
     {
       "item_id": "cc-g-004",
-      "hybrid_hit": false,
+      "fixture_substring_hit": false,
       "graph_exact": true,
       "detail": "Filing accession=0000019617-25-000270 ticker=JPM form=10-K period=2024-12-31"
     },
     {
       "item_id": "cc-g-005",
-      "hybrid_hit": false,
+      "fixture_substring_hit": false,
       "graph_exact": true,
       "detail": "Metric name=Standardized CET1 period=2024-12-31 value=15.7% unit=% ticker=JPM"
     },
     {
       "item_id": "cc-g-006",
-      "hybrid_hit": false,
+      "fixture_substring_hit": false,
       "graph_exact": true,
       "detail": "Bank rssd=1039502 name=JPMORGAN CHASE & CO. ticker=JPM cik=0000019617 is_bhc=true; Bank rssd=852218 name=JPMORGAN CHASE BANK, NATIONAL ASSOCIATION"
     }

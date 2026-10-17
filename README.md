@@ -109,7 +109,7 @@ Comparison and multi-hop handwritten items only. Answer quality stays UNVERIFIED
 
 <!-- END AGENT RAG EVAL -->
 
-### Entity graph vs hybrid
+### Entity graph vs fixture-corpus substring
 
 Questions that need a BHC → subsidiary or RSSD join. Not in the 77-item filing-span matrix.
 
@@ -117,10 +117,10 @@ Questions that need a BHC → subsidiary or RSSD join. Not in the 77-item filing
 
 | System | n | Hit rate |
 |---|---:|---:|
-| Hybrid (fixture corpus substrings) | 6 | 0.000 |
+| Fixture-corpus substring | 6 | 0.000 |
 | graph_query (memory snapshot) | 6 | 1.000 |
 
-Delta (graph minus hybrid) = 1.000. Generated from `evals/results/e610e5d62ef3-graph.json`. Hybrid hit rate is 1 only when every expected substring is in the --small fixture HTML. Those files do not contain the RSSDs, so the rate is limited by the corpus text. These items need entity traversal. They are not in the 77-item filing-span matrix.
+Delta (graph minus fixture substring) = 1.000. Generated from `evals/results/e610e5d62ef3-graph.json`. Fixture-corpus substring is 1 only when every expected token is in the --small HTML. Those files do not contain the RSSDs. These items need entity traversal. They are not in the 77-item filing-span matrix.
 
 <!-- END GRAPH EVAL -->
 

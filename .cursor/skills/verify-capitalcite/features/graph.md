@@ -29,7 +29,7 @@ Preconditions:
 
 - **Load the snapshot in memory.** Run `uv run capitalcite graph load --backend memory`. Exit 0. stdout contains `backend=memory` and `banks=8`.
 - **Query a subsidiary.** Run `uv run capitalcite graph query --kind subsidiaries --ticker JPM`. Exit 0. stdout contains `852218`.
-- **Score graph vs hybrid.** Run `uv run capitalcite eval --suite graph --small`. Exit 0. stdout contains `graph_exact=` and `hybrid_hit_rate=`.
+- **Score graph vs fixture-corpus substring.** Run `uv run capitalcite eval --suite graph --small`. Exit 0. stdout contains `graph_exact=` and `fixture_substring_hit_rate=`.
 - **Neo4j without URI.** Run `uv run capitalcite graph load --backend neo4j` with empty `NEO4J_URI`. Exit 2 and `unverified`. That is UNVERIFIED live Bolt, not a product failure.
 - **Bundled helper.** `./scripts/verify.sh` writes `graph.help.out`, `graph.load.out`, `graph.query.out`, and `eval-graph-small.out`. Missing Docker writes no Neo4j start.
 - **Proof.** Keep the CLI stdout and exit codes. Pytest is not this feature.

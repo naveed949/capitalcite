@@ -65,9 +65,18 @@ download NIC.
 
 The 77-item handwritten matrix needs `document.md` spans. RSSD joins do
 not have those spans. They live in `evals/golden/graph.jsonl`. The eval
-reports hybrid substring hit rate on the `--small` fixture corpus
-versus graph exact match on that set, then the delta. The published
-hybrid table is not rewritten by this suite.
+reports `fixture_substring_hit_rate` on the `--small` HTML versus
+`graph_exact` on that set, then the delta. The published hybrid
+Recall@5 table is not rewritten by this suite.
+
+The left-hand rate is not hybrid retrieval. It is whether every
+expected token (RSSD, accession, `15.7`) appears as a substring in
+`tests/fixtures/chunking/corpus`. Scoring that side with `retrieve()`
+would still miss: `--small` uses FakeEmbedder against those two HTML
+files, and the graph gold has no overlapping `document.md` spans. That
+would mix span-overlap recall with an identity-join suite and still
+print 0.000. The limiter is the fixture text, not RRF. The graph
+number is exact token match on the recorded snapshot, not live NIC.
 
 ## Alternatives
 

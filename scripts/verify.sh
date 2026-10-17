@@ -1829,7 +1829,7 @@ set -e
 write eval-graph-small.exit "${eval_graph_rc}"
 if [[ "${eval_graph_rc}" -ne 0 ]] \
   || ! grep -q "graph_exact=" "${ART}/eval-graph-small.out" \
-  || ! grep -q "hybrid_hit_rate=" "${ART}/eval-graph-small.out"; then
+  || ! grep -q "fixture_substring_hit_rate=" "${ART}/eval-graph-small.out"; then
   log "verify: eval --suite graph --small failed"
   cat "${ART}/eval-graph-small.out" >&2 || true
   cat "${ART}/eval-graph-small.err" >&2 || true

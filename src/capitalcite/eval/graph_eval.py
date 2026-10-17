@@ -32,7 +32,7 @@ class GraphGoldItem(BaseModel):
 class GraphItemScore(BaseModel):
     model_config = ConfigDict(frozen=True)
     item_id: str
-    hybrid_hit: bool
+    fixture_substring_hit: bool
     graph_exact: bool
     detail: str
 
@@ -42,7 +42,7 @@ class GraphEvalReport(BaseModel):
     suite: str = "graph"
     git_sha: str
     n: int = Field(ge=0)
-    hybrid_hit_rate: float
+    fixture_substring_hit_rate: float
     graph_exact: float
     delta: float
     items: tuple[GraphItemScore, ...]
@@ -95,27 +95,27 @@ async def run_graph_suite(
     scores: list[GraphItemScore] = []
     for item in items:
         expected = item.expected_substrings or (item.answer,)
-        hybrid_hit = all(token in corpus for token in expected)
+        fixture_substring_hit = all(token in corpus for token in expected)
         result = await store.query(_query_for(item))
         graph_exact = result.ok and all(token in result.detail for token in expected)
         scores.append(
             GraphItemScore(
                 item_id=item.id,
-                hybrid_hit=hybrid_hit,
+                fixture_substring_hit=fixture_substring_hit,
                 graph_exact=graph_exact,
                 detail=result.detail,
             )
         )
     await store.close()
     n = len(scores)
-    hybrid_hit_rate = sum(row.hybrid_hit for row in scores) / n
+    fixture_substring_hit_rate = sum(row.fixture_substring_hit for row in scores) / n
     graph_rate = sum(row.graph_exact for row in scores) / n
     report = GraphEvalReport(
         git_sha=_git_sha(),
         n=n,
-        hybrid_hit_rate=hybrid_hit_rate,
+        fixture_substring_hit_rate=fixture_substring_hit_rate,
         graph_exact=graph_rate,
-        delta=graph_rate - hybrid_hit_rate,
+        delta=graph_rate - fixture_substring_hit_rate,
         items=tuple(scores),
     )
     if out_dir is not None:
@@ -129,15 +129,16 @@ async def run_graph_suite(
 def render_graph_markdown(report: GraphEvalReport) -> str:
     lines = [
         f"suite=graph sha={report.git_sha} n={report.n} "
-        f"hybrid_hit_rate={report.hybrid_hit_rate:.3f} "
+        f"fixture_substring_hit_rate={report.fixture_substring_hit_rate:.3f} "
         f"graph_exact={report.graph_exact:.3f} delta={report.delta:.3f}",
         "",
         "| System | n | Hit rate | Notes |",
         "|---|---:|---:|---|",
-        f"| Hybrid on fixture HTML | {report.n} | {report.hybrid_hit_rate:.3f} | substring |",
+        f"| Fixture-corpus substring | {report.n} | "
+        f"{report.fixture_substring_hit_rate:.3f} | HTML text |",
         f"| graph_query (memory) | {report.n} | {report.graph_exact:.3f} | typed walk |",
         "",
-        f"Delta (graph minus hybrid) = {report.delta:.3f}.",
+        f"Delta (graph minus fixture substring) = {report.delta:.3f}.",
         "Items need BHC→subsidiary or identifier joins. They are not in v1 recall.",
         "",
     ]
@@ -153,13 +154,13 @@ def update_readme_graph(readme: Path, report: GraphEvalReport) -> None:
     table = (
         "| System | n | Hit rate |\n"
         "|---|---:|---:|\n"
-        f"| Hybrid (fixture corpus substrings) | {report.n} | {report.hybrid_hit_rate:.3f} |\n"
+        f"| Fixture-corpus substring | {report.n} | "
+        f"{report.fixture_substring_hit_rate:.3f} |\n"
         f"| graph_query (memory snapshot) | {report.n} | {report.graph_exact:.3f} |\n"
-        f"\nDelta (graph minus hybrid) = {report.delta:.3f}. "
+        f"\nDelta (graph minus fixture substring) = {report.delta:.3f}. "
         f"Generated from `evals/results/{report.git_sha[:12]}-graph.json`. "
-        "Hybrid hit rate is 1 only when every expected substring is in the "
-        "--small fixture HTML. Those files do not contain the RSSDs, so the "
-        "rate is limited by the corpus text. "
+        "Fixture-corpus substring is 1 only when every expected token is in the "
+        "--small HTML. Those files do not contain the RSSDs. "
         "These items need entity traversal. They are not in the 77-item filing-span matrix.\n"
     )
     atomic_write_text(readme, f"{pre}{GRAPH_BEGIN_MARK}\n\n{table}\n{GRAPH_END_MARK}{post}")

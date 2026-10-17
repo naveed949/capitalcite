@@ -749,7 +749,7 @@ def eval_cmd(
             "eval "
             f"suite=graph "
             f"n={graph_report.n} "
-            f"hybrid_hit_rate={graph_report.hybrid_hit_rate:.3f} "
+            f"fixture_substring_hit_rate={graph_report.fixture_substring_hit_rate:.3f} "
             f"graph_exact={graph_report.graph_exact:.3f} "
             f"delta={graph_report.delta:.3f} "
             f"out={out}"

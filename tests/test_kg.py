@@ -281,7 +281,7 @@ async def test_graph_eval_small_is_perfect_on_snapshot() -> None:
     report = await run_graph_suite(out_dir=None)
     assert report.n >= 5
     assert report.graph_exact == 1.0
-    assert report.hybrid_hit_rate == 0.0
+    assert report.fixture_substring_hit_rate == 0.0
     assert report.delta == 1.0
 
 
@@ -292,7 +292,7 @@ def test_cli_eval_graph_small(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0
     assert "graph_exact=1.000" in result.stdout
-    assert "hybrid_hit_rate=0.000" in result.stdout
+    assert "fixture_substring_hit_rate=0.000" in result.stdout
 
 
 async def _empty_search(
