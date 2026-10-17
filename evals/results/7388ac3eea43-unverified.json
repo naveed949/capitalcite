@@ -1,0 +1,77 @@
+{
+  "git_sha": "7388ac3eea430b6ce44e318c79aa9fd87ed71e99",
+  "recorded_at": "2026-10-17T07:16:03Z",
+  "note": "Cells below were not produced in this run. They are UNVERIFIED, not zeros and not copies of older SHAs.",
+  "items": [
+    {
+      "metric": "answer_quality.faithfulness",
+      "value": "UNVERIFIED",
+      "reason": "OPENAI_API_KEY is empty. RAGAS and DeepEval are not wired. capitalcite check --live skipped."
+    },
+    {
+      "metric": "answer_quality.answer_relevancy",
+      "value": "UNVERIFIED",
+      "reason": "OPENAI_API_KEY is empty. No LLM-as-judge path ran."
+    },
+    {
+      "metric": "answer_quality.numeric_exact_match",
+      "value": "UNVERIFIED",
+      "reason": "Needs a live generated answer. ASK_MODEL=fake quotes the first hit and is not scored for exact-match."
+    },
+    {
+      "metric": "answer_quality.citation_accuracy",
+      "value": "UNVERIFIED",
+      "reason": "Needs a live generated answer. Grounding checks are pass/fail in capitalcite check, not a published rate."
+    },
+    {
+      "metric": "answer_quality.correct_refusals",
+      "value": "UNVERIFIED",
+      "reason": "Live OpenAI refusal rate was not measured. The fake-model contract cc-u-001 refused in capitalcite check."
+    },
+    {
+      "metric": "retrieval.minilm",
+      "value": "UNVERIFIED",
+      "reason": "A second full embed of the twelve 10-Ks was not run. Cost is another 12k-17k chunk embed."
+    },
+    {
+      "metric": "retrieval.hybrid_rerank",
+      "value": "UNVERIFIED",
+      "reason": "No cross-encoder is wired. retrieve() returns Qdrant order truncated to k."
+    },
+    {
+      "metric": "ragas.context_precision_recall",
+      "value": "UNVERIFIED",
+      "reason": "No LLM key. ADR 0006 leaves RAGAS out of the committed table."
+    },
+    {
+      "metric": "latency.rag_openai",
+      "value": "UNVERIFIED",
+      "reason": "OPENAI_API_KEY is empty. Fake-model latency is in 7388ac3eea43-latency.json once measured."
+    },
+    {
+      "metric": "cost.openai",
+      "value": "UNVERIFIED",
+      "reason": "No paid provider was called."
+    },
+    {
+      "metric": "langfuse_ui",
+      "value": "UNVERIFIED",
+      "reason": "Docker is not installed. Nothing listens on :3000. CAPITALCITE_TRACE_FILE is the offline proof."
+    },
+    {
+      "metric": "azure_health",
+      "value": "UNVERIFIED",
+      "reason": "No Azure credentials. make deploy is what-if only."
+    },
+    {
+      "metric": "docker_compose_qdrant",
+      "value": "UNVERIFIED",
+      "reason": "docker is not installed. Embedded QDRANT_PATH is the local path."
+    },
+    {
+      "metric": "neo4j_bolt",
+      "value": "UNVERIFIED",
+      "reason": "NEO4J_URI is empty and Docker is missing. eval --suite graph --small uses MemoryGraphStore."
+    }
+  ]
+}

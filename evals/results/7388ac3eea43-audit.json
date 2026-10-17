@@ -1,0 +1,29 @@
+{
+  "git_sha": "7388ac3eea430b6ce44e318c79aa9fd87ed71e99",
+  "recorded_at": "2026-10-17T07:20:00Z",
+  "command": "uv run capitalcite audit verify --path <fixture|tampered|truncated>",
+  "cases": [
+    {
+      "id": "intact-chain",
+      "records": 2,
+      "exit": 0,
+      "stdout": "audit ok records=2",
+      "passed": true
+    },
+    {
+      "id": "mutated-field",
+      "exit": 1,
+      "stderr": "audit fail seq=1 reason=hash mismatch at seq 1",
+      "passed": true
+    },
+    {
+      "id": "removed-last-record",
+      "exit": 1,
+      "stderr": "audit fail seq=1 reason=tip hash mismatch at seq 1; tip seq mismatch: expected 1, got 2",
+      "passed": true
+    }
+  ],
+  "passed": 3,
+  "failed": 0,
+  "pass_rate": 1.0
+}

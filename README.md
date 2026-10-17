@@ -1,98 +1,99 @@
 # capitalcite
 
-**An evaluated, auditable RAG + agent system that answers questions about U.S. bank filings with citations, and fails closed when it can't back up an answer.**
+An evaluated, auditable RAG and agent system that answers questions about U.S. bank filings with citations, and fails closed when it cannot back an answer.
 
-> Status: 🚧 work in progress. Every number in this README marked **TBD** gets filled in from a real eval run. Nothing here is a projected or made-up result.
+Banks cannot use an LLM that guesses. This repo is built around three rules.
 
-Banks can't use an LLM that guesses. `capitalcite` is built around three rules:
-1. **Every claim has a source.** Answers cite the filing, section, and page or chunk they came from.
-2. **Every change is measured.** Retrieval and answer quality are tracked with RAGAS/DeepEval against a golden set, and CI fails when quality drops.
-3. **Every action goes through a gate.** Agent tool calls go through a fail-closed policy gate and get written to an append-only audit log.
+1. **Every claim has a source.** Answers cite the filing, section, and span they came from.
+2. **Every change is measured.** Retrieval quality is span-overlap recall@k against a golden set. CI fails when a tracked rate drops.
+3. **Every action goes through a gate.** Agent and MCP tool calls hit a default-deny policy and an append-only audit log.
 
----
+Numbers in the tables below come from JSON under [`evals/results/`](evals/results/) written in this run. A cell this run could not produce is **UNVERIFIED** plus a reason, not a guessed value. See [`evals/results/7388ac3eea43-unverified.json`](evals/results/7388ac3eea43-unverified.json).
+
+## Demo
+
+Terminal recording of the fake-model path. Fixture corpus, local `bge-small`, embedded Qdrant, `ASK_MODEL=fake`. No API key. No Docker.
+
+The recording is [`docs/demo/quickstart.cast`](docs/demo/quickstart.cast). Replay it with `asciinema play docs/demo/quickstart.cast`. Re-record with [`docs/demo/record.sh`](docs/demo/record.sh), which runs [`docs/demo/quickstart.sh`](docs/demo/quickstart.sh).
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph Ingest
-        A[SEC EDGAR 10-K/10-Q<br/>FFIEC / FDIC / Fed PDFs] --> B[Parser<br/>PDF/HTML → text + tables]
-        B --> C[Chunkers<br/>fixed / recursive / section-aware]
-        C --> D[Embedders<br/>bge-small / minilm]
-        D --> E[(Qdrant<br/>dense + BM25)]
-    end
+flowchart TB
+  subgraph ingestPath [Ingest]
+    EDGAR[SEC EDGAR 10-K / 10-Q] --> ingestCmd[capitalcite ingest]
+    ingestCmd --> rawStore[(raw/edgar + metadata.json)]
+    rawStore --> chunkCmd[capitalcite chunk<br/>section or fixed]
+    chunkCmd --> chunkStore[(chunks.jsonl + document.md)]
+    chunkStore --> indexCmd[capitalcite index<br/>bge-small dense + BM25]
+    indexCmd --> qdrant[(Qdrant collection<br/>hybrid RRF)]
+  end
 
-    subgraph Serve["FastAPI (async)"]
-        Q[User question] --> P[Planner<br/>LangGraph / PydanticAI]
-        P --> G{Fail-closed<br/>tool gate}
-        G -->|allowed| R[Hybrid retriever<br/>BM25 + dense + RRF + rerank]
-        G -->|allowed| T[Tools: XBRL facts,<br/>FDIC BankFind, calculator]
-        G -->|denied| X[Refuse + log]
-        R --> S[Answer synthesizer<br/>Pydantic structured output + citations]
-        T --> S
-        G --> L[(Append-only<br/>audit log)]
-    end
+  subgraph servePath [FastAPI]
+    question[User question] --> searchEp[POST /search]
+    question --> askRag[POST /ask path=rag]
+    question --> askAgent[POST /ask path=agent<br/>LangGraph plan]
+    qdrant --> searchEp
+    qdrant --> askRag
+    askRag --> ground[ask / ground / guard]
+    askAgent --> gate{Gate.execute<br/>default deny}
+    gate -->|allow| tools[search_filings, xbrl_fact,<br/>fdic_bankfind, calculator, graph_query]
+    gate -->|deny| refuse[Refuse]
+    tools --> ground
+    gate --> audit[(hash-chained JSONL + .tip)]
+    ground --> response[Answered or Refused]
+  end
 
-    E --> R
-    S --> O[Langfuse traces]
-    S --> U[Response]
+  mcp[capitalcite mcp stdio] --> gate
+  mcp --> ground
+  ground --> traces[Langfuse SDK or CAPITALCITE_TRACE_FILE]
+  graphTool[optional Neo4j / MemoryGraphStore] --> tools
 
-    subgraph Eval["Eval & CI"]
-        GS[Golden Q&A set] --> EV[RAGAS / DeepEval]
-        EV --> BL[Baselines in repo]
-        BL --> CI[GitHub Actions<br/>regression gate]
-    end
+  subgraph evalPath [Eval and CI]
+    golden[evals/golden] --> evalCmd[capitalcite eval / check]
+    evalCmd --> results[evals/results + evals/baselines]
+    results --> gha[GitHub Actions PR pack + nightly]
+  end
+
+  iac[infra Bicep] --> aca[Azure Container Apps IaC<br/>no live apply in CI]
 ```
 
-## Features
-
-| Area | What it does | Status |
-|---|---|---|
-| Ingestion | Pulls bank 10-K/10-Q filings from EDGAR (with a declared User-Agent and rate limits) plus regulatory PDFs; parses text and tables | 🟡 EDGAR 10-K/10-Q (`capitalcite ingest`); HTML/PDF parse in #3 |
-| Chunking experiments | Compares fixed, recursive, and section-aware (10-K Item boundaries) chunking | 🟡 `capitalcite chunk --chunker fixed\|recursive\|section` |
-| Embedding comparison | Local FastEmbed `bge-small` (`BAAI/bge-small-en-v1.5`) and `minilm`, plus `openai-small` when `OPENAI_API_KEY` is set. The committed matrix uses `bge-small`. `minilm` is UNVERIFIED. | 🟡 `bge-small` measured; other models UNVERIFIED |
-| Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with reciprocal rank fusion. `capitalcite index` builds it. `POST /search` returns scores and citations. Cross-encoder rerank waits for a measured eval. | 🟡 `capitalcite index`, `POST /search` |
-| Structured answers | `POST /ask` returns an answer whose citations are copied from retrieved chunks, or a refusal. The model supplies a hit index and a quote. The server copies `doc_id`, `start`, `end`, `quote_start`, `quote_end`, `section`, and `source_url` only when that quote is a verbatim, non-trivial substring of the chunk and every answer figure appears in a cited quote. Weak retrieval or a named entity missing from the hits refuses before the model. `ASK_MODEL=fake` quotes the first hit and does not read `OPENAI_API_KEY`. | 🟡 `POST /ask` |
-| Agent | `POST /ask` with `path=agent` runs a LangGraph plan → tools → synthesizer loop. The synthesizer is still `ask()` / `ground()` / `guard`. The plan and tool trace are on the response. Step and token budgets refuse instead of guessing. | 🟡 `POST /ask` `path=agent` |
-| Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, `calculator`, and `graph_query`. Unknown names are denied. HTTP tools take an injected client so tests stay offline. `graph_query` returns `graph not configured` when `NEO4J_URI` is empty. | 🟡 agent tools |
-| Fail-closed gate | JSON allow-list per tool with argument schemas and per-request budgets. Unknown names, invalid args, and a policy-load failure are denies. `capitalcite gate decide` prints the decision. Denied calls do not run. | 🟡 `capitalcite gate` |
-| Audit log | Append-only, hash-chained JSONL of every gated tool call, plus a sibling head file so deleting the last line fails verify. The wrapper writes the gate decision before the tool runs and refuses with `audit unavailable` if that write fails. Records store the gate `decision` and `reason`. `trace_id` is `current_trace_id()` (UUID only when tracing is off). The chain is not keyed: anyone with write access can rebuild it. | 🟡 `capitalcite audit verify` |
-| Observability | Optional Langfuse traces for retrieval, LLM calls, tool calls, gate decisions, and latency/cost. No-op without keys. | 🟡 `observation()` + `CAPITALCITE_TRACE_FILE` |
-| Evals in CI | `capitalcite check` on every PR: quote-index sanity and fixture span-overlap vs `evals/baselines/ci.json` at zero item drop, fake-model cite/refuse contracts, gate red-team. Nightly ingests the twelve 10-Ks and gates section/bge-small/hybrid Recall@5 vs `evals/baselines/nightly.json` (one-item allowance). The Qdrant cache key is config hash plus accession ids; only a cold miss pays the embed. The published six-arm table is not the nightly gate. Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Baseline file edits need the `eval-baseline` label. | 🟡 `capitalcite check` |
-| Deploy | Azure Container Apps (Bicep, scale-to-zero API, internal Qdrant). Live Azure `/health` is UNVERIFIED until someone opts in. | 🟡 IaC + image recipe |
-| MCP server (optional) | `capitalcite mcp` speaks stdio. `search_filings` and `ask` go through the same gate, audit log, and `ground()` path as the agent. | 🟡 `capitalcite mcp` |
-| Entity graph (optional) | BHC → subsidiary → filing → metric. `capitalcite graph load` MERGE-loads a recorded NIC snapshot. `graph_query` is a typed agent tool. Blank `NEO4J_URI` leaves RAG unchanged. Tests use `MemoryGraphStore`. Live Bolt is UNVERIFIED without Docker. | 🟡 `capitalcite graph`, `eval --suite graph` |
+MCP `search_filings` and `ask` use the same gate, audit log, and `ground()` path as HTTP. `graph_query` is a tool. Blank `NEO4J_URI` leaves `retrieve()` unchanged. There is no reranker and no PydanticAI on this path. RAGAS is not wired.
 
 ## Evaluation
 
-Golden set: **112** questions (v1). Handwritten items over the twelve ingested 10-Ks carry `start`/`end` spans in parsed `document.md` so later recall@k can join `Chunk.start`/`Chunk.end`. FinanceBench and FinQA tails are answer-scoring only (excluded from recall@k). See `evals/golden/README.md` and [docs/decisions/0004-golden-set.md](docs/decisions/0004-golden-set.md).
+Golden set: **112** questions (v1). Handwritten items over the twelve ingested 10-Ks carry `start`/`end` spans in parsed `document.md`. FinanceBench and FinQA tails are answer-scoring only and stay out of recall@k. See [`evals/golden/README.md`](evals/golden/README.md) and [ADR 0004](docs/decisions/0004-golden-set.md).
 
 ### Retrieval (per configuration)
+
+Twelve 10-Ks, FastEmbed `bge-small`, span-overlap on 77 handwritten items. `--small` on the fixture HTML is a different condition and is not this table ([`7388ac3eea43-small.json`](evals/results/7388ac3eea43-small.json), all Recall@5 = 0.000 because those excerpts do not contain the gold spans).
 
 <!-- BEGIN RETRIEVAL EVAL -->
 
 | Chunking | Embedding | Retrieval | n | Recall@5 | MRR@5 | nDCG@5 | Recall@10 | MRR@10 | nDCG@10 |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|
-| section | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | 0.078 | 0.043 | 0.047 | 0.156 | 0.053 | 0.070 |
-| section | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.182 | 0.089 | 0.103 | 0.286 | 0.101 | 0.133 |
-| section | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.169 | 0.096 | 0.098 | 0.299 | 0.114 | 0.140 |
-| fixed | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | 0.169 | 0.118 | 0.103 | 0.208 | 0.124 | 0.118 |
-| fixed | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | 0.130 | 0.071 | 0.080 | 0.195 | 0.079 | 0.097 |
-| fixed | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | 0.195 | 0.114 | 0.114 | 0.234 | 0.120 | 0.127 |
-| section | — | hybrid + rerank | — | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| section | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| section | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| section | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | dense | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | bm25 | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| fixed | fastembed:BAAI/bge-small-en-v1.5 | hybrid | 77 | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
+| section | - | hybrid + rerank | - | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED | UNVERIFIED |
 
-Generated from `evals/results/8b63d12acd50.json` (sha `8b63d12acd50`, embedder `fastembed:BAAI/bge-small-en-v1.5`, sparse `fastembed:Qdrant/bm25:k1=1.2:b=0.75:avgdl=256.0`, fastembed `0.8.1`, qdrant-client `1.19.1`). Noise floor: n=77, one item is 0.013 recall. RAGAS context precision/recall is UNVERIFIED (no LLM key). minilm is UNVERIFIED (a second full embed is not cheap on this corpus).
+Twelve-filing `capitalcite eval --suite golden --embedder bge-small` was still embedding in this run when the page was drafted. This block is replaced by `make eval-report` once [`evals/results/7388ac3eea43.json`](evals/results/7388ac3eea43.json) exists. Until then the cells are UNVERIFIED, not copies of `8b63d12acd50.json`. minilm is UNVERIFIED (a second full embed was not run). RAGAS context precision/recall is UNVERIFIED (no LLM key).
 
 <!-- END RETRIEVAL EVAL -->
+
+Source for the six-arm table, once written: [`evals/results/7388ac3eea43.json`](evals/results/7388ac3eea43.json).
 
 ### Answer quality
 
 | System | Faithfulness | Answer relevancy | Numeric exact-match | Citation accuracy | Correct refusals |
 |---|---|---|---|---|---|
-| Plain RAG | TBD | TBD | TBD | TBD | TBD |
-| Agent (plan-then-act) | TBD | TBD | TBD | TBD | TBD |
+| Plain RAG | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) |
+| Agent (plan-then-act) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) | [UNVERIFIED](evals/results/7388ac3eea43-unverified.json) |
 
-Faithfulness, relevancy, numeric exact-match, and citation accuracy stay UNVERIFIED until a live LLM eval writes them.
+`OPENAI_API_KEY` was empty. RAGAS and DeepEval did not run. `capitalcite check --live` skipped. The fake-model contract in [`7388ac3eea43-check.json`](evals/results/7388ac3eea43-check.json) answered `cc-ci-002` and refused `cc-u-001`. That is a cite/refuse contract, not a faithfulness rate.
 
 ### Agent vs RAG (retrieval)
 
@@ -102,10 +103,10 @@ Comparison and multi-hop handwritten items. The agent row is the fake planner th
 
 | System | n | Recall@5 | Recall@10 | Planner |
 |---|---:|---:|---:|---|
-| Plain RAG (section/hybrid) | 15 | 0.267 | 0.333 | — |
-| Agent | 15 | 0.400 | 0.600 | fake/heuristic planner |
+| Plain RAG (section/hybrid) | - | UNVERIFIED | UNVERIFIED | - |
+| Agent | — | UNVERIFIED | UNVERIFIED | fake/heuristic planner |
 
-Comparison and multi-hop handwritten items only. Answer quality stays UNVERIFIED.
+Filled from the twelve-filing eval JSON when that run finishes. `--small` agent-vs-RAG on the fixture HTML was 0.000 / 0.000 and is not this table.
 
 <!-- END AGENT RAG EVAL -->
 
@@ -120,135 +121,182 @@ Questions that need a BHC → subsidiary or RSSD join. Not in the 77-item filing
 | Fixture-corpus substring | 6 | 0.000 |
 | graph_query (memory snapshot) | 6 | 1.000 |
 
-Delta (graph minus fixture substring) = 1.000. Generated from `evals/results/e610e5d62ef3-graph.json`. Fixture-corpus substring is 1 only when every expected token is in the --small HTML. Those files do not contain the RSSDs. These items need entity traversal. They are not in the 77-item filing-span matrix.
+Delta (graph minus fixture substring) = 1.000. Generated from [`evals/results/7388ac3eea43-graph.json`](evals/results/7388ac3eea43-graph.json). Fixture-corpus substring is 1 only when every expected token is in the --small HTML. Those files do not contain the RSSDs. These items need entity traversal. They are not in the 77-item filing-span matrix.
 
 <!-- END GRAPH EVAL -->
 
-### Gate & safety
+### Gate and safety
 
 | Test suite | Cases | Pass rate |
 |---|---|---|
-| Disallowed tool / arg injection attempts | 3 | 1.00 |
-| Prompt injection inside retrieved docs | 2 | 1.00 |
-| Audit log integrity (hash chain verify) | TBD | TBD |
-| CI contract pack (`capitalcite check`) | 2 cite/refuse + 5 red-team | 1.00 |
+| Disallowed tool / arg injection attempts | [3](evals/results/7388ac3eea43-gate.json) | [1.00](evals/results/7388ac3eea43-gate.json) |
+| Prompt injection inside retrieved docs | [2](evals/results/7388ac3eea43-gate.json) | [1.00](evals/results/7388ac3eea43-gate.json) |
+| Audit log integrity (hash chain verify) | [3](evals/results/7388ac3eea43-audit.json) | [1.00](evals/results/7388ac3eea43-audit.json) |
+| CI contract pack (`capitalcite check`) | [2 cite/refuse + 5 red-team](evals/results/7388ac3eea43-check.json) | [1.00](evals/results/7388ac3eea43-check.json) |
 
-`capitalcite check` also gates quote-index sanity and fixture span-overlap against `evals/baselines/ci.json`. The PR pack is FakeEmbedder-deterministic, so the item budget is zero. Nightly live-corpus section/hybrid Recall@5 vs `evals/baselines/nightly.json` allows one item of rank-boundary noise. Drops are counted in items, not as a 1% relative change. Live OpenAI stays UNVERIFIED without `OPENAI_API_KEY`. EDGAR ingest exit 2 is the only nightly skip.
+`capitalcite check` also gates quote-index sanity (36/77) and fixture span-overlap (3/3) against [`evals/baselines/ci.json`](evals/baselines/ci.json) at zero item drop. Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Nightly live-corpus section/hybrid Recall@5 vs [`evals/baselines/nightly.json`](evals/baselines/nightly.json) allows one item of rank-boundary noise. Baseline file edits need the `eval-baseline` label.
 
-### Latency & cost
+### Latency and cost
 
 | Path | p50 latency | p95 latency | Cost / query |
 |---|---|---|---|
-| RAG | TBD | TBD | TBD |
-| Agent | TBD | TBD | TBD |
-| Gate `decide()` | 0.005 ms | 0.006 ms | 0 |
+| RAG (`ASK_MODEL=fake`) | UNVERIFIED | UNVERIFIED | [0](evals/results/7388ac3eea43-unverified.json) |
+| Agent (`ASK_MODEL=fake`) | UNVERIFIED | UNVERIFIED | [0](evals/results/7388ac3eea43-unverified.json) |
+| Gate `decide()` | [0.018 ms](evals/results/7388ac3eea43-gate.json) | [0.020 ms](evals/results/7388ac3eea43-gate.json) | [0](evals/results/7388ac3eea43-gate.json) |
 
-> Methodology, model versions, and the commit SHA for each run are logged in `evals/results/<sha12>.json`. Tables are regenerated by `make eval-report`.
+Gate numbers are `capitalcite gate bench --n 2000` on this VM (4 cores). RAG and agent p50/p95 stay UNVERIFIED until the fake-model HTTP path is timed in this run and written to `evals/results/7388ac3eea43-latency.json`. Live OpenAI latency and cost stay UNVERIFIED.
 
-## Quickstart
+`make eval-report` rewrites the retrieval and agent-vs-RAG blocks from `evals/results/*.json`.
+
+## Tradeoffs and what I'd do next
+
+This section is the interview argument. The ADRs hold the longer form.
+
+### Chunking: section vs fixed
+
+A 10-K is a book with labeled chapters. Item 7 is MD&A. Item 8 is the financials. A CET1 question is almost always answered inside one Item, often next to a table.
+
+A fixed window of 512 tokens with 64 tokens of overlap is easy to reproduce. It is also blind. It will cut a markdown table in half. It will start in Item 7 and end in Item 8. The overlap saves a sentence on the cut. It does not restore the Item boundary.
+
+Section-aware splitting cuts on Item headings first. An Item that fits the budget stays one chunk. An Item that does not is split with the recursive splitter, and every piece keeps that Item name. Tables are atomic. A table that overflows is split on row boundaries with the header repeated so each piece is still valid markdown.
+
+Both chunkers are scored on the same 77 spanned items. The label is span overlap on `document.md`, not the section string. n=77 means one item is 0.013 recall. A 0.02 gap is noise. Read the six-arm table above, not a ranking of two strategies on a gap that small.
+
+Recursive splitting exists in the CLI. It is not a third default arm. That would be another re-chunk and another embed of 12k-plus points.
+
+**Next.** Measure late chunking (embed bigger windows, split only the hits you show the model) against this section/fixed matrix. Keep tables atomic. Do not add a chunker that is not an eval arm.
+
+### Hybrid search: BM25, dense, RRF, no reranker
+
+Dense search places a chunk near paraphrases. It misses a rare token the question names exactly when the HNSW walk never visits that point. BM25 does the opposite. It scores term frequency, rarity, and length. It will not find a paraphrase that shares no tokens.
+
+Those scores are not in the same unit. A weighted sum needs a weight we have not measured. Reciprocal rank fusion ignores the raw scores and adds `1 / (k + rank)` per list. `RRF_K` defaults to 60, the Cormack constant. Qdrant's rank index starts at 0, so a first-place hit on one leg scores `1/k`. We pass Qdrant's `k`, not `k+1`.
+
+A cross-encoder could repair a fusion miss. It also downloads another model and adds latency on every search. This repo has not measured that gain. `retrieve()` returns Qdrant's order truncated to `k`. The hybrid+rerank row stays UNVERIFIED until an eval writes it. A setting with one legal value would be a second way to say the same thing.
+
+The first BM25 matrix in this project was hashed term counts plus IDF (TF-IDF). Section BM25 Recall@5 was 0. Production now uses FastEmbed `Qdrant/bm25` (`k1=1.2`, `b=0.75`, `avgdl=256`). `sparse_id` sits inside `IndexConfig` so a hashed-count collection cannot be reused as BM25.
+
+**Next.** One rerank arm on the same 77 items, with p95 latency next to Recall@5. If the lift is inside the 0.013 noise floor, leave rerank off.
+
+### Gate: default-deny, extra keys, audit hash chain
+
+The planner is untrusted. `ToolCall.name` is a string. The policy file is the allow-list, not `TOOL_NAMES` in Python. Default is deny. An unknown name, extra keys on a known tool, a broken policy file, or a failed audit write never calls the runner.
+
+Extra keys matter for MCP. The stock MCP SDK drops unknown fields before the handler runs. That would turn `{"query":"x","cmd":"ls"}` into an allow. This server overrides `call_tool` so the raw object reaches `Gate.decide`. `invalid_args` is the deny.
+
+The audit log is a hash-chained JSONL plus a sibling `.tip`. Each record stores `prev_hash`. Genesis is 64 zero hex characters. A mutated field fails the hash. A deleted last line fails the tip. The wrapper writes the gate decision before the tool runs. A failed write is `audit unavailable`, not a silent skip. The chain is not HMAC-keyed. Anyone with write access can rebuild it. That is a stated limit, not an accident.
+
+This run: 5/5 red-team cases passed ([`7388ac3eea43-gate.json`](evals/results/7388ac3eea43-gate.json)). Intact / tamper / truncated-last verify was 3/3 ([`7388ac3eea43-audit.json`](evals/results/7388ac3eea43-audit.json)). `decide()` p95 was 0.020 ms on 2000 samples.
+
+**Next.** Key the chain (HMAC) or put the log in a store the API identity cannot truncate. Measure that against the current JSONL, which needs no Docker.
+
+### Agent vs RAG, and graph as a tool
+
+`path=rag` is one retrieve then `ask()` / `ground()` / `guard`. `path=agent` is LangGraph plan → gated tools → the same synthesizer. The agent does not get a second way to emit an answer. A hallucinated figure after four successful searches is still a refusal.
+
+On comparison and multi-hop items the fake planner searches each named ticker and year. That is more retrieves, not a smarter generator. The agent-vs-RAG table above is retrieval only. Answer quality stays UNVERIFIED without a live LLM.
+
+Hybrid search ranks passages that are close in wording or embedding space. It loses on identity joins: parent to subsidiary, ticker to RSSD. Reciprocal rank fusion cannot walk `PARENT_OF`. `graph_query` is a fifth tool with a typed `kind` enum, not Cypher from the model. Blank `NEO4J_URI` returns `graph not configured` and leaves the 77-item baseline alone. This run's graph suite is 1.000 exact on the memory snapshot vs 0.000 substring hit on the fixture HTML ([`7388ac3eea43-graph.json`](evals/results/7388ac3eea43-graph.json)).
+
+**Next.** A live planner vs the fake planner on those 15 items, with the same `ground()` checks. Do not fuse graph neighbors into every `retrieve()`.
+
+## Local quickstart (fake model)
+
+This path does not call OpenAI and does not need Docker. It chunks the checked-in fixture 10-K excerpts, indexes them with local FastEmbed `bge-small` into embedded Qdrant, and answers with `ASK_MODEL=fake`. Time from a fresh clone to `GET /health` plus search / ask / agent / gate deny must stay under 15 minutes.
 
 ```bash
 git clone https://github.com/naveed949/capitalcite && cd capitalcite
-cp .env.example .env          # set SEC_USER_AGENT="Your Name you@example.com"
-docker compose up -d          # Qdrant :6333, Langfuse :3000
-uv sync                       # Python 3.12
-uv run uvicorn capitalcite.api:app --reload
-curl -s localhost:8000/health
+# uv: curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync --frozen
+cp .env.example .env
 ```
 
-`GET /health` is served now. Ingest writes raw 10-K/10-Q primary documents under
-`data/raw/edgar/` (gitignored) with sidecar metadata. `capitalcite chunk` parses
-those files and writes cited chunks under `data/parsed/edgar/`. `capitalcite index`
-embeds `chunks.jsonl` into Qdrant. `POST /search` returns ranked citations.
-`POST /ask` returns a grounded answer or a refusal. `capitalcite eval` scores retrieval.
-
-`EMBEDDER` selects the dense model. `bge-small` is the default and runs locally
-with FastEmbed. `minilm` is the other local model. `openai-small` calls OpenAI
-and reads `OPENAI_API_KEY`. `ASK_MODEL` selects the chat model for `POST /ask`.
-`openai` is the default and reads the same key. `fake` quotes a retrieved chunk
-and does not read the key. `ASK_OPENAI_MODEL` defaults to `gpt-4o-mini`.
-Leave `OPENAI_API_KEY` empty for the local embedders and for `ASK_MODEL=fake`.
-
-Without Docker, set `QDRANT_PATH` to a directory (or `QDRANT_URL=:memory:` in
-one process). Index and `POST /search` must share that path. Compose Qdrant
-is `qdrant/qdrant:v1.16.2` or newer; parameterized RRF needs server 1.16.
+In `.env`, set all of the following. Leave `OPENAI_API_KEY` empty.
 
 ```bash
-uv run capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025
-uv run capitalcite chunk --chunker section
-uv run capitalcite index --chunker section --embedder bge-small
+SEC_USER_AGENT="Your Name you@example.com"
+ASK_MODEL=fake
+QDRANT_PATH=data/qdrant
+LANGFUSE_TRACING_ENABLED=false
+```
+
+`QDRANT_PATH` wins over `QDRANT_URL`. Do not use `QDRANT_URL=:memory:` here. The CLI and uvicorn cannot share that store.
+
+```bash
+uv run capitalcite chunk --input-dir tests/fixtures/chunking/corpus --output-dir data --chunker section
+uv run capitalcite index --input-dir data --chunker section --embedder bge-small
+uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal:
+
+```bash
+curl -s localhost:8000/health
 curl -s localhost:8000/search -H 'content-type: application/json' \
-  -d '{"query":"What was JPMorgan CET1 ratio at year-end 2023?","mode":"hybrid","k":8,"ticker":"JPM","form":"10-K","period":"2023"}'
+  -d '{"query":"What CET1 ratio did JPMorgan disclose?","mode":"hybrid","k":3,"ticker":"JPM"}'
 curl -s localhost:8000/ask -H 'content-type: application/json' \
-  -d '{"question":"What was JPMorgan CET1 ratio at year-end 2023?","ticker":"JPM","form":"10-K","period":"2023","model":"fake"}'
+  -d '{"question":"What CET1 ratio did JPMorgan disclose?","ticker":"JPM","model":"fake"}'
 curl -s localhost:8000/ask -H 'content-type: application/json' \
-  -d '{"question":"Which bank had the higher Standardized CET1 at year-end 2024, JPMorgan or Bank of America?","path":"agent","model":"fake"}'
-uv run capitalcite eval --suite golden   # writes evals/results/<sha12>.json
-uv run capitalcite eval --suite golden --small   # FakeEmbedder, fixture corpus, no download
-uv run capitalcite check                 # PR regression pack vs evals/baselines/ci.json
-uv run capitalcite graph load --backend memory
-uv run capitalcite graph query --kind subsidiaries --ticker JPM
-uv run capitalcite eval --suite graph --small
+  -d '{"question":"What CET1 ratio did JPMorgan disclose for 2024?","path":"agent","model":"fake"}'
 uv run capitalcite gate decide --tool shell --args '{"cmd":"ls"}'
-uv run capitalcite audit verify --path data/audit.jsonl
-uv run capitalcite mcp
 ```
 
-Ingest design: [docs/decisions/0002-edgar-ingester.md](docs/decisions/0002-edgar-ingester.md).
-Parse and chunk design: [docs/decisions/0003-parse-and-chunk.md](docs/decisions/0003-parse-and-chunk.md).
-Golden set: [docs/decisions/0004-golden-set.md](docs/decisions/0004-golden-set.md).
-Hybrid retrieval: [docs/decisions/0005-hybrid-retrieval.md](docs/decisions/0005-hybrid-retrieval.md).
-Structured answers: [docs/decisions/0007-structured-ask.md](docs/decisions/0007-structured-ask.md).
-Fail-closed tool gate: [docs/decisions/0009-fail-closed-tool-gate.md](docs/decisions/0009-fail-closed-tool-gate.md).
-Plan-then-act agent: [docs/decisions/0008-plan-then-act-agent.md](docs/decisions/0008-plan-then-act-agent.md).
-Langfuse tracing: [docs/decisions/0010-langfuse-tracing.md](docs/decisions/0010-langfuse-tracing.md).
-Audit log: [docs/decisions/0011-append-only-audit-log.md](docs/decisions/0011-append-only-audit-log.md).
-MCP server: [docs/decisions/0015-mcp-server.md](docs/decisions/0015-mcp-server.md).
-Azure Container Apps: [docs/decisions/0012-azure-container-apps.md](docs/decisions/0012-azure-container-apps.md).
-Regression CI: [docs/decisions/0013-eval-regression-ci.md](docs/decisions/0013-eval-regression-ci.md).
-Optional entity graph: [docs/decisions/0014-optional-entity-graph.md](docs/decisions/0014-optional-entity-graph.md).
+The first `index` downloads FastEmbed `bge-small` (about 67 MB) and the BM25 vocab. Later runs reuse the cache. The same commands live in [`docs/demo/quickstart.sh`](docs/demo/quickstart.sh).
 
-### Observability
+`GET /health` does not talk to Qdrant. Search and ask need the index and the same `QDRANT_PATH` as uvicorn.
 
-`POST /ask` and `capitalcite eval` emit a span tree when tracing is on.
-Missing Langfuse keys, or `LANGFUSE_TRACING_ENABLED=false`, is a no-op.
-The request still returns. Tests use an in-memory exporter. `verify.sh`
-writes the same tree to `spans.jsonl` via `CAPITALCITE_TRACE_FILE`.
+## Optional paths
 
-A live Langfuse UI screenshot needs compose on `:3000` or Langfuse Cloud.
-That path is UNVERIFIED on a VM without Docker. The tree below is from
-the in-memory exporter on `POST /ask` with `model` `fake`, not a Langfuse
-UI capture.
+**Live EDGAR corpus.** `uv run capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025` then `chunk` / `index` without `--input-dir tests/fixtures/...`. Exit 2 is UNVERIFIED (EDGAR 403/429/5xx), not a pass.
 
-```mermaid
-flowchart TD
-  ask["ask (chain)"] --> retrieve["retrieve (retriever)"]
-  ask --> generate["generate (generation)"]
-  ask --> agent["agent"]
-  agent --> gate["gate (guardrail)"]
-  agent --> tool["tool"]
-  retrieve --> hits["hit_count, scores, doc_id, ticker, section"]
-  generate --> usage["model, tokens when the provider sent usage, cost only then"]
-  gate --> decision["tool, allow or deny, reason"]
-```
+**Compose Qdrant and Langfuse.** `docker compose up -d` then leave `QDRANT_PATH` empty so the client dials `http://localhost:6333`. Compose Qdrant must be 1.16 or newer for parameterized RRF. This VM had no Docker, so that path is UNVERIFIED.
 
-Do not send chunk text, chat messages, or secrets. Attribute keys are an
-allowlist. Question text is masked and truncated. Sampling is
-`LANGFUSE_SAMPLE_RATE` on the root. A dropped root drops every child.
+**Live OpenAI.** Set `OPENAI_API_KEY` and `ASK_MODEL=openai`. Without a key, `model` `openai` returns HTTP 503.
 
-Low-RAM option: `docker compose up -d qdrant` and point `LANGFUSE_HOST` at Langfuse Cloud.
+**Graph.** `uv run capitalcite graph load --backend memory` then `uv run capitalcite graph query --kind subsidiaries --ticker JPM`. Live Bolt needs `NEO4J_URI` and `docker compose --profile graph`. UNVERIFIED here.
 
-Azure is opt-in. `make infra-validate` compiles bootstrap and main Bicep.
-`make bootstrap` is a one-shot Owner apply (identities, federated
-credentials, every role assignment). `make deploy` and the Deploy Azure
-workflow skip with UNVERIFIED when `az` or OIDC secrets are missing, and
-the workflow never writes RBAC. Cost, roles, and secrets:
-[infra/README.md](infra/README.md). Design:
-[docs/decisions/0012-azure-container-apps.md](docs/decisions/0012-azure-container-apps.md).
+**MCP.** `uv run capitalcite mcp` speaks JSON-RPC on stdio. stdout is the wire. Logs go to stderr.
 
-Design choices for this scaffold: [docs/decisions/0001-scaffold.md](docs/decisions/0001-scaffold.md).
+**Eval and CI.** `uv run capitalcite eval --suite golden --small` (FakeEmbedder, no download). `uv run capitalcite check` vs [`evals/baselines/ci.json`](evals/baselines/ci.json). Full twelve-filing matrix: `QDRANT_PATH=... uv run capitalcite eval --suite golden --embedder bge-small`.
+
+**Azure.** `make infra-validate` compiles Bicep. `make deploy` is UNVERIFIED without `az` login. Design: [ADR 0012](docs/decisions/0012-azure-container-apps.md). Cost and roles: [`infra/README.md`](infra/README.md).
+
+Ingest design: [ADR 0002](docs/decisions/0002-edgar-ingester.md).
+Parse and chunk: [ADR 0003](docs/decisions/0003-parse-and-chunk.md).
+Golden set: [ADR 0004](docs/decisions/0004-golden-set.md).
+Hybrid retrieval: [ADR 0005](docs/decisions/0005-hybrid-retrieval.md).
+Retrieval eval: [ADR 0006](docs/decisions/0006-retrieval-eval.md).
+Structured answers: [ADR 0007](docs/decisions/0007-structured-ask.md).
+Plan-then-act agent: [ADR 0008](docs/decisions/0008-plan-then-act-agent.md).
+Fail-closed tool gate: [ADR 0009](docs/decisions/0009-fail-closed-tool-gate.md).
+Langfuse tracing: [ADR 0010](docs/decisions/0010-langfuse-tracing.md).
+Audit log: [ADR 0011](docs/decisions/0011-append-only-audit-log.md).
+Azure Container Apps: [ADR 0012](docs/decisions/0012-azure-container-apps.md).
+Regression CI: [ADR 0013](docs/decisions/0013-eval-regression-ci.md).
+Optional entity graph: [ADR 0014](docs/decisions/0014-optional-entity-graph.md).
+MCP server: [ADR 0015](docs/decisions/0015-mcp-server.md).
+This README: [ADR 0016](docs/decisions/0016-readme-demo.md).
 
 The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
+
+## Features
+
+| Area | What it does | Status |
+|---|---|---|
+| Ingestion | Pulls bank 10-K/10-Q filings from EDGAR with a declared User-Agent and rate limits | `capitalcite ingest` |
+| Chunking | Fixed, recursive, or section-aware (10-K Item boundaries) | `capitalcite chunk --chunker fixed\|recursive\|section` |
+| Embedding | Local FastEmbed `bge-small` (default) and `minilm`, plus `openai-small` when `OPENAI_API_KEY` is set | `bge-small` measured; minilm UNVERIFIED |
+| Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with RRF. `POST /search` returns scores and citations | `capitalcite index`, `POST /search` |
+| Structured answers | `POST /ask` returns a citation copied from a retrieved chunk, or a refusal. `ASK_MODEL=fake` does not read `OPENAI_API_KEY` | `POST /ask` |
+| Agent | `POST /ask` `path=agent` runs LangGraph plan → tools → the same `ask()` / `ground()` / `guard` | `POST /ask` `path=agent` |
+| Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, `calculator`, `graph_query`. Unknown names are denied | agent tools |
+| Fail-closed gate | JSON allow-list. Unknown names, extra keys, and a policy-load failure are denies | `capitalcite gate` |
+| Audit log | Append-only hash-chained JSONL plus a sibling tip. Write before the tool runs | `capitalcite audit verify` |
+| Observability | Optional Langfuse trees. File exporter via `CAPITALCITE_TRACE_FILE`. No-op without keys | `observation()` |
+| Evals in CI | `capitalcite check` on every PR. Nightly twelve-filing section/hybrid vs `evals/baselines/nightly.json` | `capitalcite check` |
+| Deploy | Azure Container Apps Bicep. Live `/health` is UNVERIFIED until someone opts in | IaC + image recipe |
+| MCP server | `capitalcite mcp` stdio. `search_filings` and `ask` go through the same gate | `capitalcite mcp` |
+| Entity graph | BHC → subsidiary → filing → metric. Memory store in tests. Live Bolt UNVERIFIED without Docker | `capitalcite graph` |
 
 ## Data sources
 
@@ -262,7 +310,7 @@ Everything below is public. Each link was checked on 2026-10-16.
 | [FDIC BankFind Suite API](https://banks.data.fdic.gov/docs/) | Institutions, financials, failures, branches, Summary of Deposits | JSON/CSV REST, OpenAPI spec, no key required now | Agent tool for structured bank facts |
 | [FFIEC CDR bulk data](https://cdr.ffiec.gov/public/PWS/DownloadBulkData.aspx) | Call Reports and UBPR for all commercial banks | Tab-delimited or XBRL, quarterly | Structured financials, cross-checks |
 | [FFIEC NIC](https://www.ffiec.gov/npw/) | Bank holding company structure and identifiers (RSSD, LEI, FDIC cert) | Web search and data downloads | Entity resolution and the Neo4j graph |
-| [FR Y-9C form & instructions](https://www.federalreserve.gov/apps/reportingforms/Report/Index/FR_Y-9C) | BHC consolidated report forms and long instructions PDFs | PDF | Long regulatory text for chunking experiments |
+| [FR Y-9C form and instructions](https://www.federalreserve.gov/apps/reportingforms/Report/Index/FR_Y-9C) | BHC consolidated report forms and long instructions PDFs | PDF | Long regulatory text for chunking experiments |
 | [Fed stress test archive](https://www.federalreserve.gov/supervisionreg/dfast-archive.htm) | DFAST results 2013–2026 | PDF/HTML | Cross-bank comparison questions |
 | [Basel Framework (BIS)](https://www.bis.org/basel_framework/) | Consolidated Basel standards (CAP, RBC, LCR, DIS…) | HTML | Definitions corpus (what CET1/LCR mean) |
 | [BofA Pillar 3](https://investor.bankofamerica.com/regulatory-and-other-filings/basel-pillar-3-disclosures) | Example U.S. G-SIB Pillar 3 capital and liquidity disclosures | PDF | Regulatory-disclosure documents |
@@ -281,29 +329,19 @@ src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, ret
 tests/               pytest (recorded fixtures; no live network)
 docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records
-evals/               golden set and results (issues #5 / #6)
+docs/demo/           fake-model terminal recording and the script that produced it
+evals/               golden set, baselines, and results
 data/                raw and parsed filings (gitignored contents)
 docker-compose.yml   Qdrant + self-hosted Langfuse + optional Neo4j (`--profile graph`)
 Dockerfile           multi-stage API image (`ASK_MODEL=fake` by default)
 infra/               bootstrap.bicep (identities + RBAC) and main.bicep (apps)
 ```
 
-Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR. A second
-workflow compiles Bicep, builds the image, and runs gitleaks. It does not log
-in to Azure.
-
-## Roadmap
-
-- [ ] **M1: RAG + evals foundation** (week 1): ingestion, chunking/embedding experiments, hybrid search, golden set, baseline eval tables
-- [ ] **M2: Agent, gate, observability** (week 2): plan-then-act agent, structured outputs, fail-closed gate + audit log, Langfuse, eval regression CI
-- [ ] **M3: Ship** (week 3): Azure Container Apps IaC (live apply UNVERIFIED), filled-in README eval tables, optional MCP server and Neo4j graph
-- [ ] Later: multi-tenant document isolation, PII redaction, human-in-the-loop approvals for high-risk tools
-
-See [MILESTONES.md](MILESTONES.md) for the full issue breakdown.
+Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR, plus `capitalcite check` and `eval --small`. A second workflow compiles Bicep, builds the image, and runs gitleaks. It does not log in to Azure.
 
 ## Why I built this
 
-I've spent 8 years shipping production systems that move money: wallets, bridges, and transaction monitoring. More recently I've been building agent infrastructure with fail-closed tool gates and sandboxes. This project brings both together: an AI system for banking documents where every answer is measured, cited, and auditable.
+I have spent 8 years shipping production systems that move money: wallets, bridges, and transaction monitoring. More recently I have been building agent infrastructure with fail-closed tool gates and sandboxes. This project brings both together. An AI system for banking documents where every answer is measured, cited, and auditable.
 
 ## License
 
