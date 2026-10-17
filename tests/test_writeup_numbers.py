@@ -47,7 +47,7 @@ def _write_tree(
     git_sha: str = "abcabcabcabcdeadbeef",
 ) -> None:
     (tree / "docs").mkdir()
-    (tree / "evals" / "results").mkdir(parents=True)
+    (tree / "evals" / "results").mkdir(parents=True, exist_ok=True)
     (tree / "README.md").write_text(readme, encoding="utf-8")
     (tree / "docs" / "writeup.md").write_text(writeup, encoding="utf-8")
     (tree / "docs" / "resume-bullets.md").write_text(resume, encoding="utf-8")
@@ -152,7 +152,7 @@ def test_structural_nonclaims_do_not_fail(tmp_path: Path) -> None:
         tmp_path,
         readme="Recall@5 is 0.169. See ADR 0016.\n",
         writeup=(
-            "Issue #17. ADR 0017. Date 2026-10-17. "
+            "Issue #17. ADR 0017. Date 2026-10-17. Year-end 2024. "
             "Run 7388ac3eea43. Line L199. Path evals/results/run.json. 0.169.\n"
         ),
         resume="- 0.169 at L79.\n",
@@ -219,9 +219,7 @@ def test_missing_linked_json_fails(tmp_path: Path) -> None:
 def test_ci_workflow_runs_the_check() -> None:
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "scripts/check_writeup_numbers.py" in text
-    nightly = (ROOT / ".github" / "workflows" / "eval-nightly.yml").read_text(
-        encoding="utf-8"
-    )
+    nightly = (ROOT / ".github" / "workflows" / "eval-nightly.yml").read_text(encoding="utf-8")
     assert "check_writeup_numbers.py" not in nightly
 
 

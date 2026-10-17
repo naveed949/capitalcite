@@ -43,9 +43,9 @@ MD_LINK = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 FENCE = re.compile(r"```.*?```", re.DOTALL)
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 AUTOLINK = re.compile(r"https?://[^\s)>]+")
-ISO_DATE = re.compile(
-    r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?\b"
-)
+ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?)?\b")
+YEAR_RANGE = re.compile(r"\b(?:19|20)\d{2}-(?:19|20)\d{2}\b")
+YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
 ADR_ID = re.compile(r"\bADR[ \t]*\d+\b", re.IGNORECASE)
 ISSUE_ID = re.compile(r"#\d+")
 LONG_HEX = re.compile(r"\b[0-9a-f]*[a-f][0-9a-f]{11,}\b", re.IGNORECASE)
@@ -117,6 +117,8 @@ def mask(text: str) -> str:
             out = _blank(out, match.start(1), match.end(1))
     out = _blank_matches(out, AUTOLINK)
     out = _blank_matches(out, ISO_DATE)
+    out = _blank_matches(out, YEAR_RANGE)
+    out = _blank_matches(out, YEAR)
     out = _blank_matches(out, ADR_ID)
     out = _blank_matches(out, ISSUE_ID)
     out = _blank_matches(out, LONG_HEX)
@@ -225,9 +227,7 @@ def _stem_hex(path: Path) -> str | None:
     return match.group(0).lower()
 
 
-def build_ledger(
-    root: Path, writeup: str, readme: str
-) -> tuple[Ledger, tuple[Failure, ...]]:
+def build_ledger(root: Path, writeup: str, readme: str) -> tuple[Ledger, tuple[Failure, ...]]:
     readme_set = readme_lexemes(readme)
     paths = linked_results(writeup) & linked_results(readme)
     projected: set[str] = set()
@@ -237,25 +237,24 @@ def build_ledger(
             continue
         full = root / rel
         if not full.is_file():
-            failures.append(
-                Failure(Span(rel, 0, 0), f"linked {rel} is missing")
-            )
+            failures.append(Failure(Span(rel, 0, 0), f"linked {rel} is missing"))
             continue
         raw = full.read_text(encoding="utf-8")
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError:
-            failures.append(
-                Failure(Span(rel, 0, 0), f"linked {rel} is not JSON")
-            )
+            failures.append(Failure(Span(rel, 0, 0), f"linked {rel} is not JSON"))
             continue
         if not isinstance(payload, dict):
             continue
         expected = _stem_hex(Path(rel))
         git_sha = payload.get("git_sha")
-        if expected is not None and isinstance(git_sha, str):
-            if not git_sha.lower().startswith(expected):
-                continue
+        if (
+            expected is not None
+            and isinstance(git_sha, str)
+            and not git_sha.lower().startswith(expected)
+        ):
+            continue
         projected.update(project_file(payload, readme_set))
     return Ledger(readme=readme_set, projected=frozenset(projected)), tuple(failures)
 
