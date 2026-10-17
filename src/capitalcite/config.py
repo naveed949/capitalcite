@@ -67,10 +67,10 @@ class Settings(BaseSettings):
         ),
     )
     ask_model: Literal["openai", "fake"] = Field(
-        default="openai",
+        default="fake",
         description=(
             "Chat model for POST /ask. fake quotes a retrieved chunk and does not read "
-            "OPENAI_API_KEY."
+            "OPENAI_API_KEY. openai requires OPENAI_API_KEY and is never rewritten to fake."
         ),
     )
     ask_openai_model: str = Field(

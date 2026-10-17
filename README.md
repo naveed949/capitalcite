@@ -153,10 +153,12 @@ RAG and agent are 10 timed `POST /ask` calls after one warmup on the 12-point fi
 Rewrite the retrieval and agent-vs-RAG blocks from the twelve-filing JSON:
 
 ```bash
-uv run capitalcite eval --suite golden --from-results evals/results/7388ac3eea43.json --readme README.md
+make eval-report RESULTS=evals/results/7388ac3eea43.json
 ```
 
-Do not point `--from-results` at the whole `evals/results/` directory. `*-small.json` would overwrite the table with fixture zeros.
+`make eval-report` uses `evals/results/<sha12>.json` for this commit when that file exists.
+If it is missing, the target reads `evals/results/`. `load_reports` then picks the report whose recorded `git_sha` matches HEAD, or the newest ancestor of HEAD. It prefers the full matrix over `*-small.json`.
+Set `RESULTS=` to force a file. A directory with two unrelated matrices errors. The last filename does not win.
 
 ## Tradeoffs and what I'd do next
 
@@ -222,10 +224,10 @@ cp .env.example .env
 ```
 
 In `.env`, set all of the following. Leave `OPENAI_API_KEY` empty.
+`ASK_MODEL` is already `fake` in `.env.example`.
 
 ```bash
 SEC_USER_AGENT="Your Name you@example.com"
-ASK_MODEL=fake
 QDRANT_PATH=data/qdrant
 LANGFUSE_TRACING_ENABLED=false
 ```

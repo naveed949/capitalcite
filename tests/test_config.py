@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from capitalcite.config import Settings
 from capitalcite.ask.models import build_structured_model
 from capitalcite.ask.types import ModelNotConfigured
+from capitalcite.config import Settings
 
 
 def test_sec_user_agent_requires_contact_email(monkeypatch: pytest.MonkeyPatch) -> None:

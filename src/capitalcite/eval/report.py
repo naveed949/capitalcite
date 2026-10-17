@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -87,16 +88,98 @@ def load_report(path: Path) -> EvalReport:
 def load_reports(source: Path) -> tuple[EvalReport, ...]:
     if source.is_file():
         return (load_report(source),)
-    files = sorted(source.glob("*.json"))
-    reports: list[EvalReport] = []
-    for path in files:
+    loaded: list[tuple[Path, EvalReport]] = []
+    for path in sorted(source.glob("*.json")):
         try:
-            reports.append(load_report(path))
+            loaded.append((path, load_report(path)))
         except ValidationError:
             continue
-    if not reports:
+    if not loaded:
         raise FileNotFoundError(f"no eval JSON under {source}")
-    return tuple(reports)
+    chosen = _select_reports(loaded)
+    return tuple(report for _, report in chosen)
+
+
+def _select_reports(loaded: list[tuple[Path, EvalReport]]) -> list[tuple[Path, EvalReport]]:
+    if len(loaded) == 1:
+        return loaded
+    parent = loaded[0][0].parent
+    head = _git_head()
+    matching = [(path, report) for path, report in loaded if _sha_matches(report.git_sha, head)]
+    if matching:
+        return _prefer_full(matching, parent=parent)
+    ancestors: list[tuple[int, Path, EvalReport]] = []
+    for path, report in loaded:
+        when = _ancestor_time(report.git_sha, head)
+        if when is not None:
+            ancestors.append((when, path, report))
+    if ancestors:
+        newest = max(item[0] for item in ancestors)
+        top = [(path, report) for when, path, report in ancestors if when == newest]
+        return _prefer_full(top, parent=parent)
+    raise ValueError(_ambiguous_message(parent, loaded))
+
+
+def _prefer_full(
+    candidates: list[tuple[Path, EvalReport]], *, parent: Path
+) -> list[tuple[Path, EvalReport]]:
+    full = [(path, report) for path, report in candidates if not report.small]
+    pool = full or candidates
+    if len(pool) == 1:
+        return pool
+    raise ValueError(_ambiguous_message(parent, pool))
+
+
+def _ambiguous_message(parent: Path, rows: list[tuple[Path, EvalReport]]) -> str:
+    names = ", ".join(path.name for path, _ in rows)
+    return (
+        f"ambiguous eval JSON under {parent}: {names}. "
+        "Pass a single file or set RESULTS=evals/results/<sha12>.json"
+    )
+
+
+def _sha_matches(git_sha: str, head: str) -> bool:
+    if not git_sha or not head or head == "unknown":
+        return False
+    return head.startswith(git_sha) or git_sha.startswith(head)
+
+
+def _git_head() -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    sha = result.stdout.strip()
+    if result.returncode != 0 or not sha:
+        return "unknown"
+    return sha
+
+
+def _ancestor_time(git_sha: str, head: str) -> int | None:
+    if not git_sha or not head or head == "unknown":
+        return None
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", git_sha, head],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if ancestor.returncode != 0:
+        return None
+    dated = subprocess.run(
+        ["git", "log", "-1", "--format=%ct", git_sha],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if dated.returncode != 0 or not dated.stdout.strip():
+        return None
+    try:
+        return int(dated.stdout.strip())
+    except ValueError:
+        return None
 
 
 def update_readme(readme: Path, report: EvalReport) -> None:
@@ -146,12 +229,13 @@ def _readme_table(report: EvalReport) -> str:
             + " |"
         )
     lines.append(
-        "| section | — | hybrid + rerank | — | UNVERIFIED | UNVERIFIED | UNVERIFIED "
+        "| section | - | hybrid + rerank | - | UNVERIFIED | UNVERIFIED | UNVERIFIED "
         "| UNVERIFIED | UNVERIFIED | UNVERIFIED |"
     )
     lines.append("")
+    rel = f"evals/results/{_stem(report)}.json"
     lines.append(
-        f"Generated from `evals/results/{_stem(report)}.json` "
+        f"Generated from [`{rel}`]({rel}) "
         f"(sha `{report.git_sha[:12]}`, embedder `{report.embedder_id}`, "
         f"sparse `{report.sparse_id or 'absent'}`, "
         f"fastembed `{report.fastembed_version or 'absent'}`, "
@@ -184,8 +268,8 @@ def _agent_readme_table(report: EvalReport) -> str:
         return (
             "| System | n | Recall@5 | Recall@10 | Planner |\n"
             "|---|---:|---:|---:|---|\n"
-            "| Plain RAG (section/hybrid) | — | UNVERIFIED | UNVERIFIED | — |\n"
-            "| Agent | — | UNVERIFIED | UNVERIFIED | fake/heuristic planner |\n"
+            "| Plain RAG (section/hybrid) | - | UNVERIFIED | UNVERIFIED | - |\n"
+            "| Agent | - | UNVERIFIED | UNVERIFIED | fake/heuristic planner |\n"
             "\n"
             "Comparison and multi-hop handwritten items only. "
             "Answer quality stays UNVERIFIED.\n"
@@ -194,7 +278,7 @@ def _agent_readme_table(report: EvalReport) -> str:
         "| System | n | Recall@5 | Recall@10 | Planner |\n"
         "|---|---:|---:|---:|---|\n"
         f"| Plain RAG ({row.chunker.value}/{row.mode.value}) | {row.n} | "
-        f"{row.rag_recall_at_5:.3f} | {row.rag_recall_at_10:.3f} | — |\n"
+        f"{row.rag_recall_at_5:.3f} | {row.rag_recall_at_10:.3f} | - |\n"
         f"| Agent | {row.n} | {row.agent_recall_at_5:.3f} | "
         f"{row.agent_recall_at_10:.3f} | {row.label} |\n"
         "\n"
