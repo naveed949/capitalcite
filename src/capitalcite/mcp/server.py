@@ -1,5 +1,3 @@
-"""MCP transport. Raw tool arguments go through McpSession.dispatch, never retrieve()."""
-
 from __future__ import annotations
 
 import json
@@ -20,8 +18,6 @@ from capitalcite.trace import configure_settings, shutdown
 
 
 class CapitalciteMCP(MCPServer):
-    """stdio MCP server. list_tools schemas come from the gate policy."""
-
     def __init__(self, session: McpSession) -> None:
         super().__init__(
             "capitalcite",

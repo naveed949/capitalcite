@@ -8,10 +8,7 @@ from typing import TextIO
 
 
 def configure_logging(level: str, *, stream: TextIO | None = None) -> None:
-    """Configure root logging once at process start.
-
-    MCP stdio uses stderr. stdout is the protocol wire.
-    """
+    """Configure root logging once at process start."""
     logging.basicConfig(
         level=level.upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",

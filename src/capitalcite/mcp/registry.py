@@ -1,5 +1,3 @@
-"""MCP ToolRegistry. Only the two advertised names. Shares search_filings with the agent."""
-
 from __future__ import annotations
 
 from capitalcite.agent.tools import SearchFn, ToolFn, ToolRegistry, make_search_filings
@@ -17,7 +15,6 @@ def mcp_registry(*, search: SearchFn, ask_runner: ToolFn) -> ToolRegistry:
 
 
 def mcp_policy(loaded: Policy | BrokenPolicy) -> Policy | BrokenPolicy:
-    """Keep ask and search_filings. Drop agent-only names so MCP cannot run them."""
     if isinstance(loaded, BrokenPolicy):
         return loaded
     return Policy(

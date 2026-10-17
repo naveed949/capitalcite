@@ -101,8 +101,6 @@ class ToolRegistry:
 
 
 def make_search_filings(search: SearchFn) -> ToolFn:
-    """search_filings runner. Agent and MCP share this function."""
-
     async def search_filings(args: Mapping[str, object]) -> ToolResult:
         try:
             parsed = SearchFilingsArgs.model_validate(args)

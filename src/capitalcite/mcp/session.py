@@ -1,5 +1,3 @@
-"""One MCP stdio process. Fresh Gate per call. Same audit writer as the agent."""
-
 from __future__ import annotations
 
 import json
@@ -108,7 +106,6 @@ def serialize_result(result: ToolResult) -> dict[str, object]:
 
 
 def advertised_tools(session: McpSession) -> list[tuple[str, str, dict[str, Any]]]:
-    """name, description, JSON Schema from the same policy execute() uses."""
     descriptions = {
         "search_filings": "Search indexed bank filings. Citations come from stored chunks.",
         "ask": "Answer a question with grounded citations, or refuse.",

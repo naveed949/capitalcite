@@ -1,5 +1,3 @@
-"""ask runner for the MCP registry. Reached only after Gate allow + audit write."""
-
 from __future__ import annotations
 
 import json

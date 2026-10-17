@@ -1,5 +1,3 @@
-"""Drive `capitalcite mcp` with the official MCP client over stdio."""
-
 from __future__ import annotations
 
 import argparse

@@ -14,7 +14,7 @@ from capitalcite.config import Settings
 from capitalcite.gate import Policy
 from capitalcite.mcp import MCP_ONLY_TOOLS, MCP_TOOL_NAMES, McpSession, build_server
 from capitalcite.retrieval import FakeEmbedder, RetrievalSetup, build_index, setup_retrieval
-from capitalcite.retrieval.types import Hit, SearchFilters, TextEmbedding
+from capitalcite.retrieval.types import Embedder, Hit, SearchFilters, TextEmbedding
 from capitalcite.trace import MemoryExporter, ObservationKind, configure_for_tests, reset_for_tests
 
 runner = CliRunner()
@@ -77,17 +77,29 @@ async def test_mcp_search_returns_citations_and_audit(tmp_path: Path) -> None:
         reset_for_tests()
 
 
+class _QuerySpy:
+    def __init__(self, inner: Embedder, calls: list[str]) -> None:
+        self._inner = inner
+        self._calls = calls
+        self.id = inner.id
+        self.dense_size = inner.dense_size
+        self.sparse_id = inner.sparse_id
+
+    async def embed_documents(self, texts: list[str]) -> list[TextEmbedding]:
+        return await self._inner.embed_documents(texts)
+
+    async def embed_query(self, text: str) -> TextEmbedding:
+        self._calls.append(text)
+        return await self._inner.embed_query(text)
+
+    def sparse_query_terms(self, text: str) -> tuple[str, ...]:
+        return self._inner.sparse_query_terms(text)
+
+
 async def test_mcp_extra_keys_are_denied_and_do_not_search(tmp_path: Path) -> None:
     calls: list[str] = []
     session, setup = await _indexed_session(tmp_path)
-
-    original = setup.embedder.embed_query
-
-    async def wrapped(text: str) -> TextEmbedding:
-        calls.append(text)
-        return await original(text)
-
-    setup.embedder.embed_query = wrapped  # type: ignore[method-assign]
+    setup.embedder = _QuerySpy(setup.embedder, calls)
     async with Client(build_server(session)) as client:
         result = await client.call_tool(
             "search_filings",
