@@ -35,8 +35,10 @@ uses that field, not the path.
 4. Else keep reports whose `git_sha` is an ancestor of HEAD, and take the
    newest commit time.
 5. Prefer `small=false` when both the full matrix and `*-small.json` remain.
-6. If more than one report still remains, raise. Name the files. Tell the
-   caller to pass one file or `RESULTS=evals/results/<sha12>.json`.
+6. If more than one report still remains, or git cannot prove ancestry
+   (shallow clone, missing objects, unrelated SHAs), raise. Name the files.
+   Tell the caller to pass one file or `RESULTS=evals/results/<sha12>.json`.
+   Do not fall back to filename order. That is how `aceba4024177.json` won.
 
 `make eval-report` sets `RESULTS` to `evals/results/$(git rev-parse --short=12 HEAD).json`
 when that file exists. Otherwise it passes the directory and the rule
