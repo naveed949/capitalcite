@@ -289,6 +289,7 @@ Optional entity graph: [ADR 0014](docs/decisions/0014-optional-entity-graph.md).
 MCP server: [ADR 0015](docs/decisions/0015-mcp-server.md).
 This README: [ADR 0016](docs/decisions/0016-readme-demo.md).
 Write-up and resume bullets: [ADR 0017](docs/decisions/0017-writeup.md).
+Eval report pick and the fake-model default: [ADR 0018](docs/decisions/0018-eval-report-and-ask-default.md).
 
 The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 

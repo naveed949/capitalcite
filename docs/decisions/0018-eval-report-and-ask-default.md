@@ -4,8 +4,8 @@ Date: 2026-10-17
 
 Status: Accepted
 
-Issue #17's write-up may land `0017` in parallel. That number is not on
-`main` at `997aac8`, so this record is `0018`.
+Issue #17 landed `0017` (write-up number check) on `main` as `aa11702`.
+This record is `0018`.
 
 This record is why `load_reports` no longer returns every valid JSON in
 filename order, why stale `evals/results/*.json` files stay in the tree,
