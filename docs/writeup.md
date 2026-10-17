@@ -125,7 +125,8 @@ section/hybrid cell.
 Latency is `ASK_MODEL=fake` on the 12-point fixture. RAG p50 is
 14 ms, p95 16 ms. Agent p50 and p95 are both 21 ms. Gate `decide()`
 p95 is 0.020 ms on 2000 samples. A fake-model clone timed at
-11 seconds. A cold `bge-small` download was 67 MB.
+11 seconds on a 4-core VM with warm `uv` and Hugging Face caches.
+A cold `bge-small` download was 67 MB.
 
 ## Why section/hybrid Recall@5 is 0.169
 
@@ -136,8 +137,10 @@ still get a single rank in `covered_at` when only one gold span lands.
 
 Section/hybrid is 13/77 at k=5 in
 [`7388ac3eea43.json`](../evals/results/7388ac3eea43.json). Hits that
-did land are short CET1 and net-income phrases in Item 7.
-`cc-h-015`, `cc-h-026`, `cc-h-027`, `cc-h-036`, `cc-h-050`.
+did land include JPMorgan CET1 capital (`cc-h-015`, `cc-h-027`) and
+Advanced CET1 ratio (`cc-h-026`) phrases in Item 7, JPMorgan's SCB
+requirement (`cc-h-036`), and Citigroup average deposits
+(`cc-h-050`). None of those five gold quotes is a net-income phrase.
 Comparison hits such as `cc-h-052` and `cc-h-070` still cover only
 one of the two gold spans inside the top 10.
 
@@ -147,14 +150,24 @@ Ten items have a first gold hit between rank 6 and rank 10.
 reranker could recover that band. It would not recover the empty
 `covered_at` rows. Those are the majority.
 
-The BM25 diagnose file for `cc-h-013`, `cc-h-063`, and `cc-h-001`
-shows the texture. The gold span is absent from hybrid's top 10.
-BM25's own top 5 is other banks' CET1 paragraphs, especially Citi,
-and regulatory-note tables that repeat "CET1" without the gold
-offsets. The sparse query keeps CET1 and drops most of the proper
-name. Dense search does not save it. Several banks disclose CET1 in
-near-paraphrase language. RRF then fuses two lists that already agree
-on the wrong bank.
+The section BM25 diagnose file for `cc-h-013`, `cc-h-063`, and
+`cc-h-001`
+([`7388ac3eea43-bm25-diagnose.md`](../evals/results/7388ac3eea43-bm25-diagnose.md))
+shows the texture. Hybrid `covered_at` for those three items is empty
+in [`7388ac3eea43.json`](../evals/results/7388ac3eea43.json), so the
+gold span is absent from the top 10.
+
+The sparse query keeps the bank name (`jpmorgan` on the JPMorgan
+items, `well` and `fargo` on Wells Fargo). The gold quote is missing
+those name terms (`gold_quote_missing_query_terms`). Overlap with the
+gold quote is `cet1` on `cc-h-013` and `cc-h-001`. On `cc-h-063` it
+is `cet1`, `ratio`, and `approach`.
+
+For `cc-h-013`, BM25's top 5 is four JPMorgan chunks (regulatory-note
+tables and other years) and one Citigroup chunk. I do not have a
+committed per-query dense or hybrid hit list for these items. I will
+not claim that dense search failed to save them. I will not claim that
+RRF fused two lists that already agreed on the wrong bank.
 
 Three fixes follow, and the README already names them. A rerank arm
 on the same 77 items, with p95 latency next to Recall@5. If the lift
@@ -193,6 +206,7 @@ On n=15 comparison and multi-hop items, a fake planner reaches
 Live OpenAI answer quality is UNVERIFIED.
 
 The honest failure. Most gold spans never enter the hybrid top 5.
-CET1 questions collide across banks, and Citi's disclosure often
-outranks the named ticker. Next work is a rerank arm, tighter chunk
-boundaries, and table-aware PDF parsing, scored on the same 77 items.
+On the three section-BM25 diagnosed CET1 items, Citi is at rank 1
+for `cc-h-001` and `cc-h-063`, and at rank 2 for `cc-h-013`. Next
+work is a rerank arm, tighter chunk boundaries, and table-aware PDF
+parsing, scored on the same 77 items.
