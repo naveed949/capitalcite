@@ -16,7 +16,7 @@ help:
 	@echo "up         docker compose up -d"
 	@echo "down       docker compose down"
 	@echo "health     GET /health against a running local API"
-	@echo "eval-report  Rewrite the README retrieval table from evals/results"
+	@echo "eval-report  Rewrite the README retrieval table from RESULTS"
 	@echo "infra-validate  bicep format + build of bootstrap and main (+ docker build if Docker exists)"
 	@echo "image      docker build of the API image (UNVERIFIED without Docker)"
 	@echo "bootstrap  what-if of infra/bootstrap.bicep; UNVERIFIED without az login"
@@ -51,8 +51,22 @@ down:
 health:
 	curl -sf http://127.0.0.1:8000/health && echo
 
+HEAD_SHA := $(shell git rev-parse --short=12 HEAD)
+HEAD_RESULTS := evals/results/$(HEAD_SHA).json
+ifeq ($(origin RESULTS), undefined)
+  ifneq ($(wildcard $(HEAD_RESULTS)),)
+    RESULTS := $(HEAD_RESULTS)
+  else
+    RESULTS := evals/results
+  endif
+endif
+
 eval-report:
-	$(UV) run capitalcite eval --suite golden --from-results evals/results --readme README.md
+	@if [ ! -e "$(RESULTS)" ]; then \
+		echo "error: missing $(RESULTS). Run a full eval or set RESULTS=evals/results/<sha12>.json"; \
+		exit 1; \
+	fi
+	$(UV) run capitalcite eval --suite golden --from-results "$(RESULTS)" --readme README.md
 
 infra-validate:
 	./scripts/infra-validate.sh

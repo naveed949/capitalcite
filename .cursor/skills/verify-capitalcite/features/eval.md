@@ -17,7 +17,7 @@ corpus, `FakeEmbedder`, and in-memory Qdrant.
 
 - Run `uv run capitalcite eval --suite golden --small` from the repo root.
 - After ingest, run `QDRANT_PATH=<dir> uv run capitalcite eval --suite golden --input-dir <data> --embedder bge-small`.
-- Rewrite the README table with `make eval-report` once a results file exists.
+- Rewrite the README table with `make eval-report`. The target uses this commit's `evals/results/<sha12>.json` when present, else the directory. `load_reports` selects by recorded `git_sha`.
 
 ## Driving it with the capitalcite CLI
 

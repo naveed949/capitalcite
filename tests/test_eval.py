@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from capitalcite.chunking.models import Chunk, ChunkerName
@@ -364,6 +367,70 @@ def test_from_results_skips_graph_json(tmp_path: Path) -> None:
     assert reports[0].suite == "golden"
 
 
+def test_load_reports_stale_filename_does_not_win(tmp_path: Path) -> None:
+    from capitalcite.eval.report import load_reports
+    from capitalcite.eval.runner import _git_sha
+
+    head = _git_sha()
+    assert head != "unknown"
+    (tmp_path / "aaa.json").write_text(_sample_report_json(git_sha=head), encoding="utf-8")
+    (tmp_path / "zzz.json").write_text(
+        _sample_report_json(git_sha="a" * 40),
+        encoding="utf-8",
+    )
+    reports = load_reports(tmp_path)
+    assert len(reports) == 1
+    assert reports[0].git_sha == head
+
+
+def test_load_reports_newer_ancestor_beats_stale_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from capitalcite.eval.report import load_reports
+
+    repo = tmp_path / "repo"
+    results = repo / "results"
+    results.mkdir(parents=True)
+    _init_git(repo)
+    older = _commit(repo, "older.txt", "1", "older", when="2020-01-01T00:00:00")
+    newer = _commit(repo, "newer.txt", "2", "newer", when="2021-01-01T00:00:00")
+    _commit(repo, "head.txt", "3", "head", when="2022-01-01T00:00:00")
+    (results / "zzz.json").write_text(_sample_report_json(git_sha=older), encoding="utf-8")
+    (results / "aaa.json").write_text(_sample_report_json(git_sha=newer), encoding="utf-8")
+    monkeypatch.chdir(repo)
+    reports = load_reports(results)
+    assert len(reports) == 1
+    assert reports[0].git_sha == newer
+
+
+def test_load_reports_errors_when_no_head_or_ancestor_match(tmp_path: Path) -> None:
+    from capitalcite.eval.report import load_reports
+
+    (tmp_path / "aaa.json").write_text(_sample_report_json(git_sha="1" * 40), encoding="utf-8")
+    (tmp_path / "zzz.json").write_text(_sample_report_json(git_sha="2" * 40), encoding="utf-8")
+    with pytest.raises(ValueError, match="ambiguous eval JSON"):
+        load_reports(tmp_path)
+
+
+def test_load_reports_prefers_full_over_small_for_head(tmp_path: Path) -> None:
+    from capitalcite.eval.report import load_reports
+    from capitalcite.eval.runner import _git_sha
+
+    head = _git_sha()
+    (tmp_path / "head-small.json").write_text(
+        _sample_report_json(git_sha=head, small=True),
+        encoding="utf-8",
+    )
+    (tmp_path / "zzz-full.json").write_text(
+        _sample_report_json(git_sha=head, small=False),
+        encoding="utf-8",
+    )
+    reports = load_reports(tmp_path)
+    assert len(reports) == 1
+    assert reports[0].small is False
+    assert reports[0].git_sha == head
+
+
 def test_update_readme_replaces_markers(tmp_path: Path) -> None:
     from capitalcite.eval.report import load_report
 
@@ -568,7 +635,43 @@ def _chunk(*, doc_id: str, start: int, end: int) -> Chunk:
     )
 
 
-def _sample_report_json() -> str:
+def _git(
+    repo: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    merged = os.environ.copy()
+    if env:
+        merged.update(env)
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=merged,
+    )
+
+
+def _init_git(repo: Path) -> None:
+    _git(repo, "init")
+    _git(repo, "config", "user.email", "eval-test@example.com")
+    _git(repo, "config", "user.name", "eval-test")
+    _git(repo, "config", "commit.gpgsign", "false")
+
+
+def _commit(repo: Path, name: str, body: str, message: str, *, when: str) -> str:
+    (repo / name).write_text(body, encoding="utf-8")
+    _git(repo, "add", name)
+    _git(
+        repo,
+        "commit",
+        "-m",
+        message,
+        env={"GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when},
+    )
+    return _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
+def _sample_report_json(*, git_sha: str = "b" * 40, small: bool = False) -> str:
     from capitalcite.eval.models import ArmResult, EvalReport
 
     scores = (
@@ -590,9 +693,9 @@ def _sample_report_json() -> str:
         item_scores=scores,
     )
     report = EvalReport(
-        git_sha="b" * 40,
+        git_sha=git_sha,
         suite="golden",
-        small=False,
+        small=small,
         k=5,
         n_items=2,
         embedder_id=arm.embedder_id,

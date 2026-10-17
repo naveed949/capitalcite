@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from capitalcite.ask.models import build_structured_model
+from capitalcite.ask.types import ModelNotConfigured
 from capitalcite.config import Settings
 
 
@@ -75,3 +77,26 @@ def test_langfuse_tracing_enabled_reads_env(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("LANGFUSE_TRACING_ENABLED", "false")
     settings = Settings()
     assert settings.langfuse_tracing_enabled is False
+
+
+def test_ask_model_defaults_to_fake() -> None:
+    settings = Settings.model_validate({"sec_user_agent": "capitalcite-tests tests@example.com"})
+    assert settings.ask_model == "fake"
+
+
+def test_ask_model_openai_env_is_not_rewritten_to_fake(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("ASK_MODEL", "openai")
+    settings = Settings()
+    assert settings.ask_model == "openai"
+    with pytest.raises(ModelNotConfigured, match="OPENAI_API_KEY"):
+        build_structured_model("openai", api_key=None, openai_model="gpt-4o-mini")
+
+
+def test_env_example_defaults_ask_model_to_fake() -> None:
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / ".env.example").read_text(encoding="utf-8")
+    assert "\nASK_MODEL=fake\n" in text
+    assert "\n# ASK_MODEL=openai\n" in text
+    assert "\nASK_MODEL=openai\n" not in text
