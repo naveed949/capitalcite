@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 
 const answeredQuestion = "What CET1 ratio did JPMorgan disclose?";
 const refusalQuestion = "What CET1 ratio did Wells Fargo disclose for year-end 2026?";
@@ -47,6 +47,7 @@ test("cancel stops the UI and the API run", async ({ page }) => {
   if (markerPath === undefined || markerPath.length === 0) {
     throw new Error("CAPITALCITE_CANCEL_MARKER must point at the cancel marker");
   }
+  rmSync(markerPath, { force: true });
   await page.goto("/");
   await page.getByLabel("Question").fill(cancelQuestion);
   const posted = page.waitForRequest(

@@ -94,7 +94,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const upstream = await fetch(new URL("/ask/stream", origin), {
       method: "POST",
-      headers: { "content-type": request.headers.get("content-type") ?? "application/json" },
+      headers: { "content-type": "application/json" },
       body,
       signal: request.signal,
     });

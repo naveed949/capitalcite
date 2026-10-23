@@ -265,10 +265,11 @@ With that fixture index built and uvicorn still on `127.0.0.1:8000`, the page in
 
 ```bash
 pnpm --dir web install
-CAPITALCITE_API_ORIGIN=http://127.0.0.1:8000 ASK_MODEL=fake pnpm --dir web dev
+CAPITALCITE_API_ORIGIN=http://127.0.0.1:8000 ASK_MODEL=fake pnpm --dir web build
+CAPITALCITE_API_ORIGIN=http://127.0.0.1:8000 ASK_MODEL=fake pnpm --dir web start
 ```
 
-Open `http://127.0.0.1:3001`. Dev and `pnpm --dir web start` listen on port 3001 so a local Langfuse stack can keep port 3000. `ASK_MODEL` defaults to `fake` when it is unset. The Next proxy writes that value into the API body and ignores a client `model`. When it is `fake`, the page says `deterministic demo model` before you ask.
+Open `http://127.0.0.1:3001`. That is the same `next start` path the e2e job and `verify.sh` use. Local editing can use `pnpm --dir web dev` on the same port without a build. Both listen on port 3001 so a local Langfuse stack can keep port 3000. `ASK_MODEL` defaults to `fake` when it is unset. The Next proxy writes that value into the API body and ignores a client `model`. When it is `fake`, the page says `deterministic demo model` before you ask.
 
 `localhost` and `127.0.0.1` are different browser origins. The quickstart binds uvicorn to `127.0.0.1`. Set `CAPITALCITE_API_ORIGIN` to `http://127.0.0.1:8000`, and open the page on `http://127.0.0.1:3001`. Do not point the origin at `localhost` while uvicorn is bound to `127.0.0.1`. The origin is not a `NEXT_PUBLIC_` variable. The browser never reads it.
 

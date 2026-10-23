@@ -21,7 +21,7 @@ from capitalcite.agent import FakeAgentModel, PlannerDecision, PlanStep, ToolCal
 from capitalcite.agent.observe import Observe
 from capitalcite.api.app import create_app
 from capitalcite.api.ask_models import AskResponse, event_model_names, hoist_openapi_defs
-from capitalcite.api.routes.ask import AskRequest, _rag_events
+from capitalcite.api.routes.ask import AskRequest, _note_client_cancel, _rag_events
 from capitalcite.api.routes.search import get_setup
 from capitalcite.ask.types import Refused
 from capitalcite.audit import AuditRecord, verify
@@ -309,6 +309,21 @@ async def test_disconnect_cancels_rag_retrieve_before_first_event(
         ask_logger.removeHandler(caplog.handler)
         server.should_exit = True
         await serve_task
+
+
+def test_note_client_cancel_skips_marker_in_prod(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / "cancel.marker"
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("CAPITALCITE_CANCEL_MARKER", str(marker))
+    get_settings.cache_clear()
+    try:
+        _note_client_cancel()
+        assert not marker.exists()
+    finally:
+        get_settings.cache_clear()
 
 
 async def test_slow_retrieve_sleeps_only_for_the_cancel_question(

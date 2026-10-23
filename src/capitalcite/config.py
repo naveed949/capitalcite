@@ -15,7 +15,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from capitalcite.chunking.models import ChunkerName
 
-_SLOW_RETRIEVE_ENVS = frozenset({"test", "verify", "local"})
+TEST_HOOK_ENVS = frozenset({"test", "verify", "local"})
 
 
 class Settings(BaseSettings):
@@ -280,7 +280,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def slow_retrieve_only_outside_production(self) -> Settings:
-        if self.test_slow_retrieve_ms > 0 and self.app_env not in _SLOW_RETRIEVE_ENVS:
+        if self.test_slow_retrieve_ms > 0 and self.app_env not in TEST_HOOK_ENVS:
             raise ValueError(
                 "CAPITALCITE_TEST_SLOW_RETRIEVE_MS is only allowed when "
                 "APP_ENV is test, verify, or local"

@@ -250,4 +250,34 @@ describe("ask stream route", () => {
     expect(other.status).toBe(200);
     expect(JSON.parse(posted).model).toBe("fake");
   });
+
+  it("sends application/json upstream regardless of the client header", async () => {
+    let contentType = "";
+    server = createServer((req, res) => {
+      if (req.url !== "/ask/stream") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      contentType = String(req.headers["content-type"] ?? "");
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.end('event: done\ndata: {"event":"done"}\n\n');
+    });
+    await new Promise<void>((resolve) => {
+      server?.listen(0, "127.0.0.1", resolve);
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("missing port");
+    process.env.CAPITALCITE_API_ORIGIN = `http://127.0.0.1:${address.port}`;
+
+    const response = await POST(
+      new Request("http://127.0.0.1:3001/api/ask/stream", {
+        method: "POST",
+        headers: { "content-type": "text/plain" },
+        body: JSON.stringify({ question: "What CET1 ratio did JPMorgan disclose?" }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(contentType).toBe("application/json");
+  });
 });

@@ -64,7 +64,7 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.audit import AuditLog
-from capitalcite.config import Settings, get_settings
+from capitalcite.config import TEST_HOOK_ENVS, Settings, get_settings
 from capitalcite.gate import Gate, load_policy
 from capitalcite.ingest.rate_limit import shared_limiter
 from capitalcite.kg import open_store
@@ -95,6 +95,8 @@ _INTERNAL_ERROR = ErrorEvent(status=500, detail="internal error")
 
 def _note_client_cancel() -> None:
     logger.info("ask stream cancelled by client")
+    if get_settings().app_env not in TEST_HOOK_ENVS:
+        return
     raw = os.environ.get("CAPITALCITE_CANCEL_MARKER", "").strip()
     if not raw:
         return
