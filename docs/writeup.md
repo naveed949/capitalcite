@@ -1,10 +1,7 @@
 # Cited answers over bank 10-Ks
 
-I am Naveed Iqbal. I work as a blockchain engineer at Kaia, mostly in
-Rust, Solidity, and zero-knowledge proofs. I have spent 8 years on
-systems that move money. I am moving into applied AI. This write-up
-is about [capitalcite](https://github.com/naveed949/capitalcite), a
-system I built to answer questions over U.S. bank 10-Ks and to refuse
+This write-up is about [capitalcite](https://github.com/naveed949/capitalcite),
+a system that answers questions over U.S. bank 10-Ks and refuses
 when the filing does not support the answer.
 
 ## The problem
@@ -181,32 +178,3 @@ for CET1 spans.
 The limiter on Recall@5 is still retrieval. Until a reranker or a
 better parse moves those empty `covered_at` rows, I will keep saying
 0.169 instead of pretending the agent loop fixed ranking.
-
-## LinkedIn version
-
-I built [capitalcite](https://github.com/naveed949/capitalcite), a
-cited-answer system over twelve U.S. bank 10-Ks, as I move from
-blockchain engineering at Kaia into applied AI.
-
-The serve path is section-aware chunking, local FastEmbed `bge-small`
-plus BM25 in Qdrant, hybrid fusion with reciprocal rank fusion, and
-a structured `/ask` that copies citation spans and refuses a quote
-that is not verbatim. A LangGraph agent can plan extra searches. It
-still has to answer through the same `ground()` check. Tools go
-through a default-deny gate and a hash-chained audit log. MCP
-exposes `search_filings` and `ask` on stdio. Azure Container Apps
-Bicep is in the repo. Live apply is UNVERIFIED.
-
-Measured, n=77 handwritten spans,
-[`7388ac3eea43.json`](../evals/results/7388ac3eea43.json).
-Section/hybrid Recall@5 is 0.169. Section BM25 at 0.182 versus
-section dense at 0.078 is the gap that clears the 0.013 noise floor.
-On n=15 comparison and multi-hop items, a fake planner reaches
-0.400 Recall@5 against 0.267 for plain RAG. Gate red-team is 5/5.
-Live OpenAI answer quality is UNVERIFIED.
-
-The honest failure. Most gold spans never enter the hybrid top 5.
-On the three section-BM25 diagnosed CET1 items, Citi is at rank 1
-for `cc-h-001` and `cc-h-063`, and at rank 2 for `cc-h-013`. Next
-work is a rerank arm, tighter chunk boundaries, and table-aware PDF
-parsing, scored on the same 77 items.

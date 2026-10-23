@@ -127,8 +127,8 @@ Each item below is written as a GitHub issue. Labels to use: `m1` `m2` `m3`, `ra
   - [ ] Loader is idempotent; graph schema documented
   - [ ] At least 5 golden questions that need graph traversal, with an eval delta reported
 
-### #17 Resume & write-up
-- **Scope:** a blog post or LinkedIn write-up, and resume bullets that link to the repo and its eval results.
+### #17 Project write-up
+- **Scope:** a project write-up that links to the repo and its eval results.
 - **Acceptance criteria:**
   - [ ] The write-up includes real metrics and one failure analysis
-  - [ ] Resume bullets cite only numbers that appear in the README
+  - [ ] The write-up cites only numbers that appear in the README or a linked results projection
