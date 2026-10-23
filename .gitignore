@@ -29,6 +29,8 @@ uv-cache/
 # Local data produced by later ingest/index steps
 /data/**
 !/data/README.md
+!/data/warehouse/
+!/data/warehouse/.gitkeep
 
 # Verification evidence (scripts/verify.sh writes timestamped runs here)
 /artifacts/
@@ -40,6 +42,10 @@ uv-cache/
 node_modules/
 .next/
 web/.next/
+
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
 
 # Editors / OS
 .idea/

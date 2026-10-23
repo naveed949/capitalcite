@@ -1,0 +1,5 @@
+ticker,cik,lead_bank_name,cert,source_note
+JPM,0000019617,"JPMORGAN CHASE BANK, NATIONAL ASSOCIATION",628,"SEC companyfacts CIK 0000019617. FDIC CERT 628 is the one active BankFind institutions row whose legal name matches JPMORGAN CHASE BANK, NATIONAL ASSOCIATION."
+BAC,0000070858,"BANK OF AMERICA, NATIONAL ASSOCIATION",3510,"SEC companyfacts CIK 0000070858. FDIC CERT 3510 is the one active BankFind institutions row whose legal name matches BANK OF AMERICA, NATIONAL ASSOCIATION."
+WFC,0000072971,"WELLS FARGO BANK, NATIONAL ASSOCIATION",3511,"SEC companyfacts CIK 0000072971. FDIC CERT 3511 is the one active BankFind institutions row whose legal name matches WELLS FARGO BANK, NATIONAL ASSOCIATION."
+C,0000831001,"Citibank, National Association",7213,"SEC companyfacts CIK 0000831001. FDIC CERT 7213 is the one active BankFind institutions row whose legal name matches Citibank, National Association."

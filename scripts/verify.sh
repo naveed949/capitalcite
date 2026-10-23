@@ -2541,6 +2541,81 @@ PY
 log "verify: capitalcite metrics extract --fixtures ok"
 cat "${ART}/metrics.out"
 
+export DBT_PROJECT_DIR="${ROOT}/dbt"
+
+log "verify: dbt build --target ci"
+set +e
+uv run --frozen --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci \
+  >"${ART}/dbt.out" 2>"${ART}/dbt.err"
+dbt_rc=$?
+set -e
+write dbt.exit "${dbt_rc}"
+if [[ "${dbt_rc}" -ne 0 ]] || ! grep -q "Completed successfully" "${ART}/dbt.out"; then
+  log "verify: dbt build --target ci failed"
+  cat "${ART}/dbt.out" >&2 || true
+  cat "${ART}/dbt.err" >&2 || true
+  exit 1
+fi
+log "verify: dbt build --target ci ok"
+cat "${ART}/dbt.out"
+
+log "verify: dbt docs generate --target ci"
+set +e
+uv run --frozen --group metrics dbt docs generate --project-dir dbt --profiles-dir dbt --target ci \
+  >"${ART}/dbt-docs.out" 2>"${ART}/dbt-docs.err"
+dbt_docs_rc=$?
+set -e
+write dbt-docs.exit "${dbt_docs_rc}"
+if [[ "${dbt_docs_rc}" -ne 0 ]]; then
+  log "verify: dbt docs generate --target ci failed"
+  cat "${ART}/dbt-docs.out" >&2 || true
+  cat "${ART}/dbt-docs.err" >&2 || true
+  exit 1
+fi
+log "verify: dbt docs generate --target ci ok"
+
+log "verify: dbt fixture shape"
+set +e
+uv run --frozen --group metrics python - "${ROOT}/dbt/target/ci.duckdb" \
+  >"${ART}/dbt-shape.out" 2>"${ART}/dbt-shape.err" <<'PY'
+import sys
+
+import duckdb
+
+con = duckdb.connect(sys.argv[1], read_only=True)
+holding = con.execute(
+    """
+    select assets_usd, deposits_usd, net_income_quarter_usd
+    from fct_bank_financials_quarterly
+    where bank_key = 'JPM|holding_company' and quarter_id = date '2026-06-30'
+    """
+).fetchone()
+bank = con.execute(
+    """
+    select assets_usd_thousands, net_income_ytd_usd_thousands
+    from fct_bank_financials_quarterly
+    where bank_key = 'JPM|bank_subsidiary' and quarter_id = date '2026-06-30'
+    """
+).fetchone()
+if holding != (5015069000000.0, None, None):
+    raise SystemExit(f"holding shape {holding}")
+if bank != (4091315000.0, 31335000.0):
+    raise SystemExit(f"bank shape {bank}")
+print("holding assets_usd=5015069000000 deposits_usd=null net_income_quarter_usd=null")
+print("bank assets_usd_thousands=4091315000 net_income_ytd_usd_thousands=31335000")
+PY
+shape_rc=$?
+set -e
+write dbt-shape.exit "${shape_rc}"
+if [[ "${shape_rc}" -ne 0 ]]; then
+  log "verify: dbt fixture shape failed"
+  cat "${ART}/dbt-shape.out" >&2 || true
+  cat "${ART}/dbt-shape.err" >&2 || true
+  exit 1
+fi
+log "verify: dbt fixture shape ok"
+cat "${ART}/dbt-shape.out"
+
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
 import json
@@ -3028,6 +3103,9 @@ web_ask
   echo "eval-graph-small.exit $(cat "${ART}/eval-graph-small.exit")"
   echo "metrics.help.exit $(cat "${ART}/metrics.help.exit")"
   echo "metrics.exit $(cat "${ART}/metrics.exit")"
+  echo "dbt.exit $(cat "${ART}/dbt.exit")"
+  echo "dbt-docs.exit $(cat "${ART}/dbt-docs.exit")"
+  echo "dbt-shape.exit $(cat "${ART}/dbt-shape.exit")"
   if [[ -f "${ART}/eval.skipped" ]]; then
     echo "eval skipped ($(cat "${ART}/eval.skipped"))"
   else

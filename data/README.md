@@ -53,3 +53,11 @@ hash of the sibling payload. `--fixtures` writes this same layout from
 FDIC `ASSET`, `DEP`, and `NETINC` are thousands of USD. `NIMY` and `EEFFR`
 are percent. `NETINC` is year-to-date cumulative. SEC companyfacts values
 in USD units are whole USD.
+
+`uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target dev`
+reads `data/raw` and writes `data/warehouse/capitalcite.duckdb`. The
+directory is in the tree. `metrics extract` also creates it if it is
+missing. `/data/**` gitignores the DuckDB file. The `ci` target reads
+`tests/fixtures/metrics` and writes `dbt/target/ci.duckdb`. From the repo
+root that command does not need `DBT_PROJECT_DIR`. See
+[ADR 0019](../docs/decisions/0019-dbt-warehouse.md).

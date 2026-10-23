@@ -1,0 +1,82 @@
+version: 2
+
+models:
+  - name: stg_sec__facts
+    description: >
+      One companyfacts observation per CIK, concept, unit, period start,
+      period end, fiscal period, form, and accession. period_start is null
+      for instants and is part of the grain for duration facts.
+      fiscal_period is null on some 8-K and DEF 14A rows. Both nullable
+      fields are coalesced in grain_key. Only us-gaap Assets, Deposits,
+      and NetIncomeLoss in USD are unnested. entity_name is stored and
+      is not a join key.
+    columns:
+      - name: grain_key
+        description: >
+          cik, concept, unit, period_start, period_end, fiscal_period,
+          form, accession. period_start and fiscal_period are null-safe.
+        tests:
+          - unique
+          - not_null
+      - name: ticker
+        description: Filename stem of the companyfacts snapshot.
+        tests:
+          - not_null
+      - name: cik
+        description: 10-digit CIK.
+        tests:
+          - not_null
+      - name: concept
+        tests:
+          - not_null
+      - name: unit
+        tests:
+          - not_null
+      - name: period_end
+        tests:
+          - not_null
+      - name: fiscal_period
+        description: SEC fp. Null on some 8-K and DEF 14A observations.
+      - name: form
+        tests:
+          - not_null
+      - name: accession
+        tests:
+          - not_null
+      - name: val
+        description: Amount as reported. USD units are whole USD.
+
+  - name: stg_fdic__financials
+    description: >
+      One Call Report row per CERT and REPDTE. ASSET, DEP, and NETINC are
+      thousands of USD. NIMY and EEFFR are percent as reported. NETINC is
+      year-to-date cumulative. Mixed int and float rate cells are cast to
+      double here.
+    columns:
+      - name: grain_key
+        description: cert and REPDTE.
+        tests:
+          - unique
+          - not_null
+      - name: cert
+        tests:
+          - not_null
+      - name: repdte
+        description: Eight-digit FDIC report date.
+        tests:
+          - not_null
+      - name: period_end
+        tests:
+          - not_null
+      - name: asset
+        description: Total assets, thousands of USD.
+      - name: dep
+        description: Deposits, thousands of USD.
+      - name: netinc
+        description: Year-to-date net income, thousands of USD.
+      - name: nimy
+        description: Net interest margin, percent, as reported (NIMY).
+      - name: eeffr
+        description: Efficiency ratio, percent, as reported (EEFFR).
+      - name: source_url
+        description: Sidecar URL for the certificate file.
