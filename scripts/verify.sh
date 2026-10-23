@@ -2616,6 +2616,79 @@ fi
 log "verify: dbt fixture shape ok"
 cat "${ART}/dbt-shape.out"
 
+export DBT_PROFILES_DIR="${ROOT}/dbt"
+export DBT_TARGET=ci
+
+log "verify: mf validate-configs"
+set +e
+uv run --frozen --group metrics mf validate-configs \
+  >"${ART}/mf-validate.out" 2>"${ART}/mf-validate.err"
+mf_validate_rc=$?
+set -e
+write mf-validate.exit "${mf_validate_rc}"
+if [[ "${mf_validate_rc}" -ne 0 ]]; then
+  log "verify: mf validate-configs failed"
+  cat "${ART}/mf-validate.out" >&2 || true
+  cat "${ART}/mf-validate.err" >&2 || true
+  exit 1
+fi
+log "verify: mf validate-configs ok"
+
+log "verify: mf query total_deposits,deposits_qoq_growth"
+set +e
+uv run --frozen --group metrics mf query \
+  --quiet \
+  --order metric_time__quarter,bank__ticker \
+  --metrics total_deposits,deposits_qoq_growth \
+  --group-by metric_time__quarter,bank__ticker \
+  --where "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'" \
+  >"${ART}/mf-query.out" 2>"${ART}/mf-query.err"
+mf_query_rc=$?
+set -e
+write mf-query.exit "${mf_query_rc}"
+if [[ "${mf_query_rc}" -ne 0 ]] \
+  || ! grep -q "total_deposits" "${ART}/mf-query.out" \
+  || ! grep -q "deposits_qoq_growth" "${ART}/mf-query.out"; then
+  log "verify: mf query failed"
+  cat "${ART}/mf-query.out" >&2 || true
+  cat "${ART}/mf-query.err" >&2 || true
+  exit 1
+fi
+log "verify: mf query ok"
+
+for mf_saved in lead_bank_deposits_qoq lead_bank_balance_sheet lead_bank_earnings holding_company_assets; do
+  log "verify: mf query --saved-query ${mf_saved}"
+  set +e
+  uv run --frozen --group metrics mf query --quiet --saved-query "${mf_saved}" \
+    >"${ART}/mf-saved-${mf_saved}.out" 2>"${ART}/mf-saved-${mf_saved}.err"
+  mf_saved_rc=$?
+  set -e
+  write "mf-saved-${mf_saved}.exit" "${mf_saved_rc}"
+  if [[ "${mf_saved_rc}" -ne 0 ]]; then
+    log "verify: mf saved query ${mf_saved} failed"
+    cat "${ART}/mf-saved-${mf_saved}.out" >&2 || true
+    cat "${ART}/mf-saved-${mf_saved}.err" >&2 || true
+    exit 1
+  fi
+  log "verify: mf saved query ${mf_saved} ok"
+done
+
+log "verify: pytest tests/test_mf_metrics.py -m mf"
+set +e
+uv run --frozen --group metrics --group dev pytest tests/test_mf_metrics.py -m mf \
+  >"${ART}/mf-pytest.out" 2>"${ART}/mf-pytest.err"
+mf_pytest_rc=$?
+set -e
+write mf-pytest.exit "${mf_pytest_rc}"
+if [[ "${mf_pytest_rc}" -ne 0 ]]; then
+  log "verify: pytest -m mf failed"
+  cat "${ART}/mf-pytest.out" >&2 || true
+  cat "${ART}/mf-pytest.err" >&2 || true
+  exit 1
+fi
+log "verify: pytest -m mf ok"
+cat "${ART}/mf-pytest.out"
+
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
 import json
@@ -3114,6 +3187,13 @@ web_ask
   echo "dbt.exit $(cat "${ART}/dbt.exit")"
   echo "dbt-docs.exit $(cat "${ART}/dbt-docs.exit")"
   echo "dbt-shape.exit $(cat "${ART}/dbt-shape.exit")"
+  echo "mf-validate.exit $(cat "${ART}/mf-validate.exit")"
+  echo "mf-query.exit $(cat "${ART}/mf-query.exit")"
+  echo "mf-saved-lead_bank_deposits_qoq.exit $(cat "${ART}/mf-saved-lead_bank_deposits_qoq.exit")"
+  echo "mf-saved-lead_bank_balance_sheet.exit $(cat "${ART}/mf-saved-lead_bank_balance_sheet.exit")"
+  echo "mf-saved-lead_bank_earnings.exit $(cat "${ART}/mf-saved-lead_bank_earnings.exit")"
+  echo "mf-saved-holding_company_assets.exit $(cat "${ART}/mf-saved-holding_company_assets.exit")"
+  echo "mf-pytest.exit $(cat "${ART}/mf-pytest.exit")"
   if [[ -f "${ART}/eval.skipped" ]]; then
     echo "eval skipped ($(cat "${ART}/eval.skipped"))"
   else

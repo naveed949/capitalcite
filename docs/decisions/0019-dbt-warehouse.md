@@ -41,9 +41,12 @@ dbt-core 1.12.6, dbt-duckdb 1.11.0, and dbt-metricflow 0.15.0 live in the
 `metrics` uv group. They are not in `[project.dependencies]`, not in `dev`,
 and not in the runtime image. `Dockerfile` still runs
 `uv sync --frozen --no-dev --no-editable`. Python stays below 3.15 because
-that is the dbt-core range. This warehouse has no MetricFlow semantic
-models. The package stays in the group so a later semantic layer can land
-without another dependency change.
+that is the dbt-core range. `dbt-common` 1.39.0 requires
+`protobuf<7,>=6.0`, so the lockfile that includes the metrics group
+resolves `protobuf` to 6.33.6. `docs/deploy/image-measure.raw.txt` recorded
+`protobuf==7.36.2` for an image build that does not install the metrics
+group. That file is a different environment. The semantic layer on this
+warehouse is [0025](0025-metricflow-semantic-layer.md).
 
 ## Why staging, intermediate, and marts
 
@@ -120,9 +123,11 @@ different facts. The staging grain includes a null-safe `period_start` so
 they do not collide. Some 8-K and DEF 14A rows omit `fp`. `fiscal_period`
 is null-safe in the same key. The mart keeps the three-month row when it
 exists. Instant facts such as Assets and Deposits have a null start. When
-two observations share an end date and a start, the mart ranks 10-K/10-Q
-before other forms, then latest filed. That ranking applies to instants
-and durations. A later DEF 14A or 8-K does not beat a 10-K. JPM DEF 14A
+two observations share an end date and a start, the window orders `10-K`
+and `10-K/A` first, then `10-Q` and `10-Q/A`, then every other form, then
+`filed` descending with nulls last, then `accession` descending. That
+order applies to instants and durations. A later DEF 14A or 8-K does not
+beat a 10-K. JPM DEF 14A
 `0000019617-26-000096` files a rounded FY2025 `NetIncomeLoss` of
 57,000,000,000. Filed-first would make 2025 Q4 12,977,000,000 instead of
 the 10-K 13,025,000,000.
