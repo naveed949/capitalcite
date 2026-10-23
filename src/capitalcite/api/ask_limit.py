@@ -1,11 +1,3 @@
-"""Per-address sliding window for POST /ask and POST /ask/stream.
-
-The map lives in this process. Another process has its own map.
-The address is the TCP peer unless TRUSTED_PROXY_HOPS is greater than 0.
-X-Forwarded-For is read only for those hops, from the right. The leftmost
-entry is never the key.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -26,13 +18,6 @@ class RateDecision:
 
 
 def forwarded_client(peer: str, forwarded: str | None, hops: int) -> str:
-    """Return the rate-limit key.
-
-    hops=0 uses the TCP peer. hops=N uses the X-Forwarded-For entry N
-    positions from the right. The list must have more than N entries so the
-    selected value is not the leftmost (forged) one. A short or empty header
-    falls back to the peer.
-    """
     if hops <= 0:
         return peer
     if forwarded is None:

@@ -247,6 +247,16 @@ export interface components {
              * @description Installed package version.
              */
             version: string;
+            /**
+             * Git Sha
+             * @description Build revision, or unknown when git is unavailable.
+             */
+            git_sha: string;
+            /**
+             * Point Count
+             * @description Points in the configured index. 0 when the index cannot be read.
+             */
+            point_count: number;
         };
         /**
          * Hit

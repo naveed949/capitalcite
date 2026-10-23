@@ -1,5 +1,3 @@
-"""Pinned FastEmbed snapshots. Build writes this cache. Runtime loads it offline."""
-
 from __future__ import annotations
 
 import hashlib
@@ -37,7 +35,6 @@ def verify_pinned_files(cache: Path) -> None:
 
 
 def prefetch_fastembed_cache(cache_dir: str | Path | None = None) -> Path:
-    """Download pinned revisions into the FastEmbed cache and check file hashes."""
     raw = cache_dir if cache_dir is not None else os.environ["FASTEMBED_CACHE_PATH"]
     cache = Path(raw)
     cache.mkdir(parents=True, exist_ok=True)

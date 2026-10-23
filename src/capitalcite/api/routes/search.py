@@ -1,8 +1,5 @@
-"""Ranked citation search. The process lifespan opens one RetrievalSetup."""
-
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -40,14 +37,13 @@ class SearchResponse(BaseModel):
     hits: list[Hit]
 
 
-async def get_setup(request: Request) -> AsyncIterator[RetrievalSetup]:
-    """Yield the lifespan setup. Do not close it. Shutdown owns that."""
+async def get_setup(request: Request) -> RetrievalSetup:
     from capitalcite.api.app import retrieval_setup
 
     setup = retrieval_setup(request.app)
     if setup is None:
         raise HTTPException(status_code=503, detail="index unavailable")
-    yield setup
+    return setup
 
 
 @router.post("/search", response_model=SearchResponse)
