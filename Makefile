@@ -1,4 +1,4 @@
-.PHONY: help sync lint format typecheck test ci check up down health eval-report infra-validate image bootstrap deploy
+.PHONY: help sync lint format typecheck test test-mf ci check up down health eval-report infra-validate image bootstrap deploy
 
 UV ?= uv
 PYTEST ?= $(UV) run pytest
@@ -10,7 +10,8 @@ help:
 	@echo "lint       Ruff check"
 	@echo "format     Ruff format"
 	@echo "typecheck  mypy (strict)"
-	@echo "test       pytest"
+	@echo "test       pytest (skips -m mf)"
+	@echo "test-mf    pytest -m mf against the ci warehouse"
 	@echo "ci         lint + typecheck + test"
 	@echo "check      capitalcite check against evals/baselines/ci.json"
 	@echo "up         docker compose up -d"
@@ -36,6 +37,10 @@ typecheck:
 
 test:
 	$(PYTEST)
+
+test-mf:
+	DBT_PROJECT_DIR=dbt DBT_PROFILES_DIR=dbt DBT_TARGET=ci \
+	  $(UV) run --group metrics --group dev pytest -m mf
 
 ci: lint typecheck test check
 

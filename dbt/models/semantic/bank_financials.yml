@@ -1,0 +1,305 @@
+version: 2
+
+models:
+  - name: metricflow_time_spine
+    description: >
+      One row per calendar day from 1984-01-01 through 2030-12-31.
+      MetricFlow uses this calendar for quarter offsets. It is not a
+      parent of the fact. dim_period stays the observed quarter-ends.
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        description: Calendar day.
+        granularity: day
+        tests:
+          - unique
+          - not_null
+
+semantic_models:
+  - name: bank_financials
+    description: >
+      One row per bank_key and calendar quarter-end on
+      fct_bank_financials_quarterly. bank_key is ticker, a pipe, and
+      entity_level. Holding-company columns are SEC whole USD and null
+      on bank rows. Bank columns are FDIC thousands or percents and
+      null on holding-company rows. A metric locks one entity_level.
+      create_metric is false so a measure name is not a public metric.
+    model: "ref('fct_bank_financials_quarterly')"
+    defaults:
+      agg_time_dimension: quarter_id
+    entities:
+      - name: bank
+        type: primary
+        expr: bank_key
+        description: ticker, a pipe, and entity_level. The two levels are different entities.
+    dimensions:
+      - name: quarter_id
+        type: time
+        description: >
+          Calendar quarter of the fact's quarter_id, labeled by the
+          quarter start. DuckDB renders a one-quarter offset as three
+          months, and three months before a quarter-end is not the
+          prior quarter-end.
+        expr: >
+          (case month(quarter_id)
+            when 3 then make_date(year(quarter_id), 1, 1)
+            when 6 then make_date(year(quarter_id), 4, 1)
+            when 9 then make_date(year(quarter_id), 7, 1)
+            when 12 then make_date(year(quarter_id), 10, 1)
+            else null
+          end)
+        type_params:
+          time_granularity: quarter
+      - name: ticker
+        type: categorical
+        expr: ticker
+      - name: entity_level
+        type: categorical
+        expr: entity_level
+        description: holding_company or bank_subsidiary. Never an aggregation key.
+    measures:
+      - name: fdic_deposits
+        description: FDIC DEP. Column deposits_usd_thousands. Thousands of USD.
+        agg: sum
+        expr: deposits_usd_thousands
+        create_metric: false
+        non_additive_dimension:
+          name: quarter_id
+          window_choice: max
+          window_groupings:
+            - bank
+      - name: fdic_assets
+        description: FDIC ASSET. Column assets_usd_thousands. Thousands of USD.
+        agg: sum
+        expr: assets_usd_thousands
+        create_metric: false
+        non_additive_dimension:
+          name: quarter_id
+          window_choice: max
+          window_groupings:
+            - bank
+      - name: fdic_net_income
+        description: >
+          FDIC NETINC de-cumulated. Column net_income_quarter_usd_thousands.
+          Thousands of USD. A flow. No non_additive_dimension.
+        agg: sum
+        expr: net_income_quarter_usd_thousands
+        create_metric: false
+      - name: fdic_nimy
+        description: >
+          FDIC NIMY. Column nimy_percent. Reported percent.
+          agg max returns the reported cell at one bank and one quarter.
+          A grouped max is not a portfolio NIM.
+        agg: max
+        expr: nimy_percent
+        create_metric: false
+        non_additive_dimension:
+          name: quarter_id
+          window_choice: max
+          window_groupings:
+            - bank
+      - name: fdic_eeffr
+        description: >
+          FDIC EEFFR. Column eeffr_percent. Reported percent.
+          agg max returns the reported cell at one bank and one quarter.
+          A grouped max is not a portfolio efficiency ratio.
+        agg: max
+        expr: eeffr_percent
+        create_metric: false
+        non_additive_dimension:
+          name: quarter_id
+          window_choice: max
+          window_groupings:
+            - bank
+      - name: sec_assets
+        description: SEC us-gaap Assets. Column assets_usd. Whole USD.
+        agg: sum
+        expr: assets_usd
+        create_metric: false
+        non_additive_dimension:
+          name: quarter_id
+          window_choice: max
+          window_groupings:
+            - bank
+      - name: sec_deposits
+        description: SEC us-gaap Deposits. Column deposits_usd. Whole USD.
+        agg: sum
+        expr: deposits_usd
+        create_metric: false
+        non_additive_dimension:
+          name: quarter_id
+          window_choice: max
+          window_groupings:
+            - bank
+      - name: sec_net_income
+        description: >
+          SEC us-gaap NetIncomeLoss. Column net_income_quarter_usd. Whole USD.
+          A flow. Four quarters need not equal the 10-K when vintages mix.
+        agg: sum
+        expr: net_income_quarter_usd
+        create_metric: false
+
+metrics:
+  - name: total_deposits
+    type: simple
+    label: Total deposits
+    description: >
+      Lead-bank FDIC DEP, column deposits_usd_thousands, thousands of USD.
+      Point-in-time balance. Across quarters, the latest quarter in the
+      window for that bank. Filter keeps bank_subsidiary only.
+    filter: "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+    type_params:
+      measure: fdic_deposits
+  - name: total_assets
+    type: simple
+    label: Total assets
+    description: >
+      Lead-bank FDIC ASSET, column assets_usd_thousands, thousands of USD.
+      Point-in-time balance. Across quarters, the latest quarter in the
+      window for that bank. Filter keeps bank_subsidiary only.
+    filter: "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+    type_params:
+      measure: fdic_assets
+  - name: net_income
+    type: simple
+    label: Net income
+    description: >
+      Lead-bank FDIC NETINC de-cumulated to the quarter, column
+      net_income_quarter_usd_thousands, thousands of USD. Summing quarters
+      adds flows. A null quarter stays null. Filter keeps bank_subsidiary only.
+    filter: "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+    type_params:
+      measure: fdic_net_income
+  - name: nim
+    type: simple
+    label: Net interest margin
+    description: >
+      Lead-bank FDIC NIMY, column nimy_percent, percent as reported.
+      Meaningful at one bank and one quarter. Grouping further returns the
+      max of the reported percents, which is not a portfolio NIM.
+      Filter keeps bank_subsidiary only.
+    filter: "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+    type_params:
+      measure: fdic_nimy
+  - name: efficiency_ratio
+    type: simple
+    label: Efficiency ratio
+    description: >
+      Lead-bank FDIC EEFFR, column eeffr_percent, percent as reported.
+      Meaningful at one bank and one quarter. Grouping further returns the
+      max of the reported percents, which is not a portfolio efficiency ratio.
+      Filter keeps bank_subsidiary only.
+    filter: "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+    type_params:
+      measure: fdic_eeffr
+  - name: holding_company_assets
+    type: simple
+    label: Holding company assets
+    description: >
+      Holding-company SEC us-gaap Assets, column assets_usd, whole USD.
+      Point-in-time balance. Across quarters, the latest quarter in the
+      window for that bank. Filter keeps holding_company only.
+    filter: "{{ Dimension('bank__entity_level') }} = 'holding_company'"
+    type_params:
+      measure: sec_assets
+  - name: holding_company_deposits
+    type: simple
+    label: Holding company deposits
+    description: >
+      Holding-company SEC us-gaap Deposits, column deposits_usd, whole USD.
+      Point-in-time balance. Null on the committed fixtures. Filter keeps
+      holding_company only.
+    filter: "{{ Dimension('bank__entity_level') }} = 'holding_company'"
+    type_params:
+      measure: sec_deposits
+  - name: holding_company_net_income
+    type: simple
+    label: Holding company net income
+    description: >
+      Holding-company SEC us-gaap NetIncomeLoss, column
+      net_income_quarter_usd, whole USD. Quarterly flow. Four quarters need
+      not equal the 10-K when vintages mix. Filter keeps holding_company only.
+    filter: "{{ Dimension('bank__entity_level') }} = 'holding_company'"
+    type_params:
+      measure: sec_net_income
+  - name: deposits_qoq_growth
+    type: derived
+    label: Deposit growth vs prior quarter
+    description: >
+      Change in lead-bank FDIC DEP versus the prior calendar quarter.
+      (this quarter minus prior quarter) divided by the prior quarter, using
+      total_deposits. The prior quarter is offset_window 1 quarter. A null
+      prior or a zero prior leaves the growth null. The fraction is not
+      scaled to percent. The entity_level lock lives on total_deposits.
+    type_params:
+      expr: (deposits - deposits_prev) / nullif(deposits_prev, 0)
+      metrics:
+        - name: total_deposits
+          alias: deposits
+        - name: total_deposits
+          alias: deposits_prev
+          offset_window: 1 quarter
+
+saved_queries:
+  - name: lead_bank_deposits_qoq
+    description: >
+      Lead-bank FDIC deposits and quarter-on-quarter growth by ticker.
+    query_params:
+      metrics:
+        - total_deposits
+        - deposits_qoq_growth
+      group_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('bank__ticker')
+      where:
+        - "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+      order_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('bank__ticker')
+  - name: lead_bank_balance_sheet
+    description: >
+      Lead-bank FDIC assets and deposits by ticker and quarter.
+    query_params:
+      metrics:
+        - total_assets
+        - total_deposits
+      group_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('bank__ticker')
+      where:
+        - "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+      order_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('bank__ticker')
+  - name: lead_bank_earnings
+    description: >
+      Lead-bank quarterly net income, NIMY, and EEFFR by ticker and quarter.
+      The grain is one bank and one quarter so the rates are the reported cells.
+    query_params:
+      metrics:
+        - net_income
+        - nim
+        - efficiency_ratio
+      group_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('bank__ticker')
+      where:
+        - "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+      order_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('bank__ticker')
+  - name: holding_company_assets
+    description: >
+      Holding-company SEC Assets by ticker and quarter. Whole USD.
+    query_params:
+      metrics:
+        - holding_company_assets
+      group_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('bank__ticker')
+      where:
+        - "{{ Dimension('bank__entity_level') }} = 'holding_company'"
+      order_by:
+        - TimeDimension('metric_time', 'quarter')
+        - Dimension('bank__ticker')

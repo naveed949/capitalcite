@@ -84,10 +84,17 @@ files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
 
+[[tool.mypy.overrides]]
+module = ["duckdb", "yaml"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = ["-q", "--strict-markers"]
+addopts = ["-q", "--strict-markers", "-m", "not mf"]
+markers = [
+  "mf: re-runs mf against the ci warehouse. The dbt CI job runs this marker.",
+]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
