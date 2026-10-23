@@ -24,6 +24,7 @@ from capitalcite.metrics.extract import (
     format_fetched_at,
 )
 from capitalcite.metrics.snapshot import (
+    FINANCIAL_FIELDS,
     Cert,
     MetricsInputError,
     MetricsUnavailable,
@@ -583,6 +584,8 @@ def _assert_tree_matches_fixtures(output: Path, stdout: str) -> None:
             assert written.with_name(f"{name}.metadata.json").read_bytes() == meta.read_bytes()
         page = json.loads((output / "raw" / "fdic" / "financials" / f"{cert}.json").read_bytes())
         assert f"financials cert={cert} rows={page['meta']['total']}" in stdout
+        for row in page["data"]:
+            assert list(row["data"]) == sorted(FINANCIAL_FIELDS)
         xbrl = json.loads((output / "raw" / "xbrl" / f"{ticker}.json").read_bytes())
         assert "cik" in xbrl
         assert "REPDTE" not in (output / "raw" / "xbrl" / f"{ticker}.json").read_text()
@@ -621,3 +624,17 @@ def test_fixture_batch_accepts_the_committed_tree() -> None:
     assert [item.lead.company.ticker for item in loaded.companies] == [
         company.ticker for company in holding_companies()
     ]
+    assert FINANCIAL_FIELDS == (
+        "CERT",
+        "REPDTE",
+        "ASSET",
+        "DEP",
+        "NIMY",
+        "EEFFR",
+        "NETINC",
+    )
+    for item in loaded.companies:
+        page = json.loads(item.financials.body)
+        assert item.financials.rows == page["meta"]["total"] == len(page["data"]) >= 1
+        for row in page["data"]:
+            assert list(row["data"]) == sorted(FINANCIAL_FIELDS)
