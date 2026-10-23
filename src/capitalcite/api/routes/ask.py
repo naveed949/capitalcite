@@ -326,7 +326,7 @@ async def iter_ask(
 
 
 async def _maybe_slow_retrieve(settings: Settings, question: str) -> None:
-    ms = settings.test_slow_retrieve_ms
+    ms = settings.capitalcite_test_slow_retrieve_ms
     if ms > 0 and question == SLOW_RETRIEVE_QUESTION:
         await asyncio.sleep(ms / 1000)
 

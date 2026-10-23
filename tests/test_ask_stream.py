@@ -343,7 +343,7 @@ async def test_slow_retrieve_sleeps_only_for_the_cancel_question(
         settings = Settings.model_validate(
             {
                 "sec_user_agent": "capitalcite-tests tests@example.com",
-                "test_slow_retrieve_ms": ms,
+                "capitalcite_test_slow_retrieve_ms": ms,
             }
         )
         events = [
