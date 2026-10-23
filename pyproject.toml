@@ -91,7 +91,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = ["-q", "--strict-markers"]
+addopts = ["-q", "--strict-markers", "-m", "not mf"]
 markers = [
   "mf: re-runs mf against the ci warehouse. The dbt CI job runs this marker.",
 ]
