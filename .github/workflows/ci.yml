@@ -40,7 +40,7 @@ jobs:
         run: uv run mypy src tests
 
       - name: Tests
-        run: uv run pytest
+        run: uv run pytest -m "not mf"
 
       - name: Write-up number check
         run: uv run python scripts/check_writeup_numbers.py
@@ -106,7 +106,7 @@ jobs:
           enable-cache: true
 
       - name: Install dbt tools
-        run: uv sync --frozen --group metrics
+        run: uv sync --frozen --group metrics --group dev
 
       - name: dbt build (ci)
         env:
@@ -120,6 +120,15 @@ jobs:
         env:
           DBT_PROJECT_DIR: ${{ github.workspace }}/dbt
         run: uv run --group metrics dbt docs generate --project-dir dbt --profiles-dir dbt --target ci
+
+      - name: MetricFlow validate and snapshot
+        env:
+          DBT_PROJECT_DIR: ${{ github.workspace }}/dbt
+          DBT_PROFILES_DIR: ${{ github.workspace }}/dbt
+          DBT_TARGET: ci
+        run: |
+          uv run --group metrics mf validate-configs
+          uv run --group metrics --group dev pytest tests/test_mf_metrics.py -m mf
 
   e2e:
     name: e2e

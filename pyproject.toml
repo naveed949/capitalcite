@@ -88,6 +88,9 @@ warn_unused_ignores = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = ["-q", "--strict-markers"]
+markers = [
+  "mf: re-runs mf against the ci warehouse. The dbt CI job runs this marker.",
+]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
