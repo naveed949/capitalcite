@@ -233,4 +233,5 @@ assert set(TOOL_NAMES) == {
     "fdic_bankfind",
     "calculator",
     "graph_query",
+    "metric_query",
 }
