@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import AsyncIterator, Sequence
+import json
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
-from starlette.responses import StreamingResponse
+from starlette.responses import Response
+from starlette.types import Receive, Scope, Send
 
 from capitalcite.agent import (
     AgentResult,
@@ -78,10 +80,13 @@ from capitalcite.trace import ObservationKind, ask_attrs, git_sha, observation
 
 router = APIRouter(tags=["ask"])
 
-_SSE_HEADERS = {
-    "Cache-Control": "no-cache",
-    "X-Accel-Buffering": "no",
-}
+__all__ = ["AskRequest", "AskResponse", "iter_ask", "router"]
+
+_SSE_START_HEADERS = [
+    (b"cache-control", b"no-cache"),
+    (b"content-type", b"text/event-stream"),
+    (b"x-accel-buffering", b"no"),
+]
 
 _STREAM_FAULTS = (IndexUnavailable, IndexNotBuilt, ModelNotConfigured, ModelUnavailable)
 
@@ -99,6 +104,88 @@ class _QueueObserve(Observe):
 
     def tool_finished(self, trace: TraceStep, reason: str | None) -> None:
         self._queue.put_nowait(tool_fact(trace, reason))
+
+
+class _AskSSEResponse(Response):
+    """Peek the first event in the same task that writes the body."""
+
+    media_type = "text/event-stream"
+
+    def __init__(self, events: AsyncGenerator[AskEvent, None]) -> None:
+        super().__init__(content=b"", media_type="text/event-stream")
+        self._events = events
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        events = self._events
+        try:
+            first = await anext(events)
+        except ValueError as exc:
+            await events.aclose()
+            await _send_json_error(send, 422, str(exc))
+            return
+        except _STREAM_FAULTS as exc:
+            await events.aclose()
+            await _send_json_error(send, 503, str(exc))
+            return
+        except Exception:
+            await events.aclose()
+            raise
+        if isinstance(first, ErrorEvent):
+            await events.aclose()
+            await _send_json_error(send, first.status, first.detail)
+            return
+
+        await send({"type": "http.response.start", "status": 200, "headers": _SSE_START_HEADERS})
+        current = asyncio.current_task()
+
+        async def watch_disconnect() -> None:
+            while True:
+                message = await receive()
+                if message["type"] == "http.disconnect":
+                    if current is not None:
+                        current.cancel()
+                    return
+
+        watcher = asyncio.create_task(watch_disconnect())
+        try:
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": encode_sse(first),
+                    "more_body": True,
+                }
+            )
+            async for event in events:
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": encode_sse(event),
+                        "more_body": True,
+                    }
+                )
+            await send({"type": "http.response.body", "body": b"", "more_body": False})
+        except asyncio.CancelledError:
+            pass
+        finally:
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
+            await events.aclose()
+
+
+async def _send_json_error(send: Send, status: int, detail: str) -> None:
+    body = json.dumps({"detail": detail}).encode()
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -120,6 +207,7 @@ async def post_ask(
 
 @router.post(
     "/ask/stream",
+    response_model=None,
     openapi_extra={
         "responses": {
             "200": {
@@ -136,44 +224,16 @@ async def post_ask_stream(
     body: AskRequest,
     setup: Annotated[RetrievalSetup, Depends(get_setup)],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> StreamingResponse:
+) -> _AskSSEResponse:
     """Return the same run as ``POST /ask`` as ``text/event-stream``."""
-    events = iter_ask(body, setup, settings)
-    try:
-        first = await anext(events)
-    except ValueError as exc:
-        await events.aclose()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except _STREAM_FAULTS as exc:
-        await events.aclose()
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception:
-        await events.aclose()
-        raise
-    if isinstance(first, ErrorEvent):
-        await events.aclose()
-        raise HTTPException(status_code=first.status, detail=first.detail)
-
-    async def frames() -> AsyncIterator[bytes]:
-        try:
-            yield encode_sse(first)
-            async for event in events:
-                yield encode_sse(event)
-        finally:
-            await events.aclose()
-
-    return StreamingResponse(
-        frames(),
-        media_type="text/event-stream",
-        headers=_SSE_HEADERS,
-    )
+    return _AskSSEResponse(iter_ask(body, setup, settings))
 
 
 async def iter_ask(
     body: AskRequest,
     setup: RetrievalSetup,
     settings: Settings,
-) -> AsyncIterator[AskEvent]:
+) -> AsyncGenerator[AskEvent, None]:
     """Yield one run, then exactly one ``done``."""
     with observation(
         "ask",
@@ -235,9 +295,7 @@ async def _rag_events(
 ) -> AsyncIterator[AskEvent]:
     filters = parse_filters(ticker=body.ticker, form=body.form, period=body.period)
     limit = body.k if body.k is not None else setup.search_k
-    hits = await retrieve(
-        setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters
-    )
+    hits = await retrieve(setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters)
     answer = await ask(
         hits,
         body.question,
@@ -255,9 +313,7 @@ async def _agent_events(
     count: int,
 ) -> AsyncIterator[AskEvent]:
     queue: asyncio.Queue[AskEvent] = asyncio.Queue()
-    task = asyncio.create_task(
-        _run_agent(body, setup, settings, observe=_QueueObserve(queue))
-    )
+    task = asyncio.create_task(_run_agent(body, setup, settings, observe=_QueueObserve(queue)))
     getter: asyncio.Task[AskEvent] | None = None
     try:
         while True:

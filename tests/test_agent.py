@@ -506,8 +506,10 @@ def test_post_ask_agent_tool_http_error_is_200(
         body: AskRequest,
         setup: RetrievalSetup,
         settings: Settings,
+        *,
+        observe: object | None = None,
     ) -> AgentResult:
-        _ = setup, settings
+        _ = setup, settings, observe
         tools = default_registry(
             search=_empty_search,
             xbrl=XbrlClient(client).fact,

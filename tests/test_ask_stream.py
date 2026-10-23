@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
@@ -12,8 +13,8 @@ from qdrant_client import AsyncQdrantClient
 
 from capitalcite.agent import FakeAgentModel, PlannerDecision, ToolCall
 from capitalcite.api.app import create_app
-from capitalcite.api.ask_models import AskResponse, ToolCallEvent, event_model_names
-from capitalcite.api.routes.ask import AskRequest, iter_ask
+from capitalcite.api.ask_models import AskRequest, AskResponse, ToolCallEvent, event_model_names
+from capitalcite.api.routes.ask import iter_ask
 from capitalcite.api.routes.search import get_setup
 from capitalcite.audit import AuditRecord, verify
 from capitalcite.chunking.models import Chunk, ChunkerName
@@ -49,7 +50,7 @@ def test_openapi_lists_stream_events() -> None:
 
 async def test_rag_event_order_and_answered_matches_ask(tmp_path: Path) -> None:
     application, _setup = await _indexed_app(tmp_path, [_chunk()])
-    body = {
+    body: dict[str, object] = {
         "question": "What buffer did JPM describe?",
         "ticker": "JPM",
         "model": "fake",
@@ -74,7 +75,7 @@ async def test_rag_refusal_has_no_citations(tmp_path: Path) -> None:
     application, _setup = await _indexed_app(
         tmp_path, [_chunk(ticker="WFC", period="2025-12-31", text="Wells Fargo CET1 was 11.1%")]
     )
-    body = {
+    body: dict[str, object] = {
         "question": "What CET1 ratio did Wells Fargo disclose for year-end 2026?",
         "ticker": "WFC",
         "model": "fake",
@@ -101,7 +102,7 @@ async def test_gate_deny_emits_tool_denied_and_audit_row(
         ),
     )
     application, _setup = await _indexed_app(tmp_path, [_chunk()])
-    body = {
+    body: dict[str, object] = {
         "question": "What buffer did JPM describe?",
         "path": "agent",
         "model": "fake",
@@ -113,7 +114,9 @@ async def test_gate_deny_emits_tool_denied_and_audit_row(
     assert "tool_denied" in names
     denied = next(event for event in events if event["event"] == "tool_denied")
     assert denied["reason"] == "unknown_tool"
-    assert denied["trace"]["ok"] is False
+    trace = denied["trace"]
+    assert isinstance(trace, dict)
+    assert trace["ok"] is False
     assert names[-1] == "done"
     report = verify(tmp_path / "audit.jsonl")
     assert report.ok is True
@@ -157,7 +160,7 @@ async def test_disconnect_cancels_the_in_flight_tool(
             )
         ),
     )
-    application, setup = await _indexed_app(
+    _application, setup = await _indexed_app(
         tmp_path, [_chunk(), _chunk(ticker="BAC", url=_BAC_URL)]
     )
     events = iter_ask(
@@ -199,7 +202,9 @@ def test_ask_request_still_imports_from_the_route() -> None:
     assert AskRequest.model_fields["path"].default == "rag"
 
 
-async def _post_json(application: FastAPI, path: str, body: dict[str, object]) -> dict[str, object]:
+async def _post_json(
+    application: FastAPI, path: str, body: Mapping[str, object]
+) -> dict[str, object]:
     transport = ASGITransport(app=application)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(path, json=body)
@@ -210,14 +215,16 @@ async def _post_json(application: FastAPI, path: str, body: dict[str, object]) -
 
 
 async def _read_stream(
-    application: FastAPI, body: dict[str, object]
+    application: FastAPI, body: Mapping[str, object]
 ) -> tuple[int, str, list[dict[str, object]]]:
     transport = ASGITransport(app=application)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        async with client.stream("POST", "/ask/stream", json=body) as response:
-            text = "".join([chunk async for chunk in response.aiter_text()])
-            media = response.headers.get("content-type", "")
-            return response.status_code, media, _parse_sse(text)
+    async with (
+        httpx.AsyncClient(transport=transport, base_url="http://test") as client,
+        client.stream("POST", "/ask/stream", json=body) as response,
+    ):
+        text = "".join([chunk async for chunk in response.aiter_text()])
+        media = response.headers.get("content-type", "")
+        return response.status_code, media, _parse_sse(text)
 
 
 def _parse_sse(text: str) -> list[dict[str, object]]:

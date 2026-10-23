@@ -97,9 +97,7 @@ async def run_agent(
     )
 
 
-def _compile(
-    model: AgentModel, tools: ToolExecutor, min_score: float, observe: Observe
-) -> Any:
+def _compile(model: AgentModel, tools: ToolExecutor, min_score: float, observe: Observe) -> Any:
     async def plan_node(state: GraphState) -> dict[str, object]:
         reason = _over_budget(state)
         if reason is not None:
@@ -152,9 +150,7 @@ def _compile(
             ok=result.ok,
             detail=result.detail,
         )
-        observe.tool_finished(
-            trace, None if result.reason is None else str(result.reason)
-        )
+        observe.tool_finished(trace, None if result.reason is None else str(result.reason))
         traces.append(trace)
         plan = list(state["plan"])
         plan[state["cursor"]] = step.model_copy(update={"status": "done" if result.ok else "error"})
