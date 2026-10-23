@@ -179,7 +179,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |
 | `graph.help.out` / `graph.load.out` / `graph.query.out` / `eval-graph-small.out` | Memory-backend graph load/query and `eval --suite graph --small`. Live Bolt is UNVERIFIED |
 | `metrics.help.out` / `metrics.out` / `metrics.exit` / `metrics.files.txt` | Offline `capitalcite metrics extract --fixtures`. stdout contains `metrics extract xbrl=4 financials=4`. Sidecar sha256 matches the payload. Live BankFind is outside this helper |
-| `dbt.out` / `dbt.exit` / `dbt-docs.out` / `dbt-docs.exit` | `dbt build --target ci` and `dbt docs generate --target ci` on `tests/fixtures/metrics`. stdout contains `Completed successfully` |
+| `dbt.out` / `dbt.exit` / `dbt-docs.out` / `dbt-docs.exit` / `dbt-shape.out` / `dbt-shape.exit` | `dbt build --target ci` and `dbt docs generate --target ci` on `tests/fixtures/metrics`. stdout contains `Completed successfully`. Shape query checks JPM 2026-06-30 duration and restatement cells and the 2099-09-30 NETINC gap |
 | `eval.out` / `eval.exit` / `eval.table.md` **or** `eval.skipped` | Real-corpus eval with embedded Qdrant + bge-small, or UNVERIFIED if ingest was unreachable |
 | `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
 | `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |

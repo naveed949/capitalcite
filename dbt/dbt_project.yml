@@ -29,7 +29,7 @@ seeds:
 models:
   capitalcite_warehouse:
     staging:
-      +materialized: view
+      +materialized: table
     intermediate:
       +materialized: view
     marts:

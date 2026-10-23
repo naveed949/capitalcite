@@ -2541,6 +2541,8 @@ PY
 log "verify: capitalcite metrics extract --fixtures ok"
 cat "${ART}/metrics.out"
 
+export DBT_PROJECT_DIR="${ROOT}/dbt"
+
 log "verify: dbt build --target ci"
 set +e
 uv run --frozen --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci \
@@ -2571,6 +2573,48 @@ if [[ "${dbt_docs_rc}" -ne 0 ]]; then
   exit 1
 fi
 log "verify: dbt docs generate --target ci ok"
+
+log "verify: dbt fixture shape"
+set +e
+uv run --frozen --group metrics python - "${ROOT}/dbt/target/ci.duckdb" \
+  >"${ART}/dbt-shape.out" 2>"${ART}/dbt-shape.err" <<'PY'
+import sys
+
+import duckdb
+
+con = duckdb.connect(sys.argv[1], read_only=True)
+holding = con.execute(
+    """
+    select deposits_usd, net_income_quarter_usd
+    from fct_bank_financials_quarterly
+    where bank_key = 'JPM|holding_company' and quarter_id = date '2026-06-30'
+    """
+).fetchone()
+gap = con.execute(
+    """
+    select net_income_quarter_usd_thousands, net_income_ytd_usd_thousands
+    from fct_bank_financials_quarterly
+    where bank_key = 'JPM|bank_subsidiary' and quarter_id = date '2099-09-30'
+    """
+).fetchone()
+if holding != (2500000000000.0, 13000000000.0):
+    raise SystemExit(f"holding shape {holding}")
+if gap != (None, 300000.0):
+    raise SystemExit(f"gap shape {gap}")
+print("holding deposits_usd=2500000000000 net_income_quarter_usd=13000000000")
+print("gap net_income_quarter_usd_thousands=null net_income_ytd_usd_thousands=300000")
+PY
+shape_rc=$?
+set -e
+write dbt-shape.exit "${shape_rc}"
+if [[ "${shape_rc}" -ne 0 ]]; then
+  log "verify: dbt fixture shape failed"
+  cat "${ART}/dbt-shape.out" >&2 || true
+  cat "${ART}/dbt-shape.err" >&2 || true
+  exit 1
+fi
+log "verify: dbt fixture shape ok"
+cat "${ART}/dbt-shape.out"
 
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
@@ -3061,6 +3105,7 @@ web_ask
   echo "metrics.exit $(cat "${ART}/metrics.exit")"
   echo "dbt.exit $(cat "${ART}/dbt.exit")"
   echo "dbt-docs.exit $(cat "${ART}/dbt-docs.exit")"
+  echo "dbt-shape.exit $(cat "${ART}/dbt-shape.exit")"
   if [[ -f "${ART}/eval.skipped" ]]; then
     echo "eval skipped ($(cat "${ART}/eval.skipped"))"
   else

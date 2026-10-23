@@ -109,7 +109,11 @@ jobs:
         run: uv sync --frozen --group metrics
 
       - name: dbt build (ci)
+        env:
+          DBT_PROJECT_DIR: ${{ github.workspace }}/dbt
         run: uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci
 
       - name: dbt docs generate (ci)
+        env:
+          DBT_PROJECT_DIR: ${{ github.workspace }}/dbt
         run: uv run --group metrics dbt docs generate --project-dir dbt --profiles-dir dbt --target ci

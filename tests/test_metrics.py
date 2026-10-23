@@ -132,6 +132,7 @@ def test_trim_companyfacts_keeps_numeric_observations_and_is_idempotent() -> Non
                         },
                     },
                     "Assets": {"units": {"USD": [{"end": "2024-12-31", "val": 3.0, "fy": 2024}]}},
+                    "Deposits": {"units": {"USD": [{"end": "2024-12-31", "val": 4.0, "fy": 2024}]}},
                 }
             },
         }
@@ -144,9 +145,10 @@ def test_trim_companyfacts_keeps_numeric_observations_and_is_idempotent() -> Non
     assert "frame" not in once.decode()
     assert "label" not in once.decode()
     facts = payload["facts"]["us-gaap"]
-    assert set(facts) == {"Assets", "Liabilities"}
-    ends = [row["end"] for row in facts["Liabilities"]["units"]["USD"]]
-    assert ends == ["2023-12-31", "2024-12-31"]
+    assert set(facts) == {"Assets", "Deposits"}
+    assert "Liabilities" not in facts
+    ends = [row["end"] for row in facts["Assets"]["units"]["USD"]]
+    assert ends == ["2024-12-31"]
 
 
 def test_trim_financials_projects_seven_fields_and_is_idempotent() -> None:

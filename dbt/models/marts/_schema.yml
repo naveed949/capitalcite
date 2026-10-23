@@ -1,14 +1,6 @@
 version: 2
 
 models:
-  - name: metricflow_time_spine
-    description: Day-level MetricFlow time spine. Not an analyst dimension.
-    time_spine:
-      standard_granularity_column: date_day
-    columns:
-      - name: date_day
-        granularity: day
-
   - name: dim_bank
     description: >
       One row per legal entity. A seed ticker becomes a holding_company row

@@ -3,9 +3,9 @@ capitalcite_warehouse:
   outputs:
     dev:
       type: duckdb
-      path: data/warehouse/capitalcite.duckdb
+      path: "{{ env_var('DBT_PROJECT_DIR', '.') }}/../data/warehouse/capitalcite.duckdb"
       threads: 1
     ci:
       type: duckdb
-      path: dbt/target/ci.duckdb
+      path: "{{ env_var('DBT_PROJECT_DIR', '.') }}/target/ci.duckdb"
       threads: 1

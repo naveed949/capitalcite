@@ -22,6 +22,8 @@ FINANCIAL_FIELDS: tuple[str, ...] = (
     "EEFFR",
     "NETINC",
 )
+WAREHOUSE_SEC_TAXONOMY = "us-gaap"
+WAREHOUSE_SEC_CONCEPTS: frozenset[str] = frozenset({"Assets", "Deposits", "NetIncomeLoss"})
 _OBS_KEYS: tuple[str, ...] = ("start", "end", "val", "accn", "fy", "fp", "form", "filed")
 _OBS_SORT: tuple[str, ...] = ("end", "fy", "fp", "form", "accn", "filed")
 _CERT = re.compile(r"[1-9][0-9]{0,6}")
@@ -205,11 +207,15 @@ def trim_companyfacts(body: bytes) -> bytes:
         raise MetricsInputError("companyfacts body is not a facts document")
     kept_facts: dict[str, object] = {}
     for taxonomy in sorted(key for key in facts if isinstance(key, str)):
+        if taxonomy != WAREHOUSE_SEC_TAXONOMY:
+            continue
         concepts = facts[taxonomy]
         if not isinstance(concepts, dict):
             continue
         kept_concepts: dict[str, object] = {}
         for concept in sorted(key for key in concepts if isinstance(key, str)):
+            if concept not in WAREHOUSE_SEC_CONCEPTS:
+                continue
             kept_units = _trim_units(concepts[concept])
             if kept_units:
                 kept_concepts[concept] = {"units": kept_units}

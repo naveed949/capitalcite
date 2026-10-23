@@ -1,4 +1,4 @@
-{{ config(materialized="view") }}
+{{ config(materialized="table") }}
 
 with payloads as (
     select
@@ -10,7 +10,8 @@ with payloads as (
     from read_json(
         '{{ snapshot_glob("xbrl_payload") }}',
         filename = true,
-        columns = {cik: 'JSON', entityName: 'VARCHAR', facts: 'JSON'}
+        columns = {cik: 'JSON', entityName: 'VARCHAR', facts: 'JSON'},
+        maximum_object_size = 67108864
     )
     where filename not like '%.metadata.json'
 ),
@@ -27,14 +28,46 @@ sidecars as (
     )
 ),
 
-unnested as (
+wanted as (
     select
         payloads.ticker,
         payloads.cik,
         payloads.entity_name,
-        tax.key as taxonomy,
-        concept.key as concept,
-        unit.key as unit,
+        'us-gaap' as taxonomy,
+        'Assets' as concept,
+        'USD' as unit,
+        json_extract(payloads.facts, '$."us-gaap".Assets.units.USD') as observations
+    from payloads
+    union all
+    select
+        payloads.ticker,
+        payloads.cik,
+        payloads.entity_name,
+        'us-gaap',
+        'Deposits',
+        'USD',
+        json_extract(payloads.facts, '$."us-gaap".Deposits.units.USD')
+    from payloads
+    union all
+    select
+        payloads.ticker,
+        payloads.cik,
+        payloads.entity_name,
+        'us-gaap',
+        'NetIncomeLoss',
+        'USD',
+        json_extract(payloads.facts, '$."us-gaap".NetIncomeLoss.units.USD')
+    from payloads
+),
+
+unnested as (
+    select
+        wanted.ticker,
+        wanted.cik,
+        wanted.entity_name,
+        wanted.taxonomy,
+        wanted.concept,
+        wanted.unit,
         try_cast(json_extract_string(obs.value, '$.start') as date) as period_start,
         try_cast(json_extract_string(obs.value, '$.end') as date) as period_end,
         try_cast(json_extract(obs.value, '$.fy') as integer) as fy,
@@ -43,19 +76,22 @@ unnested as (
         json_extract_string(obs.value, '$.accn') as accession,
         try_cast(json_extract_string(obs.value, '$.filed') as date) as filed,
         try_cast(json_extract(obs.value, '$.val') as double) as val
-    from payloads,
-        json_each(payloads.facts) as tax,
-        json_each(tax.value) as concept,
-        json_each(json_extract(concept.value, '$.units')) as unit,
-        json_each(unit.value) as obs
+    from (
+        select *
+        from wanted
+        where observations is not null
+          and json_type(observations) = 'ARRAY'
+    ) as wanted,
+        json_each(wanted.observations) as obs
 )
 
 select
     unnested.cik
     || '|' || unnested.concept
     || '|' || unnested.unit
+    || '|' || coalesce(cast(unnested.period_start as varchar), '')
     || '|' || cast(unnested.period_end as varchar)
-    || '|' || unnested.fiscal_period
+    || '|' || coalesce(unnested.fiscal_period, '')
     || '|' || unnested.form
     || '|' || unnested.accession as grain_key,
     unnested.ticker,

@@ -41,17 +41,23 @@ dbt-core 1.12.6, dbt-duckdb 1.11.0, and dbt-metricflow 0.15.0 live in the
 `metrics` uv group. They are not in `[project.dependencies]`, not in `dev`,
 and not in the runtime image. `Dockerfile` still runs
 `uv sync --frozen --no-dev --no-editable`. Python stays below 3.15 because
-that is the dbt-core range. MetricFlow is a thin semantic layer on the wide
-fact. Every metric filters `entity_level`. `NIMY` and `EEFFR` are columns,
-not metrics, so a sum cannot invent a ratio.
+that is the dbt-core range. This warehouse has no MetricFlow semantic
+models. The package stays in the group so a later semantic layer can land
+without another dependency change.
 
 ## Why staging, intermediate, and marts
 
-Staging parses. `stg_sec__facts` types `facts` as JSON and unnests every
-taxonomy, concept, and unit. Auto-inference from the fixture would see only
-`us-gaap.Assets` and drop a live extract that has more tags. `stg_fdic__financials`
-casts mixed int and float `NIMY` and `EEFFR` cells to double. Neither model
-de-cumulates. Neither model picks an analyst concept.
+Staging parses. `stg_sec__facts` types `facts` as JSON and reads only
+`us-gaap` Assets, Deposits, and NetIncomeLoss in USD. A live companyfacts
+file is several megabytes and thousands of tags. Unnesting every taxonomy
+and concept as a view made `dbt build --target dev` exceed 12 GiB and the
+kernel killed the process. Concept-scoped `json_extract` plus a table
+materialization keeps the same three analyst series and stays in ordinary
+laptop memory. `read_json` allows a 64 MiB object so an untrimmed
+companyfacts file still parses. `capitalcite metrics extract` now keeps
+those same three concepts, so `data/raw` is already slim. `stg_fdic__financials` casts mixed
+int and float `NIMY` and `EEFFR` cells to double. Neither staging model
+de-cumulates. Neither staging model picks a restated winner.
 
 The intermediate layer owns policy. `int_bank_financials_long` is one row per
 entity, quarter, and concept. It collapses duplicate SEC observations, keeps
@@ -106,9 +112,16 @@ window runs only on that certificate's own dates, so another bank's quarter
 cannot become the prior row.
 
 SEC `NetIncomeLoss` is not de-cumulated. It fills only when `period_start`
-is 1 January, 1 April, 1 July, or 1 October for that quarter-end. The
-committed fixtures omit `start`, so holding-company net income is null
-there. That is the honest value.
+is 1 January, 1 April, 1 July, or 1 October for that quarter-end. A 10-Q
+often files both the three-month duration and the year-to-date duration
+under the same accession, form, fiscal period, and end date. Those two
+rows are different facts. The staging grain includes a null-safe
+`period_start` so they do not collide. Some 8-K and DEF 14A rows omit
+`fp`. `fiscal_period` is null-safe in the same key. The mart keeps the
+three-month row. Instant facts such as Assets and Deposits have a null
+start. When two instants share an end date, the mart keeps the latest
+`filed` value. The JPM fixture has both shapes so those branches run
+in CI.
 
 ## Why reported ratios stay as reported
 
@@ -126,18 +139,27 @@ fact to `dim_bank` and `dim_period` fail when a key has no dimension row.
 `accepted_values` on `entity_level` is the closed set `holding_company` and
 `bank_subsidiary`.
 
-Two singular tests name identities the generic tests cannot.
+Singular tests name identities the generic tests cannot.
 
 - `assert_no_duplicate_entity_quarter_concept` fails when the long model has
   two rows for the same entity, quarter, and concept.
-- `assert_quarterly_netinc_sums_to_q4_ytd` fails when a bank year has four
-  quarterly values and those values do not add to the Q4 YTD cell.
+- `assert_netinc_quarter_continuity` fails when a bank year has four
+  continuous quarterly values and those values do not add to the Q4 YTD
+  cell. A year with a missing prior quarter is outside that test.
+- `assert_sec_duration_and_restatement` fails when JPM holding-company
+  2026-06-30 does not keep the three-month `NetIncomeLoss` and the
+  later-filed Deposits. It runs on `ci` only. The cells are fixture
+  values.
+- `assert_missing_prior_quarter_netinc_is_null` fails when the synthetic
+  2099-09-30 JPM bank row has a quarterly NETINC. That date has no 2099
+  Q2, so a subtraction would be a wrong difference. It runs on `ci` only.
 
 `assert_level_columns_exclusive` fails when one fact row fills both unit
 families, or when a `dim_bank` holding row carries a CERT.
 
 The `ci` build is the contract check. `dev` uses the same models on
-`data/raw`.
+`data/raw`. Profile paths and snapshot globs resolve from
+`DBT_PROJECT_DIR`, so the working directory is not the path contract.
 
 ## Alternatives that lost
 
@@ -170,3 +192,9 @@ the tables. There is no high-water mark.
 
 Putting dbt in the API image or the default `uv sync`. The API does not
 query the warehouse. `/ask` is unchanged.
+
+Unnesting every companyfacts concept. The warehouse asks for three series.
+The extra tags cost memory and do not change an analyst row.
+
+Leaving `start` out of the SEC grain. Instant and duration facts would
+share a key on a 10-Q that files both a quarter and a YTD amount.
