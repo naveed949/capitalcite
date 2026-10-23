@@ -67,7 +67,7 @@ def test_sources_do_not_use_the_old_host_or_fdic_cert() -> None:
     assert "fdic_cert" not in extract
 
 
-def test_holdings_match_graph_parent_child_names() -> None:
+def test_holdings_match_graph_parent_child_identity() -> None:
     snapshot = json.loads(Path("evals/golden/graph_snapshot.json").read_text(encoding="utf-8"))
     banks = {bank["rssd"]: bank for bank in snapshot["banks"]}
     linked = []
@@ -75,8 +75,15 @@ def test_holdings_match_graph_parent_child_names() -> None:
         parent = banks[edge["parent_rssd"]]
         child = banks[edge["child_rssd"]]
         linked.append((parent["ticker"], parent["cik"], child["name"]))
-    got = [(company.ticker, company.cik, company.lead_bank_name) for company in holding_companies()]
-    assert got == linked
+    companies = holding_companies()
+    got = [(company.ticker, company.cik) for company in companies]
+    assert got == [(ticker, cik) for ticker, cik, _name in linked]
+    by_ticker = {company.ticker: company.lead_bank_name for company in companies}
+    assert by_ticker["JPM"] == "JPMORGAN CHASE BANK, NATIONAL ASSOCIATION"
+    assert by_ticker["BAC"] == "BANK OF AMERICA, NATIONAL ASSOCIATION"
+    assert by_ticker["WFC"] == "WELLS FARGO BANK, NATIONAL ASSOCIATION"
+    assert by_ticker["C"] == "Citibank, National Association"
+    assert ("C", "0000831001", "CITIBANK, N.A.") in linked
     assert set(HoldingCompany.model_fields) == {"ticker", "cik", "lead_bank_name"}
 
 
@@ -389,6 +396,30 @@ def test_cli_fixtures_are_byte_identical(tmp_path: Path) -> None:
     _assert_tree_matches_fixtures(tmp_path, second.stdout)
     links = MetricsStore(tmp_path).read_leads()
     assert [link.ticker for link in links] == [company.ticker for company in holding_companies()]
+
+
+def test_cli_fixtures_do_not_need_sec_user_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from capitalcite.config import get_settings
+
+    monkeypatch.delenv("SEC_USER_AGENT", raising=False)
+    get_settings.cache_clear()
+    result = runner.invoke(
+        app,
+        [
+            "metrics",
+            "extract",
+            "--fixtures",
+            "--tickers",
+            "JPM,BAC,WFC,C",
+            "--output-dir",
+            str(tmp_path),
+        ],
+    )
+    get_settings.cache_clear()
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert "metrics extract xbrl=4 financials=4" in result.stdout
 
 
 def test_cli_fixtures_do_not_open_a_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

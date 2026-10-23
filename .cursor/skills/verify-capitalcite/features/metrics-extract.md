@@ -34,7 +34,7 @@ Preconditions:
 ## Gotchas
 
 - `--fixtures` has no directory flag. The committed tree is `tests/fixtures/metrics`.
-- Live `JPM,BAC,WFC,C` exits 1 when BankFind has no active exact name `CITIBANK, N.A.`. On 2026-10-23 that lookup returned zero rows. The command writes nothing. That is exit 1, not a transport failure.
+- The holdings name for C is the BankFind legal name `Citibank, National Association`. The graph snapshot still stores the abbreviation `CITIBANK, N.A.`. That abbreviation returned zero active rows on 2026-10-23.
 - `rows=` is the count in the response or the fixture file. Do not treat a particular count as the pass check.
 - A 301 from BankFind is exit 2. The client does not follow it.
 - `ASK_MODEL=fake` does not run this command and does not call FDIC.
