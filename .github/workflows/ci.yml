@@ -93,3 +93,23 @@ jobs:
 
       - name: Build
         run: pnpm --dir web build
+
+  dbt:
+    name: dbt warehouse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dbt tools
+        run: uv sync --frozen --group metrics
+
+      - name: dbt build (ci)
+        run: uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci
+
+      - name: dbt docs generate (ci)
+        run: uv run --group metrics dbt docs generate --project-dir dbt --profiles-dir dbt --target ci

@@ -1,0 +1,123 @@
+version: 2
+
+models:
+  - name: metricflow_time_spine
+    description: Day-level MetricFlow time spine. Not an analyst dimension.
+    time_spine:
+      standard_granularity_column: date_day
+    columns:
+      - name: date_day
+        granularity: day
+
+  - name: dim_bank
+    description: >
+      One row per legal entity. A seed ticker becomes a holding_company row
+      (CIK filled, CERT null) and a bank_subsidiary row (CERT filled, CIK
+      null). Holding-company display identity is the ticker. Bank display
+      identity is the BankFind legal name. Companyfacts entityName is not
+      used, because the BAC fixture names CIK 0000070858 as BofA Finance LLC.
+    columns:
+      - name: bank_key
+        description: ticker, a pipe, and entity_level.
+        tests:
+          - unique
+          - not_null
+      - name: ticker
+        tests:
+          - not_null
+      - name: entity_level
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['holding_company', 'bank_subsidiary']
+      - name: source_note
+        tests:
+          - not_null
+
+  - name: dim_period
+    description: >
+      One row per observed calendar quarter-end. quarter_id is that date.
+      Fiscal fy and fp stay on the SEC staging row. They are not the join key.
+    columns:
+      - name: quarter_id
+        description: Calendar quarter-end date.
+        tests:
+          - unique
+          - not_null
+      - name: calendar_year
+        tests:
+          - not_null
+      - name: calendar_quarter
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+
+  - name: fct_bank_financials_quarterly
+    description: >
+      One row per entity and calendar quarter. The spine is the observed
+      pairs in int_bank_financials_long. Holding-company columns are whole
+      USD. Bank columns keep FDIC units. The two entity_level values are
+      never summed.
+    columns:
+      - name: grain_key
+        description: bank_key and quarter_id.
+        tests:
+          - unique
+          - not_null
+      - name: bank_key
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_bank')
+                field: bank_key
+      - name: quarter_id
+        tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_period')
+                field: quarter_id
+      - name: entity_level
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['holding_company', 'bank_subsidiary']
+      - name: assets_usd
+        description: Holding-company Assets in whole USD.
+      - name: deposits_usd
+        description: Holding-company Deposits in whole USD. Null when the snapshot has no Deposits concept.
+      - name: net_income_quarter_usd
+        description: >
+          Holding-company NetIncomeLoss in whole USD, only when period_start
+          is the inclusive calendar quarter start. Null on the committed
+          fixtures, which omit start.
+      - name: assets_sec_accn
+        description: SEC accession for assets_usd.
+      - name: deposits_sec_accn
+        description: SEC accession for deposits_usd.
+      - name: net_income_sec_accn
+        description: SEC accession for net_income_quarter_usd.
+      - name: assets_usd_thousands
+        description: Lead-bank ASSET, thousands of USD as reported.
+      - name: deposits_usd_thousands
+        description: Lead-bank DEP, thousands of USD as reported.
+      - name: net_income_ytd_usd_thousands
+        description: Lead-bank NETINC, thousands of USD, year-to-date as reported.
+      - name: net_income_quarter_usd_thousands
+        description: >
+          Lead-bank NETINC de-cumulated to the quarter, thousands of USD.
+          Q1 copies YTD. Later quarters subtract the prior observed quarter
+          in the same calendar year.
+      - name: nimy_percent
+        description: Lead-bank NIMY, percent as reported. Never recomputed.
+      - name: eeffr_percent
+        description: Lead-bank EEFFR, percent as reported. Never recomputed.
+      - name: fdic_repdte
+        description: Eight-digit REPDTE for the bank row.
+      - name: fdic_source_url
+        description: BankFind financials URL from the certificate sidecar.

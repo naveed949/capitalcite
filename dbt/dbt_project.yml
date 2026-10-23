@@ -1,0 +1,36 @@
+name: capitalcite_warehouse
+version: "1.0.0"
+config-version: 2
+profile: capitalcite_warehouse
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  - "logs"
+
+seeds:
+  capitalcite_warehouse:
+    int_bank_entity_map:
+      +column_types:
+        ticker: varchar
+        cik: varchar
+        lead_bank_name: varchar
+        cert: varchar
+        source_note: varchar
+
+models:
+  capitalcite_warehouse:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table

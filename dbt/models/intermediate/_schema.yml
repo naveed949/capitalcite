@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: int_bank_financials_long
+    description: >
+      One mapped concept per entity and calendar quarter. This is the
+      concept grain. Observation collapse and FDIC NETINC de-cumulation
+      happen here. Holding-company amounts stay in whole USD. Bank amounts
+      stay in thousands of USD or percent as reported.
+    columns:
+      - name: grain_key
+        description: bank_key, quarter_id, and concept_key.
+        tests:
+          - unique
+          - not_null
+      - name: bank_key
+        tests:
+          - not_null
+      - name: quarter_id
+        tests:
+          - not_null
+      - name: concept_key
+        tests:
+          - not_null
+      - name: reported_unit
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['usd', 'thousands_usd', 'percent']

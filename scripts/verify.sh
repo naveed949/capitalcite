@@ -2541,6 +2541,37 @@ PY
 log "verify: capitalcite metrics extract --fixtures ok"
 cat "${ART}/metrics.out"
 
+log "verify: dbt build --target ci"
+set +e
+uv run --frozen --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci \
+  >"${ART}/dbt.out" 2>"${ART}/dbt.err"
+dbt_rc=$?
+set -e
+write dbt.exit "${dbt_rc}"
+if [[ "${dbt_rc}" -ne 0 ]] || ! grep -q "Completed successfully" "${ART}/dbt.out"; then
+  log "verify: dbt build --target ci failed"
+  cat "${ART}/dbt.out" >&2 || true
+  cat "${ART}/dbt.err" >&2 || true
+  exit 1
+fi
+log "verify: dbt build --target ci ok"
+cat "${ART}/dbt.out"
+
+log "verify: dbt docs generate --target ci"
+set +e
+uv run --frozen --group metrics dbt docs generate --project-dir dbt --profiles-dir dbt --target ci \
+  >"${ART}/dbt-docs.out" 2>"${ART}/dbt-docs.err"
+dbt_docs_rc=$?
+set -e
+write dbt-docs.exit "${dbt_docs_rc}"
+if [[ "${dbt_docs_rc}" -ne 0 ]]; then
+  log "verify: dbt docs generate --target ci failed"
+  cat "${ART}/dbt-docs.out" >&2 || true
+  cat "${ART}/dbt-docs.err" >&2 || true
+  exit 1
+fi
+log "verify: dbt docs generate --target ci ok"
+
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
 import json
@@ -3028,6 +3059,8 @@ web_ask
   echo "eval-graph-small.exit $(cat "${ART}/eval-graph-small.exit")"
   echo "metrics.help.exit $(cat "${ART}/metrics.help.exit")"
   echo "metrics.exit $(cat "${ART}/metrics.exit")"
+  echo "dbt.exit $(cat "${ART}/dbt.exit")"
+  echo "dbt-docs.exit $(cat "${ART}/dbt-docs.exit")"
   if [[ -f "${ART}/eval.skipped" ]]; then
     echo "eval skipped ($(cat "${ART}/eval.skipped"))"
   else

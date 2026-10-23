@@ -1,0 +1,11 @@
+capitalcite_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: data/warehouse/capitalcite.duckdb
+      threads: 1
+    ci:
+      type: duckdb
+      path: dbt/target/ci.duckdb
+      threads: 1

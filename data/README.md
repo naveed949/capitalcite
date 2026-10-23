@@ -53,3 +53,9 @@ hash of the sibling payload. `--fixtures` writes this same layout from
 FDIC `ASSET`, `DEP`, and `NETINC` are thousands of USD. `NIMY` and `EEFFR`
 are percent. `NETINC` is year-to-date cumulative. SEC companyfacts values
 in USD units are whole USD.
+
+`dbt build --project-dir dbt --profiles-dir dbt --target dev` reads
+`data/raw` and writes `data/warehouse/capitalcite.duckdb`. `/data/**`
+already gitignores that file. The `ci` target reads
+`tests/fixtures/metrics` and writes `dbt/target/ci.duckdb`. See
+[ADR 0019](../docs/decisions/0019-dbt-warehouse.md).

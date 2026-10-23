@@ -1,0 +1,31 @@
+version: 2
+
+seeds:
+  - name: int_bank_entity_map
+    description: >
+      Hand-kept ticker to CIK to lead-bank CERT map. This seed is the only
+      entity list. The warehouse does not read lead_banks.json.
+    columns:
+      - name: ticker
+        description: Holding-company ticker.
+        tests:
+          - unique
+          - not_null
+      - name: cik
+        description: 10-digit SEC CIK, stored as text so leading zeros survive.
+        tests:
+          - unique
+          - not_null
+      - name: lead_bank_name
+        description: BankFind legal name used to resolve the lead-bank CERT.
+        tests:
+          - not_null
+      - name: cert
+        description: Lead-bank FDIC certificate, as a decimal string with no leading zero.
+        tests:
+          - unique
+          - not_null
+      - name: source_note
+        description: Why this ticker, CIK, and CERT belong together.
+        tests:
+          - not_null
