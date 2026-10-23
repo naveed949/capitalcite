@@ -19,6 +19,7 @@ def test_cli_help_lists_index() -> None:
     assert "audit" in result.stdout
     assert "check" in result.stdout
     assert "mcp" in result.stdout
+    assert "metrics" in result.stdout
 
 
 def test_cli_version() -> None:

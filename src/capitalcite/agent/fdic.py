@@ -68,14 +68,7 @@ def lead_institutions_url(legal_name: str) -> str:
 
 
 def institutions(payload: object) -> tuple[int | None, tuple[Institution, ...]]:
-    """Walk a BankFind page into Institution rows.
-
-    Total is meta.total when it is an int, else None.
-    A row body is the inner data object when that is a dict, else the row.
-    Name prefers NAME then name. Certificate prefers CERT then cert, rendered with str.
-    Active is true only for 1, '1', or True.
-    A missing data list raises ValueError.
-    """
+    """Walk a BankFind page into Institution rows. A missing data list raises ValueError."""
     if not isinstance(payload, dict):
         raise ValueError("fdic_bankfind response was not an object")
     data = payload.get("data")

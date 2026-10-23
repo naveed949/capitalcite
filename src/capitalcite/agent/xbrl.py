@@ -5,17 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Protocol
 
-_CIK = {
-    "JPM": "0000019617",
-    "BAC": "0000070858",
-    "WFC": "0000072971",
-    "C": "0000831001",
-}
-_COMPANYFACTS = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+from capitalcite.holdings import HoldingCompany, holding_company
 
 
 class JsonClient(Protocol):
     async def get_json(self, url: str) -> object: ...
+
+
+def companyfacts_url(company: HoldingCompany) -> str:
+    return f"https://data.sec.gov/api/xbrl/companyfacts/CIK{company.cik}.json"
 
 
 class XbrlClient:
@@ -26,10 +24,11 @@ class XbrlClient:
 
     async def fact(self, ticker: str, concept: str, period: str | None) -> str:
         symbol = ticker.strip().upper()
-        cik = _CIK.get(symbol)
-        if cik is None:
-            raise ValueError(f"unknown ticker for xbrl_fact: {ticker}")
-        payload = await self._client.get_json(_COMPANYFACTS.format(cik=cik))
+        try:
+            company = holding_company(symbol)
+        except KeyError:
+            raise ValueError(f"unknown ticker for xbrl_fact: {ticker}") from None
+        payload = await self._client.get_json(companyfacts_url(company))
         value = _pick_fact(payload, concept.strip(), period)
         if value is None:
             raise ValueError(f"no xbrl fact for {symbol} {concept}")
