@@ -14,9 +14,11 @@ import duckdb
 import pytest
 import yaml
 
+from capitalcite.agent.audited import AuditingTools
 from capitalcite.agent.models import _METRIC_PHRASES, FakeAgentModel, _plan_system_prompt
 from capitalcite.agent.tools import default_registry
 from capitalcite.agent.types import TraceStep
+from capitalcite.audit import AuditLog, AuditRecord, verify
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.chunking.tokens import count_tokens
 from capitalcite.gate.gate import Gate
@@ -880,6 +882,21 @@ async def test_fake_plan_routes_a_named_metric_and_year() -> None:
     }
 
 
+async def test_fake_plan_reads_a_compact_quarter() -> None:
+    decision = await FakeAgentModel().plan(
+        "What were JPM's total deposits in 2026Q2?",
+        [],
+        [],
+    )
+    assert [call.name for call in decision.calls] == ["metric_query"]
+    assert decision.calls[0].args == {
+        "metric": "total_deposits",
+        "group_by": _GROUP,
+        "ticker": "JPM",
+        "period": "2026-06-30",
+    }
+
+
 async def test_fake_plan_maps_each_metric_phrase() -> None:
     questions = {
         MetricName.TOTAL_DEPOSITS: "JPM total deposits in 2024",
@@ -956,6 +973,43 @@ async def test_unconfigured_metric_query_matches_the_graph_shape() -> None:
     assert result.ok is False
     assert result.detail == "metric query is not configured"
     assert result.hits == ()
+
+
+async def test_unknown_metric_is_denied_and_audited(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    tools = AuditingTools(
+        Gate(
+            load_policy(None),
+            default_registry(search=_empty_search, xbrl=_missing_xbrl, fdic=_missing_fdic),
+        ),
+        AuditLog(path),
+        "trace-unknown-metric",
+    )
+    result = await tools.execute("metric_query", _wire(metric="cet1"))
+    assert result.ok is False
+    assert result.detail == "invalid args"
+    assert result.reason == "invalid_args"
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) == 1
+    record = AuditRecord.model_validate_json(lines[0])
+    assert record.decision == "denied"
+    assert record.reason == "invalid_args"
+    assert record.tool == "metric_query"
+    assert record.trace_id == "trace-unknown-metric"
+    report = verify(path)
+    assert report.ok is True
+    assert report.records == 1
+
+
+async def test_extra_arg_is_denied_by_schema() -> None:
+    gate = Gate(
+        load_policy(None),
+        default_registry(search=_empty_search, xbrl=_missing_xbrl, fdic=_missing_fdic),
+    )
+    result = await gate.execute("metric_query", _wire(sql="SELECT 1"))
+    assert result.ok is False
+    assert result.detail == "invalid args"
+    assert result.reason == "invalid_args"
 
 
 async def test_fifth_invalid_metric_query_is_budget_exceeded() -> None:

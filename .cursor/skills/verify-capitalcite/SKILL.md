@@ -104,7 +104,7 @@ Stable handles (do not invent others):
 | File | `CAPITALCITE_TRACE_FILE` JSONL | after `capitalcite gate decide`, JSONL has deny spans with tool and reason; after fake `POST /ask`, JSONL has `ask` + `retrieve`; after `eval --small`, an `eval` span has `git_sha` and `config_hash`. Live Langfuse `:3000` is UNVERIFIED when down |
 | CLI | `capitalcite audit verify` | exit 0 on an intact chain; exit 1 after a mutated field or a removed last record; no network |
 | CLI | `capitalcite check` | exit 0 + `ok=true`; quote-index sanity and fixture recall vs `evals/baselines/ci.json` at zero item drop; `cc-ci-002` answered; `cc-u-001` refused; red-team `failed` 0. `--live` without `OPENAI_API_KEY` is UNVERIFIED |
-| MCP | `capitalcite mcp` via official `Client(StdioServerParameters)` | `list_tools` is `search_filings`+`ask`; extra keys `invalid_args`; `calculator` `unknown_tool`; fake `ask` writes audit JSONL and span JSONL |
+| MCP | `capitalcite mcp` via official `Client(StdioServerParameters)` | `list_tools` is `search_filings`+`ask`+`metric_query`; extra keys `invalid_args`; `calculator` `unknown_tool`; fake `ask` writes audit JSONL and span JSONL |
 | CLI | `capitalcite eval --suite golden --small` | exit 0 + Recall@5 table; FakeEmbedder, no download |
 | CLI | `capitalcite graph load --backend memory` | exit 0 + `backend=memory` `banks=8`; no Neo4j |
 | CLI | `capitalcite graph query --kind subsidiaries --ticker JPM` | exit 0 + `852218` |
@@ -113,6 +113,7 @@ Stable handles (do not invent others):
 | CLI | `uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci` | exit 0 + `Completed successfully`. Live `dev` extract is outside this helper |
 | CLI | `mf validate-configs`, the required `mf query`, and four saved queries | After that build, with `DBT_PROJECT_DIR`, `DBT_PROFILES_DIR`, and `DBT_TARGET=ci`. `mf` reads the compiled `semantic_manifest.json`. `validate-configs` exits 0. The query is `total_deposits` and `deposits_qoq_growth` grouped by `metric_time__quarter` and `bank__ticker` where `bank__entity_level` is `bank_subsidiary`. Each saved query exits 0. `pytest -m mf` matches `evals/results/metrics/mf-query.csv`. |
 | CLI | `metric_query` live cell and catalog bytes | After that build, `open_metric_query(backend_name="live")` for JPM `total_deposits` at `2026-06-30` returns one hit whose quote contains the figure. A fresh `compile_catalog` matches `src/capitalcite/metric_query/catalog.json`. |
+| HTTP | `POST /ask/stream` `path=agent` metric question | After `WAREHOUSE_PATH` is set, `What were JPM's total deposits in 2026Q2?` with `model=fake` returns `answered` and one FDIC citation whose quote contains the warehouse figure. |
 | CLI | `capitalcite eval --suite golden` | exit 0 + six-row dense/bm25/hybrid × section/fixed table on the twelve 10-Ks plus an Agent vs RAG recall@k line on comparison/multi-hop items (`fake/heuristic planner`); UNVERIFIED only when ingest could not run. Nightly CI ingests then compares the section/bge-small/hybrid cell vs `--baseline evals/baselines/nightly.json`; do not add that compare to verify.sh |
 | Compose (optional) | `docker compose config` | exit 0 |
 | Qdrant (optional) | `GET http://127.0.0.1:6333/healthz` | 200, only if something is listening |
@@ -184,6 +185,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `dbt.out` / `dbt.exit` / `dbt-docs.out` / `dbt-docs.exit` / `dbt-shape.out` / `dbt-shape.exit` | `dbt build --target ci` and `dbt docs generate --target ci` on `tests/fixtures/metrics`. stdout contains `Completed successfully`. Shape query checks JPM 2026-06-30 holding-company Assets and the matching lead-bank Call Report cells |
 | `mf-validate.out` / `mf-validate.err` / `mf-validate.exit` / `mf-query.out` / `mf-query.err` / `mf-query.exit` / `mf-saved-<name>.out` / `mf-saved-<name>.err` / `mf-saved-<name>.exit` / `mf-pytest.out` / `mf-pytest.err` / `mf-pytest.exit` | `mf validate-configs`, the required deposits query with `--quiet` and `--order`, each saved query, and `pytest tests/test_mf_metrics.py -m mf`. Exit 0. `--small` does not skip this. Saved names are `lead_bank_deposits_qoq`, `lead_bank_balance_sheet`, `lead_bank_earnings`, and `holding_company_assets`. |
 | `metric-query.out` / `metric-query.err` / `metric-query.exit` | Live `total_deposits` for JPM at `2026-06-30` returns one hit whose quote contains the figure. `compile_catalog` bytes match `src/capitalcite/metric_query/catalog.json`. Exit 0. `--small` does not skip this. |
+| `metric-query-ask.body.json` / `metric-query-stream.body` / `metric-query-stream.events.json` | After `WAREHOUSE_PATH` is set, fake `path=agent` ask and stream for `What were JPM's total deposits in 2026Q2?` are `answered` with one FDIC citation. |
 | `eval.out` / `eval.exit` / `eval.table.md` **or** `eval.skipped` | Real-corpus eval with embedded Qdrant + bge-small, or UNVERIFIED if ingest was unreachable |
 | `compose.config.out` + `compose.config.exit` **or** `compose.skipped` | Optional compose proof |
 | `qdrant.health.out` + `qdrant.health.exit` **or** `qdrant.skipped` | Optional Qdrant proof |
@@ -257,7 +259,7 @@ Expected later handles (do not add empty stubs now):
 | web app | `web ask` on port 3001 (landed). Missing pnpm or a browser is UNVERIFIED |
 | dbt warehouse | `dbt build --target ci` (landed). `dev` against `data/raw` is outside this helper |
 | MetricFlow | `mf validate-configs`, the required deposits query, and four saved queries (landed). Live `dev` extract is outside this helper |
-| metric query | `metric_query` live cell for JPM deposits and catalog byte match (landed). Image remeasure after the warehouse copy is UNVERIFIED without Docker |
+| metric query | `metric_query` live cell for JPM deposits, catalog byte match, and fake `/ask/stream` for `2026Q2` (landed). Image remeasure after the warehouse copy is UNVERIFIED without Docker |
 
 `./scripts/verify.sh` runs `capitalcite check`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. After the fixture warehouse build it runs `mf validate-configs`, the required deposits query, each saved query, and `pytest -m mf`. `--small` does not skip that block. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED.
 

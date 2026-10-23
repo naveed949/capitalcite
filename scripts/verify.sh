@@ -2745,6 +2745,77 @@ fi
 log "verify: metric_query ok"
 cat "${ART}/metric-query.out"
 
+export WAREHOUSE_PATH="${ROOT}/dbt/target/ci.duckdb"
+write warehouse.path "${WAREHOUSE_PATH}"
+log "verify: restarting uvicorn with WAREHOUSE_PATH for metric_query /ask/stream"
+stop_main_uvicorn
+start_main_uvicorn
+
+ASK_METRIC='{"question":"What were JPM'\''s total deposits in 2026Q2?","path":"agent","model":"fake"}'
+log "verify: POST /ask path=agent metric_query JPM 2026Q2 deposits model=fake"
+post_ask metric-query-ask "${ASK_METRIC}"
+log "verify: POST /ask/stream path=agent metric_query JPM 2026Q2 deposits model=fake"
+post_ask_stream metric-query-stream "${ASK_METRIC}"
+check_ask_stream metric-query-stream metric-query-ask
+uv run python - "${ART}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+art = Path(sys.argv[1])
+ask = json.loads((art / "metric-query-ask.body.json").read_text(encoding="utf-8"))
+if ask.get("kind") != "answered":
+    sys.stderr.write(f"verify: metric_query ask kind={ask.get('kind')!r}\n")
+    sys.exit(1)
+citations = ask.get("citations") or []
+if len(citations) != 1:
+    sys.stderr.write(f"verify: metric_query ask citations={len(citations)}\n")
+    sys.exit(1)
+cite = citations[0]
+quote = str(cite.get("quote") or "")
+if "total_deposits for JPM at 2026-06-30 is" not in quote:
+    sys.stderr.write(f"verify: metric_query quote {quote!r}\n")
+    sys.exit(1)
+if "FDIC REPDTE" not in quote or "http" not in str(cite.get("source_url") or ""):
+    sys.stderr.write(f"verify: metric_query missing FDIC citation {cite!r}\n")
+    sys.exit(1)
+if str(cite.get("section") or "") != "total_deposits":
+    sys.stderr.write(f"verify: metric_query section {cite.get('section')!r}\n")
+    sys.exit(1)
+answer = str(ask.get("answer") or "")
+if "total_deposits for JPM at 2026-06-30 is" not in answer:
+    sys.stderr.write(f"verify: metric_query answer {answer!r}\n")
+    sys.exit(1)
+events = json.loads((art / "metric-query-stream.events.json").read_text(encoding="utf-8"))
+names = [str(event.get("event") or "") for event in events]
+if "plan" not in names or "tool_call" not in names or "answered" not in names:
+    sys.stderr.write(f"verify: metric_query stream events {names}\n")
+    sys.exit(1)
+called = False
+for event in events:
+    if event.get("event") != "tool_call":
+        continue
+    step = event.get("step") or {}
+    args = step.get("args") if isinstance(step, dict) else {}
+    if (
+        isinstance(step, dict)
+        and step.get("tool") == "metric_query"
+        and isinstance(args, dict)
+        and args.get("metric") == "total_deposits"
+        and args.get("period") == "2026-06-30"
+    ):
+        called = True
+        break
+if not called:
+    sys.stderr.write(f"verify: metric_query stream never called the tool {events!r}\n")
+    sys.exit(1)
+print("metric_query stream answered with FDIC citation")
+print(f"answer={answer}")
+print(f"quote={quote}")
+print(f"source_url={cite.get('source_url')}")
+PY
+log "verify: POST /ask/stream metric_query ok"
+
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
 import json

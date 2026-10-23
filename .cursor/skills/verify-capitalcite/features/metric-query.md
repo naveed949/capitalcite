@@ -9,12 +9,13 @@ Holding-company net income with method `fy_minus_9m` cites both accessions.
 
 - `metric-query-live` runs `total_deposits` for JPM at `2026-06-30` through the live backend and returns one hit whose quote contains the figure.
 - `metric-query-catalog` compiles the catalog to a temp file and requires the same bytes as `src/capitalcite/metric_query/catalog.json`.
+- `metric-query-stream` posts `What were JPM's total deposits in 2026Q2?` to `/ask` and `/ask/stream` with `path=agent` and `model=fake` after `WAREHOUSE_PATH` is set, and requires an answered FDIC citation.
 - `metric-query-mcp` lists `metric_query` from `capitalcite mcp` next to `search_filings` and `ask`.
 
 ## How to get to it (user POV)
 
 - From the repo root, after `dbt build --target ci`, with `DBT_TARGET=ci`, `DBT_PROJECT_DIR=dbt`, and `DBT_PROFILES_DIR=dbt`.
-- The agent path calls the tool when the question names a metric and a ticker. `POST /ask` with `path=agent` is that entry.
+- The agent path calls the tool when the question names a metric and a ticker. `POST /ask` and `POST /ask/stream` with `path=agent` are that entry.
 - MCP lists the tool on `capitalcite mcp`.
 - The image sets `METRIC_QUERY_BACKEND=catalog` and `WAREHOUSE_PATH`. That image check is separate.
 
@@ -27,7 +28,8 @@ Preconditions:
 - `DBT_TARGET=ci`, `DBT_PROJECT_DIR` pointing at `dbt`, and `DBT_PROFILES_DIR` pointing at `dbt`.
 
 - **Query JPM deposits.** Run the helper below, or the same calls from Python. Exit 0. stdout contains `metric_query ok` and `catalog bytes match`. The hit quote starts with `total_deposits for JPM at 2026-06-30 is` and includes `Unit is thousands of USD.` and `FDIC REPDTE`.
-- **Bundled helper.** `./scripts/verify.sh` writes `metric-query.out`, `metric-query.err`, and `metric-query.exit` after the MetricFlow block. `--small` does not skip this block.
+- **Bundled helper.** `./scripts/verify.sh` writes `metric-query.out`, `metric-query.err`, and `metric-query.exit` after the MetricFlow block. It then sets `WAREHOUSE_PATH`, restarts uvicorn, and writes `metric-query-ask.body.json` plus `metric-query-stream.body`. `--small` does not skip this block.
+- **Agent stream.** After that restart, `POST /ask/stream` with `path=agent`, `model=fake`, and question `What were JPM's total deposits in 2026Q2?` returns `answered` with one citation whose quote starts with `total_deposits for JPM at 2026-06-30 is` and includes `FDIC REPDTE`.
 - **MCP.** `scripts/mcp_probe.py` requires `list_tools` to include `metric_query`.
 
 ```bash

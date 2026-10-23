@@ -252,6 +252,7 @@ _METRIC_PHRASES: tuple[tuple[str, MetricName], ...] = (
 )
 _QUARTER_END = re.compile(r"\b(\d{4})-(03-31|06-30|09-30|12-31)\b")
 _QUARTER_NAME = re.compile(r"\bQ([1-4])\s+(\d{4})\b", re.IGNORECASE)
+_COMPACT_QUARTER = re.compile(r"\b(\d{4})Q([1-4])\b", re.IGNORECASE)
 _NAMED_QUARTER_END = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}
 
 
@@ -283,6 +284,14 @@ def _metric_periods(question: str) -> list[str]:
     for match in _QUARTER_NAME.finditer(question):
         quarter = int(match.group(1))
         year = int(match.group(2))
+        month, day_number = _NAMED_QUARTER_END[quarter]
+        day = date(year, month, day_number)
+        if day not in found:
+            found.append(day)
+        covered.add(year)
+    for match in _COMPACT_QUARTER.finditer(question):
+        year = int(match.group(1))
+        quarter = int(match.group(2))
         month, day_number = _NAMED_QUARTER_END[quarter]
         day = date(year, month, day_number)
         if day not in found:
