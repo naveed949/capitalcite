@@ -2585,24 +2585,24 @@ import duckdb
 con = duckdb.connect(sys.argv[1], read_only=True)
 holding = con.execute(
     """
-    select deposits_usd, net_income_quarter_usd
+    select assets_usd, deposits_usd, net_income_quarter_usd
     from fct_bank_financials_quarterly
     where bank_key = 'JPM|holding_company' and quarter_id = date '2026-06-30'
     """
 ).fetchone()
-gap = con.execute(
+bank = con.execute(
     """
-    select net_income_quarter_usd_thousands, net_income_ytd_usd_thousands
+    select assets_usd_thousands, net_income_ytd_usd_thousands
     from fct_bank_financials_quarterly
-    where bank_key = 'JPM|bank_subsidiary' and quarter_id = date '2099-09-30'
+    where bank_key = 'JPM|bank_subsidiary' and quarter_id = date '2026-06-30'
     """
 ).fetchone()
-if holding != (2500000000000.0, 13000000000.0):
+if holding != (5015069000000.0, None, None):
     raise SystemExit(f"holding shape {holding}")
-if gap != (None, 300000.0):
-    raise SystemExit(f"gap shape {gap}")
-print("holding deposits_usd=2500000000000 net_income_quarter_usd=13000000000")
-print("gap net_income_quarter_usd_thousands=null net_income_ytd_usd_thousands=300000")
+if bank != (4091315000.0, 31335000.0):
+    raise SystemExit(f"bank shape {bank}")
+print("holding assets_usd=5015069000000 deposits_usd=null net_income_quarter_usd=null")
+print("bank assets_usd_thousands=4091315000 net_income_ytd_usd_thousands=31335000")
 PY
 shape_rc=$?
 set -e

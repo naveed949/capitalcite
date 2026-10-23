@@ -61,9 +61,11 @@ de-cumulates. Neither staging model picks a restated winner.
 
 The intermediate layer owns policy. `int_bank_financials_long` is one row per
 entity, quarter, and concept. It collapses duplicate SEC observations, keeps
-`NetIncomeLoss` only when `period_start` is the inclusive quarter start, and
-de-cumulates FDIC `NETINC`. The unique `(entity, quarter, concept)` test is a
-real relation here, not an unpivot invented in a test.
+a filed three-month `NetIncomeLoss` when `period_start` is the inclusive
+quarter start, derives holding-company Q4 as FY minus the Q3 10-Q
+nine-month YTD when that three-month row is missing, and de-cumulates FDIC
+`NETINC`. The unique `(entity, quarter, concept)` test is a real relation
+here, not an unpivot invented in a test.
 
 Marts are what an analyst selects. `dim_bank` and `dim_period` are the
 join keys. `fct_bank_financials_quarterly` is a pivot of the long model onto
@@ -111,17 +113,21 @@ calendar year. A missing prior quarter leaves the quarterly value null. The
 window runs only on that certificate's own dates, so another bank's quarter
 cannot become the prior row.
 
-SEC `NetIncomeLoss` is not de-cumulated. It fills only when `period_start`
-is 1 January, 1 April, 1 July, or 1 October for that quarter-end. A 10-Q
-often files both the three-month duration and the year-to-date duration
-under the same accession, form, fiscal period, and end date. Those two
-rows are different facts. The staging grain includes a null-safe
-`period_start` so they do not collide. Some 8-K and DEF 14A rows omit
-`fp`. `fiscal_period` is null-safe in the same key. The mart keeps the
-three-month row. Instant facts such as Assets and Deposits have a null
-start. When two instants share an end date, the mart keeps the latest
-`filed` value. The JPM fixture has both shapes so those branches run
-in CI.
+SEC `NetIncomeLoss` is not de-cumulated from a prior quarter. A 10-Q often
+files both the three-month duration and the year-to-date duration under
+the same accession, form, fiscal period, and end date. Those two rows are
+different facts. The staging grain includes a null-safe `period_start` so
+they do not collide. Some 8-K and DEF 14A rows omit `fp`. `fiscal_period`
+is null-safe in the same key. The mart keeps the three-month row when it
+exists. Instant facts such as Assets and Deposits have a null start. When
+two instants share an end date, the mart keeps the latest `filed` value.
+
+A 10-K reports only the annual figure. Holding-company Q4 is therefore
+FY minus the nine-month YTD from the Q3 10-Q, and only when no
+three-month Q4 duration was filed. dbt `unit_tests` on
+`int_bank_financials_long` own those duration, restatement, 8-K, gap, and
+Q4 cases with synthetic given rows. The committed companyfacts and Call
+Report snapshots stay the extracted files.
 
 ## Why reported ratios stay as reported
 
@@ -146,20 +152,19 @@ Singular tests name identities the generic tests cannot.
 - `assert_netinc_quarter_continuity` fails when a bank year has four
   continuous quarterly values and those values do not add to the Q4 YTD
   cell. A year with a missing prior quarter is outside that test.
-- `assert_sec_duration_and_restatement` fails when JPM holding-company
-  2026-06-30 does not keep the three-month `NetIncomeLoss` and the
-  later-filed Deposits. It runs on `ci` only. The cells are fixture
-  values.
-- `assert_missing_prior_quarter_netinc_is_null` fails when the synthetic
-  2099-09-30 JPM bank row has a quarterly NETINC. That date has no 2099
-  Q2, so a subtraction would be a wrong difference. It runs on `ci` only.
+- Unit tests on `int_bank_financials_long` fail when a quarter-plus-YTD
+  pair keeps the YTD amount, when a restated instant keeps the earlier
+  `filed` value, when an 8-K beats a later 10-Q, when a missing prior
+  Call Report quarter is subtracted, or when Q4 is not FY minus the
+  nine-month YTD.
 
 `assert_level_columns_exclusive` fails when one fact row fills both unit
 families, or when a `dim_bank` holding row carries a CERT.
 
 The `ci` build is the contract check. `dev` uses the same models on
-`data/raw`. Profile paths and snapshot globs resolve from
-`DBT_PROJECT_DIR`, so the working directory is not the path contract.
+`data/raw`. Profile paths default `DBT_PROJECT_DIR` to `dbt`. Snapshot
+globs fall back to the repo root. The documented command from the repo
+root does not need the env var.
 
 ## Alternatives that lost
 

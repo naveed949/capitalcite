@@ -1,0 +1,123 @@
+version: 2
+
+unit_tests:
+  - name: picks_three_month_net_income
+    description: >
+      A 10-Q files both the three-month and the year-to-date NetIncomeLoss
+      under one accession. The mart keeps the three-month duration.
+    model: int_bank_financials_long
+    given:
+      - input: ref('int_bank_entity_map')
+        rows:
+          - {ticker: JPM, cik: "0000019617", lead_bank_name: SYNTH, cert: "628", source_note: unit}
+      - input: ref('stg_sec__facts')
+        rows:
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2026-04-01", period_end: "2026-06-30", form: 10-Q, accession: SYNTH-NIL-Q, filed: "2026-08-06", val: 130, source_url: synth://sec}
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2026-01-01", period_end: "2026-06-30", form: 10-Q, accession: SYNTH-NIL-Q, filed: "2026-08-06", val: 270, source_url: synth://sec}
+      - input: ref('stg_fdic__financials')
+        rows: []
+    expect:
+      rows:
+        - {bank_key: "JPM|holding_company", quarter_id: "2026-06-30", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 130.0, accession: SYNTH-NIL-Q}
+
+  - name: picks_latest_filed_deposits
+    description: >
+      Two Deposits instants share an end date. The mart keeps the later filed value.
+    model: int_bank_financials_long
+    given:
+      - input: ref('int_bank_entity_map')
+        rows:
+          - {ticker: JPM, cik: "0000019617", lead_bank_name: SYNTH, cert: "628", source_note: unit}
+      - input: ref('stg_sec__facts')
+        rows:
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: Deposits, unit: USD, period_start: null, period_end: "2026-06-30", form: 10-Q, accession: SYNTH-DEP-OLD, filed: "2026-08-01", val: 240, source_url: synth://sec}
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: Deposits, unit: USD, period_start: null, period_end: "2026-06-30", form: 10-Q, accession: SYNTH-DEP-NEW, filed: "2026-08-06", val: 250, source_url: synth://sec}
+      - input: ref('stg_fdic__financials')
+        rows: []
+    expect:
+      rows:
+        - {bank_key: "JPM|holding_company", quarter_id: "2026-06-30", concept_key: "us-gaap.Deposits|USD", amount: 250.0, accession: SYNTH-DEP-NEW}
+
+  - name: prefers_10q_assets_over_8k
+    description: >
+      An 8-K omits fp and files first. The later 10-Q is the restated instant.
+    model: int_bank_financials_long
+    given:
+      - input: ref('int_bank_entity_map')
+        rows:
+          - {ticker: JPM, cik: "0000019617", lead_bank_name: SYNTH, cert: "628", source_note: unit}
+      - input: ref('stg_sec__facts')
+        rows:
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: Assets, unit: USD, period_start: null, period_end: "2026-03-31", form: 8-K, accession: SYNTH-8K, filed: "2026-04-01", val: 1, source_url: synth://sec}
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: Assets, unit: USD, period_start: null, period_end: "2026-03-31", form: 10-Q, accession: SYNTH-10Q, filed: "2026-05-01", val: 4900, source_url: synth://sec}
+      - input: ref('stg_fdic__financials')
+        rows: []
+    expect:
+      rows:
+        - {bank_key: "JPM|holding_company", quarter_id: "2026-03-31", concept_key: "us-gaap.Assets|USD", amount: 4900.0, accession: SYNTH-10Q}
+
+  - name: missing_prior_quarter_netinc_is_null
+    description: >
+      A Call Report year with Q1 and Q3 and no Q2 must not subtract across the gap.
+    model: int_bank_financials_long
+    given:
+      - input: ref('int_bank_entity_map')
+        rows:
+          - {ticker: JPM, cik: "0000019617", lead_bank_name: SYNTH, cert: "628", source_note: unit}
+      - input: ref('stg_sec__facts')
+        rows: []
+      - input: ref('stg_fdic__financials')
+        rows:
+          - {cert: "628", period_end: "2099-03-31", repdte: "20990331", asset: 1, dep: 1, netinc: 100, nimy: 1.0, eeffr: 1.0, source_url: synth://fdic}
+          - {cert: "628", period_end: "2099-09-30", repdte: "20990930", asset: 1, dep: 1, netinc: 300, nimy: 1.0, eeffr: 1.0, source_url: synth://fdic}
+    expect:
+      rows:
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-03-31", concept_key: "fdic.ASSET", amount: 1.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-03-31", concept_key: "fdic.DEP", amount: 1.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-03-31", concept_key: "fdic.NETINC", amount: 100.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-03-31", concept_key: "fdic.NETINC_QUARTER", amount: 100.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-03-31", concept_key: "fdic.NIMY", amount: 1.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-03-31", concept_key: "fdic.EEFFR", amount: 1.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-09-30", concept_key: "fdic.ASSET", amount: 1.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-09-30", concept_key: "fdic.DEP", amount: 1.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-09-30", concept_key: "fdic.NETINC", amount: 300.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-09-30", concept_key: "fdic.NETINC_QUARTER", amount: null}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-09-30", concept_key: "fdic.NIMY", amount: 1.0}
+        - {bank_key: "JPM|bank_subsidiary", quarter_id: "2099-09-30", concept_key: "fdic.EEFFR", amount: 1.0}
+
+  - name: derives_q4_from_annual_minus_nine_month
+    description: >
+      A 10-K reports only the annual figure. Q4 is FY minus the Q3 10-Q nine-month YTD.
+    model: int_bank_financials_long
+    given:
+      - input: ref('int_bank_entity_map')
+        rows:
+          - {ticker: JPM, cik: "0000019617", lead_bank_name: SYNTH, cert: "628", source_note: unit}
+      - input: ref('stg_sec__facts')
+        rows:
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2025-01-01", period_end: "2025-09-30", form: 10-Q, accession: SYNTH-9M, filed: "2025-11-04", val: 300, source_url: synth://sec}
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2025-01-01", period_end: "2025-12-31", form: 10-K, accession: SYNTH-FY, filed: "2026-02-13", val: 400, source_url: synth://sec}
+      - input: ref('stg_fdic__financials')
+        rows: []
+    expect:
+      rows:
+        - {bank_key: "JPM|holding_company", quarter_id: "2025-12-31", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 100.0, accession: SYNTH-FY}
+
+  - name: reported_q4_beats_derived
+    description: >
+      A filed three-month Q4 duration wins over FY minus nine-month.
+    model: int_bank_financials_long
+    given:
+      - input: ref('int_bank_entity_map')
+        rows:
+          - {ticker: JPM, cik: "0000019617", lead_bank_name: SYNTH, cert: "628", source_note: unit}
+      - input: ref('stg_sec__facts')
+        rows:
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2025-01-01", period_end: "2025-09-30", form: 10-Q, accession: SYNTH-9M, filed: "2025-11-04", val: 300, source_url: synth://sec}
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2025-01-01", period_end: "2025-12-31", form: 10-K, accession: SYNTH-FY, filed: "2026-02-13", val: 400, source_url: synth://sec}
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2025-10-01", period_end: "2025-12-31", form: 10-K, accession: SYNTH-Q4, filed: "2026-02-13", val: 90, source_url: synth://sec}
+      - input: ref('stg_fdic__financials')
+        rows: []
+    expect:
+      rows:
+        - {bank_key: "JPM|holding_company", quarter_id: "2025-12-31", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 90.0, accession: SYNTH-Q4}
