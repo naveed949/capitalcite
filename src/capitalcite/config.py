@@ -96,12 +96,12 @@ class Settings(BaseSettings):
         ge=1,
         description="Agent graph stops when the estimated token use reaches this.",
     )
-    capitalcite_test_slow_retrieve_ms: int = Field(
+    test_slow_retrieve_ms: int = Field(
         default=0,
         ge=0,
+        validation_alias="CAPITALCITE_TEST_SLOW_RETRIEVE_MS",
         description=(
-            "When greater than 0, POST /ask/stream sleeps this many milliseconds "
-            "before retrieve for the e2e cancel question. Production stays 0."
+            "Milliseconds to sleep before retrieve for the e2e cancel question. 0 skips the sleep."
         ),
     )
     gate_policy: Path | None = Field(
