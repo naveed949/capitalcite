@@ -82,6 +82,7 @@ Stable handles (do not invent others):
 | HTTP | `GET /health` | 200 + JSON body |
 | CLI | `capitalcite version` | exit 0 + version string |
 | CLI | `capitalcite --help` | exit 0; lists `version` and `ingest` |
+| CLI | packaged `capitalcite --help` | exit 0 from a non-editable install whose cwd is not the checkout |
 | CLI | `capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025` | exit 0 + stored metadata.json files (live EDGAR; isolate `--output-dir`) |
 | CLI | `capitalcite chunk --input-dir tests/fixtures/chunking/corpus --chunker section` | exit 0 + `chunks.jsonl` with citation fields (isolate `--output-dir`) |
 | CLI | `capitalcite golden validate` | exit 0 + mix counts; no network |
@@ -133,6 +134,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `health.exit` | curl exit code |
 | `health.headers` | HTTP status line |
 | `version.out` / `version.exit` | CLI stdout and exit code |
+| `packaged.help.out` / `packaged.help.err` / `packaged.help.exit` | `capitalcite --help` from a non-editable install run in `/tmp` |
 | `uvicorn.log` | Server stdout/stderr |
 | `uvicorn.pid` | PID that was started (and killed) |
 | `port` | Loopback port used |

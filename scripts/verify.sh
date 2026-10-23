@@ -201,6 +201,31 @@ if [[ "${ACTUAL_VERSION}" != "${EXPECTED_VERSION}" ]]; then
 fi
 log "verify: capitalcite version ${ACTUAL_VERSION}"
 
+log "verify: packaged capitalcite --help"
+PKG_VENV="${ART}/packaged-venv"
+uv venv "${PKG_VENV}"
+uv pip install --python "${PKG_VENV}/bin/python" "${ROOT}"
+set +e
+(
+  cd /tmp
+  "${PKG_VENV}/bin/capitalcite" --help
+) >"${ART}/packaged.help.out" 2>"${ART}/packaged.help.err"
+packaged_help_rc=$?
+set -e
+write packaged.help.exit "${packaged_help_rc}"
+if [[ "${packaged_help_rc}" -ne 0 ]]; then
+  log "verify: packaged capitalcite --help failed"
+  cat "${ART}/packaged.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/packaged.help.out" | grep -q "ingest" \
+  || ! plain "${ART}/packaged.help.out" | grep -q "metrics"; then
+  log "verify: packaged --help missing ingest or metrics"
+  cat "${ART}/packaged.help.out" >&2 || true
+  exit 1
+fi
+log "verify: packaged capitalcite --help ok"
+
 log "verify: capitalcite golden validate --help"
 set +e
 uv run capitalcite golden validate --help >"${ART}/golden.help.out" 2>"${ART}/golden.help.err"

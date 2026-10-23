@@ -38,5 +38,5 @@ Preconditions:
 - `rows=` is the count in the response or the fixture file. Do not treat a particular count as the pass check.
 - A 301 from BankFind is exit 2. The client sets `follow_redirects=False`.
 - The FDIC client sends User-Agent `capitalcite/<version>` and a 30 second timeout. It does not send `SEC_USER_AGENT`.
-- `--fixtures` resolves `tests/fixtures/metrics` from the repository root, not from the working directory.
+- `--fixtures` resolves `tests/fixtures/metrics` from the repository root, not from the working directory, and only when that flag is set. A packaged install without a checkout still runs `--help`.
 - `ASK_MODEL=fake` does not run this command and does not call FDIC.

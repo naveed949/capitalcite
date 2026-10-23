@@ -70,9 +70,11 @@ A later dbt modeling step will de-cumulate. This record does not do that.
 Exit 1 is a bad flag, an unknown ticker, a dishonest fixture, a name that is
 not one active exact match, a truncated page, or a body for the wrong
 entity. Exit 2 is `HttpTransportError` or `HttpStatusError`, including a 301.
-`--fixtures` reads `tests/fixtures/metrics` from the repository root that
-contains `pyproject.toml`, not from the process working directory. There is
-no `--fixtures-dir`.
+`--fixtures` looks up `tests/fixtures/metrics` from the repository root
+that contains `pyproject.toml`, not from the process working directory, and
+only when that flag is set. Importing the CLI does not require that tree.
+A packaged install without a checkout still runs `--help`. A missing tree
+on `--fixtures` is exit 1. There is no `--fixtures-dir`.
 
 ## What BankFind and EDGAR returned on 2026-10-23
 

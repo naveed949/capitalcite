@@ -40,6 +40,9 @@ jobs:
       - name: Build API image
         run: docker build -t capitalcite:ci .
 
+      - name: CLI help from the image
+        run: docker run --rm --entrypoint capitalcite capitalcite:ci --help
+
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest
