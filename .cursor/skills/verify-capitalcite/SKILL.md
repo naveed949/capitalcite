@@ -31,10 +31,10 @@ That is the default verification launch. `--small` skips live EDGAR and indexes 
 
 1. Runs `uv sync --frozen` so the editable install matches `uv.lock`.
 2. Binds uvicorn to `127.0.0.1` on a free port with `SEC_USER_AGENT='capitalcite-verify you@example.com'`.
-3. Waits until `GET /health` returns 200 (usable process — `/health` is process-local and does not talk to Qdrant or Langfuse).
+3. Waits until `GET /health` returns 200. `/health` stays 200 when the index is missing. It does not talk to Langfuse.
 4. Drives the mapped features below, writes evidence, then tears down **only** the uvicorn it started.
 
-Ready means: `GET /health` JSON is `{"status":"ok","service":"capitalcite","version":"<installed>"}`. A listening socket alone is not enough — Settings validation can still crash the worker on the first request if `SEC_USER_AGENT` lacks an `@`.
+Ready means: `GET /health` JSON is `{"status":"ok","service":"capitalcite","version":"<installed>","git_sha":"<non-empty>","point_count":<int>}`. `point_count` may be 0 before an index exists. A listening socket alone is not enough. Settings validation can still crash the worker on the first request if `SEC_USER_AGENT` lacks an `@`.
 
 Manual equivalent if you must launch without the helper (still isolate on a free port):
 
@@ -64,7 +64,7 @@ uv run capitalcite version
 
 Pass when:
 
-- `/health` is HTTP 200 and JSON `status` is `ok`, `service` is `capitalcite`, and `version` is a non-empty string.
+- `/health` is HTTP 200 and JSON `status` is `ok`, `service` is `capitalcite`, `version` is a non-empty string, `git_sha` is a non-empty string, and `point_count` is an integer greater than or equal to 0.
 - `uv run capitalcite version` exits 0 and prints `importlib.metadata.version("capitalcite")` (today `0.1.0`; do not hardcode it).
 - The listener on `$PORT` is the uvicorn this run launched.
 
@@ -80,7 +80,10 @@ Stable handles (do not invent others):
 
 | Surface | Handle | Proof |
 |---|---|---|
-| HTTP | `GET /health` | 200 + JSON body |
+| HTTP | `GET /health` | 200 + JSON body with `git_sha` and `point_count` |
+| HTTP | `GET /health` with `Origin` | `Access-Control-Allow-Origin` only for an origin in `CORS_ORIGINS` |
+| HTTP | `POST /ask` and `POST /ask/stream` with `ASK_RATE_LIMIT` | the request after the limit is 429 JSON with `Retry-After`. A second uvicorn keeps the main process unlimited |
+| Image | `make image` then `capitalcite --help` and `GET /health` | CLI help exit 0 and `/health` 200 with `point_count` at least 1. UNVERIFIED when docker cannot run |
 | CLI | `capitalcite version` | exit 0 + version string |
 | CLI | `capitalcite --help` | exit 0; lists `version` and `ingest` |
 | CLI | packaged `capitalcite --help` | exit 0 from a non-editable install whose cwd is not the checkout |
@@ -132,7 +135,10 @@ Each run of `scripts/verify.sh` writes at least:
 | File | What it proves |
 |---|---|
 | `summary.txt` | Step list, ports, pids, skip reasons |
-| `health.body.json` | Raw `/health` body |
+| `health.body.json` | Raw `/health` body, including `git_sha` and `point_count` |
+| `cors.allowed.headers` / `cors.denied.headers` | Allowed origin echoes `Access-Control-Allow-Origin`. Denied origin has none |
+| `limit.ask.3.http` / `limit.stream.http` / `limit.stream.body` | Second uvicorn with `ASK_RATE_LIMIT=2`. Third `/ask` and the following `/ask/stream` are 429 JSON with `Retry-After` |
+| `image.help.out` / `image.health.body` **or** `image.skipped` | `make image` then CLI help and `/health` inside the image, or UNVERIFIED when docker cannot run |
 | `health.exit` | curl exit code |
 | `health.headers` | HTTP status line |
 | `version.out` / `version.exit` | CLI stdout and exit code |
@@ -235,6 +241,9 @@ Expected later handles (do not add empty stubs now):
 | #15 MCP | `capitalcite mcp` via official stdio client (landed) |
 | #16 entity graph | `capitalcite graph load/query` and `eval --suite graph --small` (landed). Live Neo4j Bolt is UNVERIFIED without Docker |
 | metrics extract | `capitalcite metrics extract --fixtures` (landed). Live BankFind and live companyfacts are outside this helper |
+| self-contained image | `make image`, then `capitalcite --help` and `GET /health` in the image (landed). No docker is UNVERIFIED |
+| CORS | `CORS_ORIGINS` on the live uvicorn (landed) |
+| ask rate limit | `ASK_RATE_LIMIT` on `POST /ask` and `POST /ask/stream` (landed) |
 
 `./scripts/verify.sh` runs `capitalcite check`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED.
 

@@ -45,7 +45,10 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
-- [Health check](./health.md) covers `GET /health` on a live uvicorn process.
+- [Health check](./health.md) covers `GET /health` on a live uvicorn process, including `git_sha` and `point_count`.
+- [CORS](./cors.md) covers `CORS_ORIGINS` on the live uvicorn.
+- [Ask rate limit](./rate-limit.md) covers `ASK_RATE_LIMIT` on `POST /ask` and `POST /ask/stream`.
+- [Demo image](./image.md) covers `make image`, CLI help, and `GET /health` inside the image.
 - [CLI version](./cli-version.md) covers `capitalcite version` and the `--help` entry point.
 - [EDGAR ingest](./ingest.md) covers `capitalcite ingest --tickers … --forms … --years …`.
 - [Parse and chunk](./chunk.md) covers `capitalcite chunk --chunker section` on the checked-in fixture tree.
