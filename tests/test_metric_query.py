@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
+import subprocess
+from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+import pytest
 import yaml
 
 from capitalcite.chunking.models import ChunkerName
@@ -19,6 +24,19 @@ from capitalcite.metric_query import (
     parse_metric_query,
     run_metric_query,
 )
+from capitalcite.metric_query.backends import (
+    SENTINEL_QUARTER_END,
+    SENTINEL_TICKER,
+    Catalog,
+    CatalogEntry,
+    CatalogSql,
+    compile_catalog,
+    load_catalog,
+    mf_argv,
+    parameterize,
+    sql_from_explain,
+    where_clause,
+)
 from capitalcite.metric_query.cite import (
     CitationBundle,
     CitationResolver,
@@ -29,8 +47,10 @@ from capitalcite.metric_query.cite import (
 )
 from capitalcite.metric_query.query import (
     EntityLevel,
+    GroupBy,
     MetricName,
     MetricQuery,
+    MetricQueryError,
     locked_level,
     render_figure,
 )
@@ -38,6 +58,7 @@ from capitalcite.metric_query.query import (
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "dbt" / "models" / "semantic" / "bank_financials.yml"
 TOOLS = ROOT / "src" / "capitalcite" / "gate" / "tools.json"
+QUERY_CATALOG = ROOT / "src" / "capitalcite" / "metric_query" / "catalog.json"
 SIMPLE_FILTER = re.compile(
     r"^\{\{\s*Dimension\('bank__entity_level'\)\s*\}\}\s*=\s*'(bank_subsidiary|holding_company)'$"
 )
@@ -62,7 +83,9 @@ def test_metric_names_match_yaml_and_gate() -> None:
     gate = json.loads(TOOLS.read_text(encoding="utf-8"))
     gate_names = set(gate["tools"]["metric_query"]["args"]["properties"]["metric"]["enum"])
     group_by = gate["tools"]["metric_query"]["args"]["properties"]["group_by"]["enum"]
-    assert yaml_names == enum_names == gate_names
+    catalog = json.loads(QUERY_CATALOG.read_text(encoding="utf-8"))
+    catalog_names = {str(entry["metric"]) for entry in catalog["entries"]}
+    assert yaml_names == enum_names == gate_names == catalog_names
     assert group_by == [_GROUP]
 
 
@@ -429,3 +452,270 @@ def test_missing_accession_hides_the_figure(tmp_path: Path) -> None:
     assert result.ok is False
     assert result.hits == ()
     assert "99.5" not in result.detail
+
+
+def test_parameterize_replaces_quoted_sentinels_with_bare_placeholders() -> None:
+    sql = (
+        "ticker = 'ZZQZZQ' and start = '1999-10-01' and again = 'ZZQZZQ' "
+        "and bare = ZZQZZQ and note = 'keep'"
+    )
+    rewritten, order = parameterize(sql)
+    assert rewritten == (
+        "ticker = ? and start = ? and again = ? and bare = ZZQZZQ and note = 'keep'"
+    )
+    assert order == ("ticker", "quarter_start", "ticker")
+    assert "'?'" not in rewritten
+
+
+def test_sql_from_explain_strips_ansi_and_keeps_the_statement() -> None:
+    stdout = (
+        "\x1b[31mplan\x1b[0m\n"
+        "Query plan\n"
+        "SELECT a FROM t WHERE ticker = 'ZZQZZQ' AND start = '1999-10-01'\n"
+    )
+    sql = sql_from_explain(stdout)
+    assert sql.startswith("SELECT a FROM t")
+    assert "plan" not in sql.splitlines()[0]
+    with pytest.raises(MetricQueryError):
+        sql_from_explain("SELECT 1")
+
+
+def test_where_clause_emits_typed_fields_in_order() -> None:
+    query = MetricQuery(
+        metric=MetricName.TOTAL_DEPOSITS,
+        group_by=GroupBy.QUARTER_AND_TICKER,
+        ticker=SENTINEL_TICKER,
+        period=SENTINEL_QUARTER_END,
+        entity_level=locked_level(MetricName.TOTAL_DEPOSITS),
+    )
+    text = where_clause(query)
+    assert text == (
+        "{{ Dimension('bank__ticker') }} = 'ZZQZZQ' AND "
+        "{{ TimeDimension('metric_time', 'quarter') }} = '1999-10-01' AND "
+        "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
+    )
+    argv = mf_argv(query, mode="explain")
+    assert argv[:6] == ["uv", "run", "--group", "metrics", "mf", "query"]
+    assert "--target" not in argv
+    assert argv[-1] == "--explain"
+    assert "10" in argv
+
+
+def test_compile_catalog_parameterizes_and_is_stable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    explain = (
+        "SELECT ticker, quarter FROM bank WHERE ticker = 'ZZQZZQ' AND quarter = '1999-10-01'\n"
+    )
+    seen_env: list[Mapping[str, str]] = []
+
+    def fake_run(
+        argv: list[str],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        assert cwd == ROOT
+        assert check is False
+        assert capture_output is True
+        assert text is True
+        assert env is not os.environ
+        assert env["DBT_TARGET"] == "ci"
+        seen_env.append(env)
+        assert "--explain" in argv
+        return subprocess.CompletedProcess(argv, 0, stdout=explain, stderr="")
+
+    monkeypatch.setattr("capitalcite.metric_query.backends.subprocess.run", fake_run)
+    target_before = os.environ.get("DBT_TARGET")
+    first = tmp_path / "catalog.json"
+    second = tmp_path / "again.json"
+    compile_catalog(first, cwd=ROOT, env={"DBT_TARGET": "ci"})
+    compile_catalog(second, cwd=ROOT, env={"DBT_TARGET": "ci"})
+    assert first.read_bytes() == second.read_bytes()
+    assert os.environ.get("DBT_TARGET") == target_before
+    catalog = load_catalog(first)
+    assert catalog.version == 1
+    assert catalog.duckdb == "2.0.0"
+    assert catalog.semantic_sha256 == hashlib.sha256(CATALOG.read_bytes()).hexdigest()
+    assert len(catalog.entries) == len(MetricName)
+    assert len(seen_env) == len(MetricName) * 2
+    entry = catalog.by_key()[(MetricName.NIM, GroupBy.QUARTER_AND_TICKER)]
+    assert entry.entity_level is EntityLevel.BANK_SUBSIDIARY
+    assert entry.param_order == ("ticker", "quarter_start")
+    assert entry.sql == ("SELECT ticker, quarter FROM bank WHERE ticker = ? AND quarter = ?")
+    assert "ZZQZZQ" not in entry.sql
+    assert "'?'" not in entry.sql
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "SELECT 1\n",
+        "SELECT 'ZZQZZQ' AS ticker, '1999-10-01' AS start, '1999-12-31' AS grain\n",
+        "SELECT 'ZZQZZQ' AS ticker, ZZQZZQ AS bare, '1999-10-01' AS start\n",
+        "SELECT 'ZZQZZQ' AS ticker; SELECT '1999-10-01' AS start\n",
+    ],
+)
+def test_compile_rejects_a_changed_sentinel_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stdout: str
+) -> None:
+    def fake_run(
+        argv: list[str],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+        check: bool,
+        capture_output: bool,
+        text: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        _ = argv, cwd, env, check, capture_output, text
+        return subprocess.CompletedProcess(argv, 0, stdout=stdout, stderr="select secret")
+
+    monkeypatch.setattr("capitalcite.metric_query.backends.subprocess.run", fake_run)
+    with pytest.raises(MetricQueryError) as caught:
+        compile_catalog(tmp_path / "bad.json", cwd=ROOT, env={"DBT_TARGET": "ci"})
+    assert "select secret" not in str(caught.value)
+    assert "1999-12-31" not in str(caught.value)
+
+
+def test_load_catalog_rejects_extra_keys_and_a_bad_version(tmp_path: Path) -> None:
+    good = load_catalog(QUERY_CATALOG)
+    assert good.semantic_sha256 == hashlib.sha256(CATALOG.read_bytes()).hexdigest()
+    payload = json.loads(QUERY_CATALOG.read_text(encoding="utf-8"))
+    payload["extra"] = "nope"
+    extra = tmp_path / "extra.json"
+    extra.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(MetricQueryError) as caught:
+        load_catalog(extra)
+    assert "nope" not in str(caught.value)
+    payload.pop("extra")
+    payload["version"] = 2
+    bad_version = tmp_path / "version.json"
+    bad_version.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(MetricQueryError):
+        load_catalog(bad_version)
+
+
+def test_catalog_sql_returns_one_decimal_cell(tmp_path: Path) -> None:
+    warehouse = tmp_path / "warehouse.duckdb"
+    connection = duckdb.connect(str(warehouse))
+    connection.execute(
+        """
+        create table figures (
+            ticker varchar,
+            quarter_start varchar,
+            total_deposits varchar
+        )
+        """
+    )
+    connection.execute(
+        "insert into figures values (?, ?, ?)",
+        ["JPM", "2024-10-01", "1234.50"],
+    )
+    connection.close()
+    entry = CatalogEntry(
+        metric=MetricName.TOTAL_DEPOSITS,
+        group_by=GroupBy.QUARTER_AND_TICKER,
+        entity_level=EntityLevel.BANK_SUBSIDIARY,
+        sql=(
+            "select ticker as bank__ticker, quarter_start as metric_time__quarter, "
+            "total_deposits from figures where ticker = ? and quarter_start = ?"
+        ),
+        param_order=("ticker", "quarter_start"),
+    )
+    catalog = Catalog(
+        version=1,
+        semantic_sha256="a" * 64,
+        duckdb="2.0.0",
+        entries=(entry,),
+    )
+    cell = CatalogSql(catalog, warehouse).execute(parse_metric_query(_wire()))
+    assert cell.value == Decimal("1234.50")
+    assert cell.query.ticker == "JPM"
+
+
+def test_catalog_sql_treats_null_and_blank_as_a_null_cell(tmp_path: Path) -> None:
+    warehouse = tmp_path / "warehouse.duckdb"
+    connection = duckdb.connect(str(warehouse))
+    connection.execute("create table figures (ticker varchar, quarter_start varchar, nim varchar)")
+    connection.execute("insert into figures values ('BAC', '2024-10-01', null)")
+    connection.close()
+    entry = CatalogEntry(
+        metric=MetricName.NIM,
+        group_by=GroupBy.QUARTER_AND_TICKER,
+        entity_level=EntityLevel.BANK_SUBSIDIARY,
+        sql=("select nim from figures where ticker = ? and quarter_start = ?"),
+        param_order=("ticker", "quarter_start"),
+    )
+    catalog = Catalog(
+        version=1,
+        semantic_sha256="b" * 64,
+        duckdb="2.0.0",
+        entries=(entry,),
+    )
+    query = parse_metric_query(_wire(metric="nim", ticker="BAC"))
+    assert CatalogSql(catalog, warehouse).execute(query).value is None
+
+    connection = duckdb.connect(str(warehouse))
+    connection.execute("update figures set nim = ''")
+    connection.close()
+    assert CatalogSql(catalog, warehouse).execute(query).value is None
+
+
+def test_catalog_sql_hides_statement_text_on_failure(tmp_path: Path) -> None:
+    warehouse = tmp_path / "warehouse.duckdb"
+    duckdb.connect(str(warehouse)).close()
+    marker = "not_a_real_relation_zzq"
+    entry = CatalogEntry(
+        metric=MetricName.TOTAL_ASSETS,
+        group_by=GroupBy.QUARTER_AND_TICKER,
+        entity_level=EntityLevel.BANK_SUBSIDIARY,
+        sql=f"select {marker} from missing_table where ticker = ? and quarter_start = ?",
+        param_order=("ticker", "quarter_start"),
+    )
+    catalog = Catalog(
+        version=1,
+        semantic_sha256="c" * 64,
+        duckdb="2.0.0",
+        entries=(entry,),
+    )
+    with pytest.raises(MetricQueryError) as caught:
+        CatalogSql(catalog, warehouse).execute(_wire_query("total_assets"))
+    assert marker not in str(caught.value)
+    assert "missing_table" not in str(caught.value)
+
+
+def test_catalog_sql_rejects_a_level_mismatch_and_a_duplicate(tmp_path: Path) -> None:
+    warehouse = tmp_path / "warehouse.duckdb"
+    duckdb.connect(str(warehouse)).close()
+    entry = CatalogEntry(
+        metric=MetricName.TOTAL_DEPOSITS,
+        group_by=GroupBy.QUARTER_AND_TICKER,
+        entity_level=EntityLevel.HOLDING_COMPANY,
+        sql="select 1 as total_deposits where ? = ? ",
+        param_order=("ticker", "quarter_start"),
+    )
+    catalog = Catalog(
+        version=1,
+        semantic_sha256="d" * 64,
+        duckdb="2.0.0",
+        entries=(entry,),
+    )
+    with pytest.raises(MetricQueryError) as caught:
+        CatalogSql(catalog, warehouse).execute(parse_metric_query(_wire()))
+    assert "holding_company" not in str(caught.value)
+    duplicate = Catalog(
+        version=1,
+        semantic_sha256="d" * 64,
+        duckdb="2.0.0",
+        entries=(entry, entry),
+    )
+    with pytest.raises(MetricQueryError):
+        duplicate.by_key()
+
+
+def _wire_query(metric: str) -> MetricQuery:
+    return parse_metric_query(_wire(metric=metric))
