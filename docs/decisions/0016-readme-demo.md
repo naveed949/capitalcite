@@ -1,17 +1,17 @@
-# 0016. README as the measured portfolio page
+# 0016. README as the measured project page
 
 Date: 2026-10-17
 
 Status: Accepted
 
-Issue #14 asks for a README a hiring reviewer can use as the front
+Issue #14 asks for a README a reader can use as the front
 page: real eval numbers, an architecture diagram, a short demo, a
 tradeoffs section, and a fresh-clone quickstart that works in under 15
 minutes. This record is why the page leads with the fake-model path,
 why every table cell points at JSON produced in the same run, and why
 UNVERIFIED is a legal cell.
 
-## The README is the product surface for a reviewer
+## The README is the product surface
 
 The code already has ingest, hybrid search, grounded `/ask`, a
 LangGraph agent, a fail-closed gate, an audit chain, MCP, an optional
@@ -20,10 +20,10 @@ It is that the README still read as a scaffold: docker compose first,
 a mermaid that named PydanticAI, rerank, and RAGAS as if they sat on
 the serve path, and TBD cells next to copied older-SHA numbers.
 
-A reviewer will not open fifteen ADRs. They will open README.md. The
+A reader will not open fifteen ADRs. They will open README.md. The
 page therefore has to be the one URL that shows the pipeline, the
 measured numbers, a replayable terminal demo, and the design arguments
-an interview will actually ask.
+that decide how the serve path works.
 
 ## One local path. Docker is a fork.
 
@@ -79,10 +79,10 @@ It does not draw a cross-encoder, PydanticAI, or RAGAS on that path.
 Those are either UNVERIFIED or explicitly out of the serve path (ADR
 0005, 0008, 0006).
 
-## Tradeoffs live on the README because interviews start there
+## Tradeoffs live on the README because that is the first page
 
 ADRs 0003, 0005, 0008, 0009, 0011, and 0014 already hold the full
-arguments. The README section restates the ones a reviewer will ask:
+arguments. The README section restates the ones a reader will ask:
 why section vs fixed, why RRF and no reranker yet, why default-deny
 plus extra-key denial plus a hash chain, why the agent reuses `ask()` /
 `ground()`, and why the graph is a tool rather than a retrieve() mode.

@@ -5,7 +5,6 @@ import re
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 
 UNIT_SUFFIXES: tuple[str, ...] = ("ms", "MB", "seconds", "minutes", "years")
@@ -29,12 +28,8 @@ QUANTITY = re.compile(
     re.VERBOSE,
 )
 
-CHECKED_DOCS: tuple[tuple[str, str], ...] = (
-    ("docs/writeup.md", "writeup"),
-    ("docs/resume-bullets.md", "resume"),
-)
+CHECKED_DOCS: tuple[str, ...] = ("docs/writeup.md",)
 README_REL = "README.md"
-RESULTS_PREFIX = "evals/results/"
 ZERO_LEXEMES = frozenset({"0", "0.0", "0.00", "0.000"})
 COST_LINE = re.compile(r"\bcost\b", re.IGNORECASE)
 HEX_STEM = re.compile(r"^[0-9a-f]+", re.IGNORECASE)
@@ -53,11 +48,6 @@ DOTTED_VERSION = re.compile(r"\b\d+(?:\.\d+){2,}\b")
 LEADING_ZERO = re.compile(r"\b0\d+\b")
 
 
-class DocKind(Enum):
-    WRITEUP = "writeup"
-    RESUME = "resume"
-
-
 @dataclass(frozen=True)
 class Span:
     path: str
@@ -68,7 +58,6 @@ class Span:
 @dataclass(frozen=True)
 class CitedNumber:
     lexeme: str
-    kind: DocKind
     span: Span
     line_text: str
 
@@ -79,9 +68,7 @@ class Ledger:
     projected: frozenset[str]
 
     def permits(self, cited: CitedNumber) -> bool:
-        if cited.lexeme in self.readme:
-            return True
-        return cited.kind is DocKind.WRITEUP and cited.lexeme in self.projected
+        return cited.lexeme in self.readme or cited.lexeme in self.projected
 
 
 @dataclass(frozen=True)
@@ -149,7 +136,7 @@ def _norm_lexeme(raw: str) -> str:
     return re.sub(r"[ \t]+", " ", raw.strip())
 
 
-def extract(text: str, rel: str, kind: DocKind) -> tuple[CitedNumber, ...]:
+def extract(text: str, rel: str) -> tuple[CitedNumber, ...]:
     masked = mask(text)
     starts = _line_starts(text)
     lines = text.splitlines()
@@ -161,7 +148,6 @@ def extract(text: str, rel: str, kind: DocKind) -> tuple[CitedNumber, ...]:
         found.append(
             CitedNumber(
                 lexeme=lexeme,
-                kind=kind,
                 span=Span(path=rel, line=line, column=column),
                 line_text=line_text,
             )
@@ -170,7 +156,7 @@ def extract(text: str, rel: str, kind: DocKind) -> tuple[CitedNumber, ...]:
 
 
 def readme_lexemes(text: str) -> frozenset[str]:
-    return frozenset(item.lexeme for item in extract(text, README_REL, DocKind.WRITEUP))
+    return frozenset(item.lexeme for item in extract(text, README_REL))
 
 
 def linked_results(text: str) -> frozenset[str]:
@@ -267,11 +253,6 @@ def judge(cited: CitedNumber, ledger: Ledger) -> Failure | None:
         )
     if ledger.permits(cited):
         return None
-    if cited.kind is DocKind.RESUME:
-        return Failure(
-            cited.span,
-            f"'{cited.lexeme}' is not in README.md",
-        )
     return Failure(
         cited.span,
         f"'{cited.lexeme}' is not in README.md or linked evals/results JSON",
@@ -299,7 +280,7 @@ def check(root: Path) -> tuple[Failure, ...]:
     else:
         readme_text = readme_path.read_text(encoding="utf-8")
         texts[README_REL] = readme_text
-    for rel, _kind in CHECKED_DOCS:
+    for rel in CHECKED_DOCS:
         path = root / rel
         if not path.is_file():
             failures.append(Failure(Span(rel, 0, 0), "missing file"))
@@ -313,11 +294,10 @@ def check(root: Path) -> tuple[Failure, ...]:
         ledger = Ledger(readme=readme_lexemes(readme_text), projected=frozenset())
     else:
         ledger = Ledger(readme=frozenset(), projected=frozenset())
-    for rel, kind_name in CHECKED_DOCS:
+    for rel in CHECKED_DOCS:
         if rel not in texts:
             continue
-        kind = DocKind.WRITEUP if kind_name == "writeup" else DocKind.RESUME
-        for cited in extract(texts[rel], rel, kind):
+        for cited in extract(texts[rel], rel):
             hit = judge(cited, ledger)
             if hit is not None:
                 failures.append(hit)
@@ -336,12 +316,11 @@ def main(argv: list[str] | None = None) -> int:
             print(item.render())
         return 1
     cited = 0
-    for rel, kind_name in CHECKED_DOCS:
+    for rel in CHECKED_DOCS:
         path = parsed / rel
         if path.is_file():
-            kind = DocKind.WRITEUP if kind_name == "writeup" else DocKind.RESUME
-            cited += len(extract(path.read_text(encoding="utf-8"), rel, kind))
-    print(f"writeup-numbers ok files=2 cited={cited}")
+            cited += len(extract(path.read_text(encoding="utf-8"), rel))
+    print(f"writeup-numbers ok files={len(CHECKED_DOCS)} cited={cited}")
     return 0
 
 

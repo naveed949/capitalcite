@@ -28,7 +28,7 @@ shape by hand.
 
 AKS would be the right answer for a bank that already has a cluster,
 network policies, and a platform team. It is the wrong answer for a
-portfolio demo whose apply must skip without secrets. Node pools bill
+demo whose apply must skip without secrets. Node pools bill
 whether the API is idle or not.
 
 The API app sets `minReplicas` 0 and an HTTP scale rule. Ingress is

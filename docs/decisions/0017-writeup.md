@@ -4,30 +4,29 @@ Date: 2026-10-17
 
 Status: Accepted
 
-Issue #17 asks for a hiring write-up, resume bullets that cite only
-README numbers, and a failure analysis with real metrics. This record
-is why those files are authored prose, why the lever is a checker
-rather than `eval --readme`, and why a cited number is the written
-lexeme plus the file's role.
+Issue #17 asks for a project write-up with real metrics and a
+failure analysis. This record is why that file is authored prose,
+why the lever is a checker rather than `eval --readme`, and why a
+cited number is the written lexeme. Every number a reader sees must
+trace to a committed result.
 
 ## The write-up is selected prose
 
 README tables are already generated from
-`evals/results/<sha12>.json` (ADR 0006, ADR 0016). A portfolio
-write-up is not a table. It has a voice, a first-person argument, a
-LinkedIn cut, and an honest miss analysis that names item ids. Extending
-`capitalcite eval --readme` to these files would force a template
+`evals/results/<sha12>.json` (ADR 0006, ADR 0016). A project
+write-up is not a table. It has a voice, a first-person argument,
+and an honest miss analysis that names item ids. Extending
+`capitalcite eval --readme` to this file would force a template
 language onto sentences it is bad at writing.
 
-`docs/writeup.md` and `docs/resume-bullets.md` sit beside
-`docs/DECISIONS.md`. They are not records. Putting them under
-`docs/decisions/` would look like an ADR.
+`docs/writeup.md` sits beside `docs/DECISIONS.md`. It is not a
+record. Putting it under `docs/decisions/` would look like an ADR.
 
 ## A cited number is the token as written
 
-Resume bullets may use a lexeme only when `README.md` contains that
-same lexeme. The write-up may also use a short projection from a
-results JSON file that both documents link. The projection emits an
+The write-up may use a lexeme when `README.md` contains that same
+lexeme, or a short projection from a results JSON file that both
+documents link. The projection emits an
 arm's `hits/items` ratio when `f"{hits/items:.3f}"` is already a
 README cell, plus counts of empty `covered_at` and of first ranks
 from 6 through 10. It does not walk every JSON integer.
@@ -43,9 +42,6 @@ not `14`. Cost cells that display `[0]` and point at
 Exclusions live in `scripts/check_writeup_numbers.py`. SHAs, ISO
 dates, `#17`, ADR ids, URL paths, and `L79` locators are not claims.
 Authors do not annotate them.
-
-The resume mapping table is prose for a reviewer. Its cells are
-ordinary lexemes. It is not a second allow-list.
 
 ## The hook is cheap and fail-closed
 
@@ -69,5 +65,4 @@ when the sentence meant misses. Review still reads the sentence.
 
 No new Python API. No paid provider. No Azure apply. No change to
 retrieval, eval scoring, or gate policy. `eval --readme` still owns
-the README tables. Naveed publishes the write-up himself. This PR
-does not post it.
+the README tables.

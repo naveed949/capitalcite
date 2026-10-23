@@ -162,7 +162,7 @@ Set `RESULTS=` to force a file. A directory with two unrelated matrices errors. 
 
 ## Tradeoffs and what I'd do next
 
-This section is the interview argument. The ADRs hold the longer form.
+This section is the design argument. The ADRs hold the longer form.
 
 ### Chunking: section vs fixed
 
@@ -288,7 +288,7 @@ Regression CI: [ADR 0013](docs/decisions/0013-eval-regression-ci.md).
 Optional entity graph: [ADR 0014](docs/decisions/0014-optional-entity-graph.md).
 MCP server: [ADR 0015](docs/decisions/0015-mcp-server.md).
 This README: [ADR 0016](docs/decisions/0016-readme-demo.md).
-Write-up and resume bullets: [ADR 0017](docs/decisions/0017-writeup.md).
+Write-up number check: [ADR 0017](docs/decisions/0017-writeup.md).
 Eval report pick and the fake-model default: [ADR 0018](docs/decisions/0018-eval-report-and-ask-default.md).
 
 The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
@@ -343,8 +343,7 @@ src/capitalcite/     async FastAPI app, settings, CLI, ingest, parse, chunk, ret
 tests/               pytest (recorded fixtures; no live network)
 docs/DECISIONS.md    append-only index of architecture decisions
 docs/decisions/      architecture decision records
-docs/writeup.md      portfolio write-up with measured numbers
-docs/resume-bullets.md  resume bullets and the number map
+docs/writeup.md      project write-up with measured numbers
 docs/demo/           fake-model terminal recording and the script that produced it
 evals/               golden set, baselines, and results
 data/                raw and parsed filings (gitignored contents)
@@ -355,9 +354,9 @@ infra/               bootstrap.bicep (identities + RBAC) and main.bicep (apps)
 
 Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR, plus `capitalcite check` and `eval --small`. A second workflow compiles Bicep, builds the image, and runs gitleaks. It does not log in to Azure.
 
-## Why I built this
+## Why this exists
 
-I have spent 8 years shipping production systems that move money: wallets, bridges, and transaction monitoring. More recently I have been building agent infrastructure with fail-closed tool gates and sandboxes. This project brings both together. An AI system for banking documents where every answer is measured, cited, and auditable.
+An analyst question over a 10-K sounds simple. The wrong answer is a fluent paragraph that names a neighboring bank's ratio, last year's ratio, or a figure the model invented. This repo exists so every answer points at a span in a parsed filing, and a missing span is a refusal rather than a guess.
 
 ## License
 

@@ -84,7 +84,7 @@ it does not have to live next to the vectors.
 Every retrieval, LLM call, tool call, and gate decision needs a trace if the
 README's "every change is measured" line is going to be true. Langfuse is
 that trace store. LangSmith is the obvious alternative; it is hosted-only in
-practice and weaker for a portfolio that talks about auditability and
+practice and weaker for a project that talks about auditability and
 self-hosting.
 
 Current Langfuse is not one container. Self-host is web + worker + Postgres
