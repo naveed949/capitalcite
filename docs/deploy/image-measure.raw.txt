@@ -1,94 +1,266 @@
 nproc=4
-uptime= 17:19:37 up 42 min,  0 user,  load average: 0.11, 0.15, 0.09
+uptime= 17:54:34 up  1:17,  0 user,  load average: 0.16, 0.15, 0.17
 command: make image IMAGE=capitalcite:local
 #0 building with "default" instance using docker driver
 
 #1 [internal] load build definition from Dockerfile
-#1 transferring dockerfile: 2.65kB done
+#1 transferring dockerfile: 2.37kB done
 #1 DONE 0.0s
 
-#2 [internal] load metadata for ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+#2 [internal] load metadata for docker.io/library/python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70
 #2 ...
 
-#3 [internal] load metadata for docker.io/library/python:3.12-slim-bookworm
-#3 DONE 0.3s
+#3 [internal] load metadata for ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+#3 DONE 0.4s
 
-#2 [internal] load metadata for ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-#2 DONE 0.3s
+#2 [internal] load metadata for docker.io/library/python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70
+#2 DONE 0.5s
 
 #4 [internal] load .dockerignore
 #4 transferring context: 400B done
 #4 DONE 0.0s
 
 #5 [runtime 1/6] FROM docker.io/library/python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70
-#5 resolve docker.io/library/python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70 done
+#5 resolve docker.io/library/python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70 0.0s done
 #5 DONE 0.0s
 
-#6 [builder 1/8] FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
-#6 resolve ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 done
+#6 [builder 1/7] FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+#6 resolve ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 0.0s done
 #6 DONE 0.0s
 
 #7 [internal] load build context
-#7 transferring context: 7.30kB done
+#7 transferring context: 61.48kB done
 #7 DONE 0.0s
 
-#8 [builder 7/8] RUN mkdir -p /app/fastembed /app/qdrant     && capitalcite chunk --input-dir /tmp/corpus --chunker section --output-dir /tmp/demo     && capitalcite index --input-dir /tmp/demo --embedder bge-small     && python -c 'from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
+#8 [builder 2/7] WORKDIR /src
 #8 CACHED
 
-#9 [builder 4/8] COPY src ./src
+#9 [builder 3/7] COPY pyproject.toml uv.lock README.md ./
 #9 CACHED
 
-#10 [runtime 3/6] COPY --from=builder --chown=65532:65532 /app/.venv /app/.venv
-#10 CACHED
+#10 [builder 4/7] COPY src ./src
+#10 DONE 0.0s
 
-#11 [builder 3/8] COPY pyproject.toml uv.lock README.md ./
-#11 CACHED
+#11 [builder 5/7] RUN uv sync --frozen --no-dev --no-editable
+#11 0.351 Using CPython 3.12.12 interpreter at: /usr/local/bin/python3
+#11 0.351 Creating virtual environment at: /app/.venv
+#11 0.382    Building capitalcite @ file:///src
+#11 0.426 Downloading grpcio (6.8MiB)
+#11 0.426 Downloading pillow (6.6MiB)
+#11 0.426 Downloading pygments (1.2MiB)
+#11 0.427 Downloading tokenizers (3.2MiB)
+#11 0.435 Downloading uvloop (4.3MiB)
+#11 0.436 Downloading onnxruntime (22.7MiB)
+#11 0.436 Downloading cryptography (4.5MiB)
+#11 0.436 Downloading pydantic-core (2.1MiB)
+#11 0.437 Downloading hf-xet (4.0MiB)
+#11 0.437 Downloading numpy (16.0MiB)
+#11 0.437 Downloading zstandard (5.3MiB)
+#11 1.150  Downloaded pydantic-core
+#11 1.293  Downloaded tokenizers
+#11 1.308  Downloaded hf-xet
+#11 1.346  Downloaded zstandard
+#11 1.452       Built capitalcite @ file:///src
+#11 1.466  Downloaded uvloop
+#11 1.505  Downloaded pillow
+#11 1.546  Downloaded grpcio
+#11 1.556  Downloaded cryptography
+#11 1.587  Downloaded pygments
+#11 1.628  Downloaded onnxruntime
+#11 1.794  Downloaded numpy
+#11 1.795 Prepared 119 packages in 1.42s
+#11 2.059 Installed 119 packages in 263ms
+#11 4.136 Bytecode compiled 5493 files in 2.07s
+#11 4.136  + agent-detector==2.0.0
+#11 4.136  + annotated-doc==0.0.5
+#11 4.136  + annotated-types==0.8.0
+#11 4.136  + anyio==4.15.1
+#11 4.136  + attrs==26.1.0
+#11 4.136  + backoff==2.2.1
+#11 4.136  + beautifulsoup4==4.15.0
+#11 4.136  + capitalcite==0.1.0 (from file:///src)
+#11 4.136  + certifi==2026.7.22
+#11 4.136  + cffi==2.1.1
+#11 4.136  + charset-normalizer==3.5.2
+#11 4.136  + click==8.5.0
+#11 4.136  + cryptography==50.0.2
+#11 4.136  + detect-installer==0.2.1
+#11 4.137  + distro==1.9.0
+#11 4.137  + dnspython==2.9.0
+#11 4.137  + email-validator==2.3.0
+#11 4.137  + fastapi==0.143.2
+#11 4.137  + fastapi-cli==0.0.32
+#11 4.137  + fastapi-cloud-cli==0.26.0
+#11 4.137  + fastar==0.12.0
+#11 4.137  + fastembed==0.8.1
+#11 4.137  + filelock==4.2.0
+#11 4.137  + flatbuffers==25.12.19
+#11 4.137  + fsspec==2026.9.0
+#11 4.137  + googleapis-common-protos==1.75.5
+#11 4.137  + grpcio==1.84.0
+#11 4.137  + h11==0.16.0
+#11 4.137  + h2==4.4.1
+#11 4.137  + hf-xet==1.7.0
+#11 4.137  + hpack==4.2.0
+#11 4.137  + httpcore==1.0.9
+#11 4.137  + httpcore2==2.13.1
+#11 4.137  + httptools==0.9.0
+#11 4.137  + httpx==0.28.1
+#11 4.137  + httpx2==2.13.1
+#11 4.137  + huggingface-hub==1.33.0
+#11 4.137  + hyperframe==6.1.0
+#11 4.137  + idna==3.20
+#11 4.137  + jinja2==3.1.6
+#11 4.137  + jsonpatch==1.35
+#11 4.137  + jsonpointer==3.2.1
+#11 4.137  + jsonschema==4.26.0
+#11 4.137  + jsonschema-specifications==2025.9.1
+#11 4.137  + langchain-core==1.6.11
+#11 4.137  + langchain-protocol==0.0.19
+#11 4.137  + langfuse==5.0.1
+#11 4.137  + langgraph==1.2.15
+#11 4.137  + langgraph-checkpoint==4.3.0
+#11 4.137  + langgraph-prebuilt==1.1.1
+#11 4.137  + langgraph-sdk==0.4.7
+#11 4.137  + langsmith==0.14.11
+#11 4.137  + loguru==0.7.3
+#11 4.137  + markdown-it-py==4.2.0
+#11 4.137  + markupsafe==3.0.4
+#11 4.137  + mcp==2.3.0
+#11 4.137  + mcp-types==2.3.0
+#11 4.137  + mdurl==0.1.2
+#11 4.137  + mmh3==5.3.1
+#11 4.137  + neo4j==5.28.8
+#11 4.137  + numpy==2.5.4
+#11 4.137  + onnxruntime==1.31.0
+#11 4.137  + opentelemetry-api==1.45.1
+#11 4.137  + opentelemetry-exporter-http-transport==0.66b1
+#11 4.137  + opentelemetry-exporter-otlp-common==0.66b1
+#11 4.137  + opentelemetry-exporter-otlp-proto-common==1.45.1
+#11 4.137  + opentelemetry-exporter-otlp-proto-http==1.45.1
+#11 4.137  + opentelemetry-proto==1.45.1
+#11 4.137  + opentelemetry-sdk==1.45.1
+#11 4.137  + opentelemetry-semantic-conventions==0.66b1
+#11 4.137  + orjson==3.13.0
+#11 4.137  + ormsgpack==1.13.0
+#11 4.137  + packaging==26.3
+#11 4.137  + pillow==12.3.0
+#11 4.137  + portalocker==3.2.0
+#11 4.137  + protobuf==7.36.2
+#11 4.137  + py-rust-stemmers==0.1.8
+#11 4.137  + pycparser==3.11
+#11 4.137  + pydantic==2.14.1
+#11 4.137  + pydantic-core==2.50.1
+#11 4.137  + pydantic-extra-types==2.11.1
+#11 4.137  + pydantic-settings==2.16.0
+#11 4.137  + pygments==2.21.0
+#11 4.137  + pyjwt==2.15.1
+#11 4.138  + pypdf==6.20.1
+#11 4.138  + python-dotenv==1.2.4
+#11 4.138  + python-multipart==0.0.32
+#11 4.138  + pytz==2026.5
+#11 4.138  + pyyaml==6.0.3
+#11 4.138  + qdrant-client==1.19.1
+#11 4.138  + referencing==0.37.0
+#11 4.138  + requests==2.34.2
+#11 4.138  + requests-toolbelt==1.0.0
+#11 4.138  + rich==15.0.0
+#11 4.138  + rich-toolkit==0.20.6
+#11 4.138  + rignore==0.8.1
+#11 4.138  + rpds-py==2026.9.1
+#11 4.138  + sentry-sdk==2.72.0
+#11 4.138  + shellingham==1.5.4
+#11 4.138  + sniffio==1.3.1
+#11 4.138  + soupsieve==3.0.3
+#11 4.138  + sse-starlette==3.5.0
+#11 4.138  + starlette==1.8.0
+#11 4.138  + tenacity==9.2.1
+#11 4.138  + tokenizers==0.23.3
+#11 4.138  + tqdm==4.70.1
+#11 4.138  + truststore==0.10.5
+#11 4.138  + typer==0.27.3
+#11 4.138  + typing-extensions==4.16.0
+#11 4.138  + typing-inspection==0.4.4
+#11 4.138  + urllib3==2.8.0
+#11 4.138  + uuid-utils==0.17.1
+#11 4.138  + uvicorn==0.54.0
+#11 4.138  + uvloop==0.23.0
+#11 4.138  + watchfiles==1.3.0
+#11 4.138  + websockets==16.1.1
+#11 4.138  + wrapt==2.5.1
+#11 4.138  + xxhash==4.0.1
+#11 4.138  + zstandard==0.25.0
+#11 DONE 4.7s
 
-#12 [builder 6/8] COPY tests/fixtures/chunking/corpus /tmp/corpus
-#12 CACHED
+#12 [builder 6/7] COPY tests/fixtures/chunking/corpus /tmp/corpus
+#12 DONE 0.1s
 
-#13 [runtime 2/6] RUN useradd --uid 65532 --create-home --home-dir /home/app app     && mkdir -p /home/app/data     && chown -R app:app /home/app
-#13 CACHED
+#13 [builder 7/7] RUN mkdir -p /app/fastembed /app/qdrant     && python -c 'from capitalcite.retrieval.fastembed_pins import prefetch_fastembed_cache; prefetch_fastembed_cache()'     && capitalcite chunk --input-dir /tmp/corpus --chunker section --output-dir /tmp/demo     && capitalcite index --input-dir /tmp/demo --embedder bge-small     && python -c 'import os; os.environ["HF_HUB_OFFLINE"]="1"; from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
+#13 1.642 Fetching 9 files:   0%|          | 0/9 [00:00<?, ?it/s]Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+#13 1.771 Fetching 9 files:  11%|█         | 1/9 [00:00<00:01,  7.78it/s]Fetching 9 files:  89%|████████▉ | 8/9 [00:00<00:00, 34.85it/s]Fetching 9 files: 100%|██████████| 9/9 [00:01<00:00,  8.81it/s]
+#13 2.753 Fetching 33 files:   0%|          | 0/33 [00:00<?, ?it/s]Fetching 33 files:   3%|▎         | 1/33 [00:00<00:03,  8.08it/s]Fetching 33 files:  27%|██▋       | 9/33 [00:00<00:00, 43.40it/s]Fetching 33 files:  52%|█████▏    | 17/33 [00:00<00:00, 54.95it/s]Fetching 33 files:  76%|███████▌  | 25/33 [00:00<00:00, 61.00it/s]Fetching 33 files: 100%|██████████| 33/33 [00:00<00:00, 62.36it/s]Fetching 33 files: 100%|██████████| 33/33 [00:00<00:00, 55.71it/s]
+#13 5.104 2026-10-23 17:54:45,662 INFO capitalcite.chunking chunker=section count=4 mean_tokens=35.5 total_tokens=142 doc_id=0000019617-25-000270
+#13 5.123 2026-10-23 17:54:45,681 INFO capitalcite.chunking chunker=section count=8 mean_tokens=255.9 total_tokens=2047 doc_id=0000019617-25-000271
+#13 5.127 2026-10-23 17:54:45,686 INFO capitalcite.chunking.service chunk strategy=section files=2 chunks=12 mean_tokens=182.4
+#13 5.127 chunk strategy=section files=2 chunks=12 mean_tokens=182.4 failed=0 output=/tmp/demo
+#13 6.867 2026-10-23 17:54:47,425 INFO httpx HTTP Request: GET https://huggingface.co/api/models/Qdrant/bm25 "HTTP/1.1 200 OK"
+#13 6.872 2026-10-23 17:54:47,430 INFO httpx HTTP Request: GET https://huggingface.co/api/models/Qdrant/bge-small-en-v1.5-onnx-Q "HTTP/1.1 200 OK"
+#13 6.972 2026-10-23 17:54:47,531 INFO httpx HTTP Request: GET https://huggingface.co/api/models/Qdrant/bm25/tree/22b8d2af71a76161e18dd432d2cee0eefa66e412?recursive=false&expand=false "HTTP/1.1 200 OK"
+#13 6.974 2026-10-23 17:54:47,532 INFO httpx HTTP Request: GET https://huggingface.co/api/models/Qdrant/bge-small-en-v1.5-onnx-Q/tree/aa8f8b060edb00e03bfdd08813a2949946c8ba55?recursive=false&expand=false "HTTP/1.1 200 OK"
+#13 7.062 2026-10-23 17:54:47,620 INFO httpx HTTP Request: GET https://huggingface.co/api/models/Qdrant/bm25/revision/main "HTTP/1.1 200 OK"
+#13 7.064 Fetching 18 files:   0%|          | 0/18 [00:00<?, ?it/s]2026-10-23 17:54:47,631 INFO httpx HTTP Request: GET https://huggingface.co/api/models/Qdrant/bge-small-en-v1.5-onnx-Q/revision/main "HTTP/1.1 200 OK"
+#13 7.074 Fetching 18 files: 100%|██████████| 18/18 [00:00<00:00, 1810.45it/s]
+#13 7.075 Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Fetching 5 files: 100%|██████████| 5/5 [00:00<00:00, 1883.39it/s]
+#13 11.64 2026-10-23 17:54:52,201 INFO capitalcite.retrieval.service eval timing phase=embed collection=filings-3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880 chunks=12 reuse=false embed_s=4.910
+#13 11.64 eval timing phase=embed collection=filings-3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880 chunks=12 reuse=false embed_s=4.910
+#13 11.64 2026-10-23 17:54:52,203 INFO capitalcite.retrieval.service indexed collection=filings-3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880 points=12 config_hash=3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880
+#13 11.65 index collection=filings-3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880 config_hash=3121e257bc0cdcaf7c7ed473fdf184458e35778aa9bcfc10ad1e2abd72e11880 points=12 output=/tmp/demo
+#13 DONE 12.7s
 
-#14 [runtime 4/6] COPY --from=builder --chown=65532:65532 /app/qdrant /app/qdrant
+#14 [runtime 2/6] RUN useradd --uid 65532 --create-home --home-dir /home/app app     && mkdir -p /home/app/data     && chown -R app:app /home/app
 #14 CACHED
 
-#15 [builder 5/8] RUN uv sync --frozen --no-dev --no-editable
-#15 CACHED
+#15 [runtime 3/6] COPY --from=builder --chown=65532:65532 /app/.venv /app/.venv
+#15 DONE 1.3s
 
-#16 [builder 8/8] RUN python -c 'import os; from pathlib import Path; cache=Path(os.environ["FASTEMBED_CACHE_PATH"]); snaps=list(cache.glob("models--Qdrant--bm25/snapshots/*")); assert snaps, "bm25 snapshot missing"; [(snap / "mock.file").touch() for snap in snaps]; [(snap / "tamil.txt").touch() for snap in snaps]; os.environ["HF_HUB_OFFLINE"]="1"; from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
-#16 CACHED
+#16 [runtime 4/6] COPY --from=builder --chown=65532:65532 /app/qdrant /app/qdrant
+#16 DONE 0.1s
 
-#17 [builder 2/8] WORKDIR /src
-#17 CACHED
+#17 [runtime 5/6] COPY --from=builder --chown=65532:65532 /app/fastembed /app/fastembed
+#17 DONE 0.1s
 
-#18 [runtime 5/6] COPY --from=builder --chown=65532:65532 /app/fastembed /app/fastembed
-#18 CACHED
+#18 [runtime 6/6] WORKDIR /home/app
+#18 DONE 0.0s
 
-#19 [runtime 6/6] WORKDIR /home/app
-#19 CACHED
-
-#20 exporting to image
-#20 exporting layers done
-#20 exporting manifest sha256:c81e7d842a494add68ee1d3ef0f35338f89af4e7bef937cc39090d512a360c8c done
-#20 exporting config sha256:210c3817b262d7f56fa4bb8108eb6286c2cb9cc4ab7dbbe6509f7dcc9b406b53 done
-#20 exporting attestation manifest sha256:92e1feea2c0fe3fe89d132c69a45b172f74d80df33489719f41c1af4c5a02b6e done
-#20 exporting manifest list sha256:793d9990439554edc1b1fd3638170f4dde62deabb684d021ad57a4c88feffa6a done
-#20 naming to docker.io/library/capitalcite:local done
-#20 unpacking to docker.io/library/capitalcite:local done
-#20 DONE 0.0s
-command: sudo docker image inspect capitalcite:local --format Size={{.Size}}
-Size=230276144
-command: sudo docker run -d --name capitalcite-measure-12604 --memory 512m --memory-swap 512m -p 127.0.0.1::8000 -e SEC_USER_AGENT=capitalcite-measure you@example.com -e ASK_MODEL=fake capitalcite:local
-09c363e3b5e4066fa3cee4928057b7bf0d36177c361be81264a56cae21eb578b
-host_port=32769
+#19 exporting to image
+#19 exporting layers
+#19 exporting layers 11.5s done
+#19 exporting manifest sha256:7583588f638c704803d7e77980f1f87e48f1080d341427fcb0ff1e98f4ef7f23 done
+#19 exporting config sha256:396e9ee3c4db1ccf2fc77e590e666f6aea0979d991509d67a409a4b5812bc310 done
+#19 exporting attestation manifest sha256:0d9b67dc82444f2bae3098edc8956de742821ab95b5b84f3be62d87a4fd82319 done
+#19 exporting manifest list sha256:438e2985cef347f91412c4c0a9eb673b5cc48f5000f8e3c6588586f5b33226d0 done
+#19 naming to docker.io/library/capitalcite:local done
+#19 unpacking to docker.io/library/capitalcite:local
+#19 unpacking to docker.io/library/capitalcite:local 2.6s done
+#19 DONE 14.1s
+command: sudo -n docker image inspect capitalcite:local --format Size={{.Size}}
+Size=230414418
+inspect_size_bytes=230414418
+command: sudo -n docker save capitalcite:local | wc -c
+save_bytes=230433792
+command: sudo -n docker run -d --name capitalcite-measure-21123 --memory 512m --memory-swap 512m -p 127.0.0.1::8000 -e SEC_USER_AGENT=capitalcite-measure you@example.com -e ASK_MODEL=fake capitalcite:local
+84525863761c2df3870c2891ec2b6dca340a3375a30188225292974bf9deb54a
+host_port=32774
 health_poll http=000
 health_poll http=000
 health_poll http=200
-cold_start_ns=2276761650
-cold_start_s=2.27676165
-health_json={"status":"ok","service":"capitalcite","version":"0.1.0","git_sha":"deee14b2e0354578c3c4d855cdb850084d3c3d1e","point_count":12}
+cold_start_ns=2699822690
+cold_start_s=2.69982269
+health_json={"status":"ok","service":"capitalcite","version":"0.1.0","git_sha":"1b6fcff1481f576f191cc2ed8a62602caecc5fd8","point_count":12}
 command: 20x POST /ask/stream model=fake
+first_answer_http=200
+first_answer_ns=3145223679
+first_answer_s=3.145223679
 ask 1 http=200 bytes=9076
 ask 2 http=200 bytes=9076
 ask 3 http=200 bytes=9076
@@ -110,12 +282,22 @@ ask 18 http=200 bytes=9076
 ask 19 http=200 bytes=9076
 ask 20 http=200 bytes=9076
 ask_http_200=20 ask_not_200=0 codes= 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200
-command: sudo docker inspect State
+command: 6 parallel POST /ask/stream
+concurrent_http_200=6 concurrent_not_200=0 concurrent_codes=200 200 200 200 200 200
+concurrent 1 http=200 bytes=9076
+concurrent 2 http=200 bytes=9076
+concurrent 3 http=200 bytes=9076
+concurrent 4 http=200 bytes=9076
+concurrent 5 http=200 bytes=9076
+concurrent 6 http=200 bytes=9076
+command: sudo -n docker inspect State
 OOMKilled=false Status=running ExitCode=0 Error=
-command: du -sb /app/fastembed /app/qdrant /app/.venv
-disk 67287419	/app/fastembed
+command: du -sb /app/fastembed /app/qdrant /app/.venv /
+disk 67583907	/app/fastembed
 disk 94877	/app/qdrant
-disk 392773593	/app/.venv
+disk 392786588	/app/.venv
+disk 185215456	/
+unpacked_root_bytes=645680765
 command: /proc/1/status
 Name:	uvicorn
 Umask:	0022
@@ -134,26 +316,26 @@ NSpid:	1
 NSpgid:	1
 NSsid:	1
 Kthread:	0
-VmPeak:	 1404124 kB
-VmSize:	 1371488 kB
+VmPeak:	 1445380 kB
+VmSize:	 1445380 kB
 VmLck:	       0 kB
 VmPin:	       0 kB
-VmHWM:	  387832 kB
-VmRSS:	  387832 kB
-RssAnon:	  319984 kB
+VmHWM:	  362692 kB
+VmRSS:	  362692 kB
+RssAnon:	  294844 kB
 RssFile:	   67848 kB
 RssShmem:	       0 kB
-VmData:	  601684 kB
+VmData:	  584696 kB
 VmStk:	     132 kB
 VmExe:	       4 kB
 VmLib:	  102232 kB
-VmPTE:	    1040 kB
+VmPTE:	    1004 kB
 VmSwap:	       0 kB
 HugetlbPages:	       0 kB
 CoreDumping:	0
 THP_enabled:	1
 untag_mask:	0xffffffffffffffff
-Threads:	18
+Threads:	19
 SigQ:	0/63994
 SigPnd:	0000000000000000
 ShdPnd:	0000000000000000
@@ -174,22 +356,22 @@ Cpus_allowed:	f
 Cpus_allowed_list:	0-3
 Mems_allowed:	00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001
 Mems_allowed_list:	0
-voluntary_ctxt_switches:	179
-nonvoluntary_ctxt_switches:	255
+voluntary_ctxt_switches:	273
+nonvoluntary_ctxt_switches:	175
 command: /proc/1/smaps_rollup
-555c4ecb2000-7ffc48217000 ---p 00000000 00:00 0                          [rollup]
-Rss:              387832 kB
-Pss:              387072 kB
-Pss_Dirty:        319984 kB
-Pss_Anon:         319984 kB
-Pss_File:          67088 kB
+55ef5c6ea000-7ffec5a32000 ---p 00000000 00:00 0                          [rollup]
+Rss:              362692 kB
+Pss:              361910 kB
+Pss_Dirty:        294876 kB
+Pss_Anon:         294844 kB
+Pss_File:          67066 kB
 Pss_Shmem:             0 kB
-Shared_Clean:       1516 kB
+Shared_Clean:       1560 kB
 Shared_Dirty:          0 kB
-Private_Clean:     66332 kB
-Private_Dirty:    319984 kB
-Referenced:       387832 kB
-Anonymous:        319984 kB
+Private_Clean:     66256 kB
+Private_Dirty:    294876 kB
+Referenced:       362692 kB
+Anonymous:        294844 kB
 KSM:                   0 kB
 LazyFree:              0 kB
 AnonHugePages:         0 kB
@@ -200,15 +382,15 @@ Private_Hugetlb:       0 kB
 Swap:                  0 kB
 SwapPss:               0 kB
 Locked:                0 kB
-command: sudo docker logs
-container_log_bytes=1531
+command: sudo -n docker logs
+container_log_bytes=1915
 stats_samples:
-68.22MiB / 512MiB 13.32% cpu=99.06%
-vmrss_kb=102768
-318.4MiB / 512MiB 62.19% cpu=173.64%
-vmrss_kb=387824
-peak_stats_parsed_bytes=333866598
-peak_stats_line=318.4MiB / 512MiB 62.19% cpu=173.64%
+58.67MiB / 512MiB 11.46% cpu=92.72%
+vmrss_kb=77520
+296.9MiB / 512MiB 57.99% cpu=58.98%
+vmrss_kb=362120
+peak_stats_parsed_bytes=311322214
+peak_stats_line=296.9MiB / 512MiB 57.99% cpu=58.98%
 vmrss_kb_samples=2
-vmrss_kb_max=387824
+vmrss_kb_max=362120
 wrote /workspace/docs/deploy/image-measure.md

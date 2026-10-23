@@ -90,7 +90,7 @@ One run of `scripts/measure_image.sh`. The lines in Raw lines are copied from `i
 docker run -d --memory 512m --memory-swap 512m -p 127.0.0.1::8000 -e SEC_USER_AGENT='capitalcite-measure you@example.com' -e ASK_MODEL=fake {image}
 ```
 
-`--memory-swap 512m` is set equal to `--memory` so the cgroup cannot add swap past 512m. On this machine the script uses `sudo docker` when `docker info` is denied.
+`--memory-swap 512m` is set equal to `--memory` so the cgroup cannot add swap past 512m. On this machine the script uses `sudo -n docker` when `docker info` is denied.
 
 `nproc` and `uptime` are in the raw log. This host reported `nproc=4`. `cold_start_s` is container start until the first `/health` 200, before FastEmbed loads. `first_answer_s` is that same start until the first `POST /ask/stream` finishes. `inspect_size_bytes` is `docker image inspect .Size` (uncompressed layers). `save_bytes` is `docker save | wc -c`. `unpacked_root_bytes` is `du -sb /` inside the running container. Stats samples are `image-measure.stats.txt`. Container logs are `image-measure.container.log`. The `/health` body is `image-measure.health.json`. The first `/ask/stream` body is `image-measure.ask1.body`.
 

@@ -41,8 +41,8 @@ missing store or a count error is `point_count` 0.
 ## What one memory run showed
 
 `scripts/measure_image.sh` is the run. One execution on 2026-10-23, after
-the offline cache fix. `nproc` was 4. `uptime` was
-`17:19:37 up 42 min, 0 user, load average: 0.11, 0.15, 0.09`.
+the shared-client fix, on a 4-CPU machine. `nproc` was 4. `uptime` was
+`17:54:34 up  1:17,  0 user,  load average: 0.16, 0.15, 0.17`.
 The container command was:
 
 ```text
@@ -52,54 +52,58 @@ docker run -d --memory 512m --memory-swap 512m -p 127.0.0.1::8000 \
 ```
 
 `--memory-swap 512m` matches `--memory` so the cgroup cannot add swap past
-512 MiB. This host needed `sudo docker`.
+512 MiB. This host used `sudo -n docker`.
 
 Copied from `docs/deploy/image-measure.raw.txt`:
 
 ```text
-Size=230276144
-cold_start_ns=2276761650
-cold_start_s=2.27676165
-health_json={"status":"ok","service":"capitalcite","version":"0.1.0","git_sha":"deee14b2e0354578c3c4d855cdb850084d3c3d1e","point_count":12}
+Size=230414418
+inspect_size_bytes=230414418
+save_bytes=230433792
+cold_start_ns=2699822690
+cold_start_s=2.69982269
+health_json={"status":"ok","service":"capitalcite","version":"0.1.0","git_sha":"1b6fcff1481f576f191cc2ed8a62602caecc5fd8","point_count":12}
+first_answer_http=200
+first_answer_ns=3145223679
+first_answer_s=3.145223679
 ask_http_200=20 ask_not_200=0
+concurrent_http_200=6 concurrent_not_200=0 concurrent_codes=200 200 200 200 200 200
 OOMKilled=false Status=running ExitCode=0 Error=
-disk 67287419	/app/fastembed
+disk 67583907	/app/fastembed
 disk 94877	/app/qdrant
-disk 392773593	/app/.venv
-VmPeak:	 1404124 kB
-VmHWM:	  387832 kB
-VmRSS:	  387832 kB
-peak_stats_line=318.4MiB / 512MiB 62.19% cpu=173.64%
+disk 392786588	/app/.venv
+disk 185215456	/
+unpacked_root_bytes=645680765
+VmPeak:	 1445380 kB
+VmHWM:	  362692 kB
+VmRSS:	  362692 kB
+peak_stats_line=296.9MiB / 512MiB 57.99% cpu=58.98%
 vmrss_kb_samples=2
-vmrss_kb_max=387824
+vmrss_kb_max=362120
 ```
 
 `cold_start_s` is container start until the first `/health` 200. That
-handler does not load FastEmbed. The 20 `POST /ask/stream` calls are the
-work that loads the model. All 20 returned HTTP 200 and the first body is
-`text/event-stream`. The script did not record each request's duration.
+handler does not load FastEmbed. `first_answer_s` is the same start until
+the first `POST /ask/stream` finishes. That is when the model is loaded.
+All 20 sequential stream calls returned HTTP 200. Six parallel stream
+calls also returned HTTP 200.
 
-`VmHWM` is the kernel high-water resident set for pid 1, `387832 kB`.
-End `VmRSS` is the same value, so the 20 requests did not raise it further.
-`docker stats` produced two samples. The higher sample is
-`318.4MiB / 512MiB`. That display is lower than `VmHWM` because the
-sampler and the cgroup counter are not the same reading. `OOMKilled=false`.
-The 512 MiB cap was not what stopped the process.
+`VmHWM` is the kernel high-water resident set for pid 1, `362692 kB`.
+End `VmRSS` is the same value. `docker stats` produced two samples. The
+higher sample is `296.9MiB / 512MiB`. That display is lower than `VmHWM`
+because the sampler and the cgroup counter are not the same reading.
+`OOMKilled=false`. The 512 MiB cap was not what stopped the process.
 
-A later look, not the 20-request run, mapped `/proc/1/smaps` after one
-`POST /ask/stream`. `docs/deploy/image-measure.smaps.txt` records
-`rss_kb_total 387772`. The largest buckets are anonymous `262836` kB and
-`[heap]` `51308` kB. The largest named file is
-`onnxruntime_pybind11_state` at `20268` kB. On disk the FastEmbed cache is
-`67287419` bytes and the Qdrant directory is `94877` bytes. The resident
-set is mostly anonymous memory after ONNX loads, not the Qdrant files.
-This record does not split that anonymous region any further. Halving the
-resident set would mean a smaller loaded runtime. This run did not try a
-smaller model.
+`docker image inspect` `Size` is `230414418` bytes. `docker save | wc -c`
+is `230433792` bytes. Those two are the image as Docker stores it.
+`du -sb /app/.venv` inside the container is `392786588` bytes, larger
+than the inspect size. `du -sb /` as uid 65532 printed `185215456` with
+permission errors, then a second `du -sb /` printed `645680765`, also
+with permission errors. The record keeps every raw line.
 
-`docker image inspect` `Size` is `230276144` bytes. `du -sb /app/.venv`
-inside the container is `392773593` bytes. Those commands measure different
-things. The record keeps both.
+On disk the FastEmbed cache is `67583907` bytes and the Qdrant directory
+is `94877` bytes. The resident set is mostly anonymous memory after ONNX
+loads, not the Qdrant files.
 
 ## One process, one counter
 
