@@ -2690,6 +2690,61 @@ fi
 log "verify: pytest -m mf ok"
 cat "${ART}/mf-pytest.out"
 
+log "verify: metric_query JPM total_deposits and catalog bytes"
+set +e
+uv run python - <<'PY' >"${ART}/metric-query.out" 2>"${ART}/metric-query.err"
+import os
+from pathlib import Path
+
+from capitalcite.metric_query import open_metric_query, run_metric_query
+from capitalcite.metric_query.backends import compile_catalog
+
+root = Path.cwd()
+backend, citations = open_metric_query(
+    backend_name="live",
+    warehouse=root / "dbt" / "target" / "ci.duckdb",
+    cwd=root,
+    env=os.environ,
+)
+result = run_metric_query(
+    {
+        "metric": "total_deposits",
+        "group_by": "metric_time__quarter,bank__ticker",
+        "ticker": "JPM",
+        "period": "2026-06-30",
+    },
+    backend=backend,
+    citations=citations,
+)
+if not result.ok or len(result.hits) != 1:
+    raise SystemExit(f"metric_query failed {result.detail}")
+quote = result.hits[0].chunk.text
+if result.value not in quote:
+    raise SystemExit("figure missing from quote")
+if not quote.startswith(f"total_deposits for JPM at 2026-06-30 is {result.value}."):
+    raise SystemExit(f"quote grammar {quote}")
+if "Unit is thousands of USD." not in quote or "FDIC REPDTE" not in quote:
+    raise SystemExit(f"quote source {quote}")
+print(f"metric_query ok figure={result.value} hits=1")
+compiled = root / "dbt" / "target" / "catalog.compiled.json"
+compile_catalog(compiled, cwd=root, env=os.environ)
+committed = root / "src" / "capitalcite" / "metric_query" / "catalog.json"
+if compiled.read_bytes() != committed.read_bytes():
+    raise SystemExit("stale catalog")
+print("catalog bytes match")
+PY
+metric_query_rc=$?
+set -e
+write metric-query.exit "${metric_query_rc}"
+if [[ "${metric_query_rc}" -ne 0 ]]; then
+  log "verify: metric_query failed"
+  cat "${ART}/metric-query.out" >&2 || true
+  cat "${ART}/metric-query.err" >&2 || true
+  exit 1
+fi
+log "verify: metric_query ok"
+cat "${ART}/metric-query.out"
+
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
 import json

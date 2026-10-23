@@ -69,6 +69,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Metrics extract](./metrics-extract.md) covers `capitalcite metrics extract --fixtures` and the BankFind host `api.fdic.gov/banks`.
 - [Quarterly warehouse](./warehouse.md) covers `dbt build --target ci` on the committed metrics fixtures.
 - [MetricFlow metrics](./metrics.md) covers `mf validate-configs`, the deposits query, and the saved queries on the ci warehouse.
+- [Metric query](./metric-query.md) covers `metric_query` for one ticker and one quarter-end, cited from the fact row.
 
 ## Extending the map
 

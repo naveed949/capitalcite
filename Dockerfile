@@ -32,6 +32,27 @@ RUN mkdir -p /app/fastembed /app/qdrant \
     && python -c 'from pathlib import Path; from capitalcite.retrieval.fastembed_pins import verify_pinned_files; verify_pinned_files(Path("/app/fastembed"))' \
     && python -c 'from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
 
+# This stage builds the fixture warehouse and checks catalog.json against
+# mf query --explain. It is discarded. The runtime image does not install MetricFlow.
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS metrics
+
+WORKDIR /src
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0 \
+    DBT_PROJECT_DIR=/src/dbt \
+    DBT_PROFILES_DIR=/src/dbt \
+    DBT_TARGET=ci
+
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+COPY dbt ./dbt
+COPY tests/fixtures/metrics ./tests/fixtures/metrics
+
+RUN uv sync --frozen --group metrics --no-dev --no-editable \
+    && uv run --frozen --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci \
+    && uv run --frozen --group metrics python -c "from pathlib import Path; import os; from capitalcite.metric_query.backends import compile_catalog; out = Path('/tmp/catalog.json'); compile_catalog(out, cwd=Path('/src'), env=os.environ); committed = Path('src/capitalcite/metric_query/catalog.json').read_bytes(); assert out.read_bytes() == committed, 'stale metric catalog'"
+
 FROM python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70 AS runtime
 
 RUN useradd --uid 65532 --create-home --home-dir /home/app app \
@@ -43,6 +64,7 @@ ARG GIT_SHA=unknown
 COPY --from=builder --chown=65532:65532 /app/.venv /app/.venv
 COPY --from=builder --chown=65532:65532 /app/qdrant /app/qdrant
 COPY --from=builder --chown=65532:65532 /app/fastembed /app/fastembed
+COPY --from=metrics --chown=65532:65532 /src/dbt/target/ci.duckdb /app/warehouse/ci.duckdb
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
@@ -55,7 +77,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     GIT_SHA=${GIT_SHA} \
     ASK_RATE_LIMIT=60 \
     EMBED_THREADS=1 \
-    HF_HUB_OFFLINE=1
+    HF_HUB_OFFLINE=1 \
+    METRIC_QUERY_BACKEND=catalog \
+    WAREHOUSE_PATH=/app/warehouse/ci.duckdb
 
 USER 65532:65532
 WORKDIR /home/app

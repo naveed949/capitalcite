@@ -1,10 +1,14 @@
 """metric_query shell. Siblings do not import this module."""
 
+from __future__ import annotations
+
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from capitalcite.agent.types import ToolResult
+if TYPE_CHECKING:
+    from capitalcite.agent.types import ToolResult
+
 from capitalcite.metric_query.backends import CatalogSql, LiveMetricFlow, load_catalog
 from capitalcite.metric_query.cite import CitationResolver, hits_for
 from capitalcite.metric_query.query import (
@@ -41,6 +45,8 @@ def run_metric_query(
     failure detail does not include the rendered figure. Success sets hits,
     value, and detail to that figure. args are the mapping the caller sent.
     """
+    from capitalcite.agent.types import ToolResult
+
     recorded = dict(args) if isinstance(args, Mapping) else {}
     figure: str | None = None
     try:
@@ -66,6 +72,8 @@ def run_metric_query(
 
 
 def _failed(args: dict[str, object], detail: str) -> ToolResult:
+    from capitalcite.agent.types import ToolResult
+
     return ToolResult(ok=False, tool="metric_query", args=args, detail=detail, hits=())
 
 
