@@ -110,7 +110,16 @@ metrics_app = typer.Typer(
 )
 app.add_typer(metrics_app, name="metrics")
 
-FIXTURES = Path("tests/fixtures/metrics")
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        markers = (parent / "pyproject.toml", parent / "tests" / "fixtures" / "metrics")
+        if all(path.exists() for path in markers):
+            return parent
+    raise RuntimeError("cannot locate tests/fixtures/metrics from the package")
+
+
+FIXTURES = _repo_root() / "tests" / "fixtures" / "metrics"
 
 
 @audit_app.command("verify")
@@ -402,6 +411,7 @@ def metrics_extract(
     ),
 ) -> None:
     """Write SEC companyfacts and FDIC lead-bank financials as separate files."""
+    from capitalcite.agent.fdic import BANKFIND_TIMEOUT, bankfind_user_agent
     from capitalcite.agent.http import HttpxJsonClient
     from capitalcite.holdings import holding_company
     from capitalcite.ingest.rate_limit import shared_limiter
@@ -437,7 +447,10 @@ def metrics_extract(
                 limiter=shared_limiter(),
                 timeout=120.0,
             ),
-            fdic=HttpxJsonClient(user_agent=settings.sec_user_agent),
+            fdic=HttpxJsonClient(
+                user_agent=bankfind_user_agent(),
+                timeout=BANKFIND_TIMEOUT,
+            ),
             clock=utc_now,
         )
     try:

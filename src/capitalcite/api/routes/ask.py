@@ -18,7 +18,12 @@ from capitalcite.agent import (
     run_agent,
 )
 from capitalcite.agent.audited import AuditingTools, request_trace_id
-from capitalcite.agent.fdic import FakeFdicClient, FdicClient
+from capitalcite.agent.fdic import (
+    BANKFIND_TIMEOUT,
+    FakeFdicClient,
+    FdicClient,
+    bankfind_user_agent,
+)
 from capitalcite.agent.http import HttpxJsonClient
 from capitalcite.agent.xbrl import FakeXbrlClient, XbrlClient
 from capitalcite.api.routes.search import get_setup
@@ -190,7 +195,10 @@ async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings
         user_agent=settings.sec_user_agent,
         limiter=shared_limiter(),
     )
-    fdic_client = HttpxJsonClient(user_agent=settings.sec_user_agent)
+    fdic_client = HttpxJsonClient(
+        user_agent=bankfind_user_agent(),
+        timeout=BANKFIND_TIMEOUT,
+    )
     if selected == "fake":
         xbrl = FakeXbrlClient().fact
         fdic = FakeFdicClient().lookup

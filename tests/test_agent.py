@@ -81,8 +81,8 @@ async def test_execute_maps_unexpected_errors_to_tool_result() -> None:
     assert "boom" in result.detail
 
 
-async def test_httpx_json_client_fails_closed_on_replayed_301() -> None:
-    from capitalcite.agent.http import HttpxJsonClient
+async def test_fdic_httpx_json_client_fails_closed_on_replayed_301() -> None:
+    from capitalcite.agent.http import HttpStatusError, HttpxJsonClient
 
     seen: list[httpx.Request] = []
 
@@ -98,32 +98,40 @@ async def test_httpx_json_client_fails_closed_on_replayed_301() -> None:
         transport=httpx.MockTransport(redirect),
     )
     url = "https://banks.data.fdic.gov/api/institutions"
-    with pytest.raises(ValueError, match="HTTP 301"):
+    with pytest.raises(HttpStatusError, match="HTTP 301") as first:
         await client.get_json(url)
+    assert first.value.status_code == 301
+    assert first.value.url == url
     assert len(seen) == 1
     assert seen[0].url == url
-    with pytest.raises(ValueError, match="HTTP 301"):
+    with pytest.raises(HttpStatusError, match="HTTP 301") as second:
         await client.get_bytes(url)
+    assert second.value.status_code == 301
     assert len(seen) == 2
     assert all(request.url == url for request in seen)
 
 
 async def test_fdic_lookup_hits_api_fdic_gov_banks() -> None:
-    from capitalcite.agent.fdic import FdicClient
+    from capitalcite.agent.fdic import FdicClient, institutions
     from capitalcite.agent.http import HttpxJsonClient
 
     seen: list[httpx.Request] = []
+    payload = {
+        "meta": {"total": 1},
+        "data": [
+            {
+                "data": {
+                    "NAME": "EXAMPLE NATIONAL BANK",
+                    "CERT": "628",
+                    "ACTIVE": 1,
+                }
+            }
+        ],
+    }
 
     def one_row(request: httpx.Request) -> httpx.Response:
         seen.append(request)
-        return httpx.Response(
-            200,
-            json={
-                "data": [
-                    {"data": {"NAME": "EXAMPLE NATIONAL BANK", "CERT": "628"}},
-                ]
-            },
-        )
+        return httpx.Response(200, json=payload)
 
     client = HttpxJsonClient(
         user_agent="capitalcite-tests tests@example.com",
@@ -131,8 +139,15 @@ async def test_fdic_lookup_hits_api_fdic_gov_banks() -> None:
     )
     text = await FdicClient(client).lookup("EXAMPLE")
     assert len(seen) == 1
-    assert str(seen[0].url).startswith("https://api.fdic.gov/banks/institutions")
-    assert "CERT=" in text
+    assert seen[0].url.host == "api.fdic.gov"
+    assert seen[0].url.path == "/banks/institutions"
+    total, rows = institutions(payload)
+    assert total == 1
+    assert len(rows) == 1
+    assert rows[0].name == "EXAMPLE NATIONAL BANK"
+    assert rows[0].cert == "628"
+    assert rows[0].active is True
+    assert text == "EXAMPLE NATIONAL BANK CERT=628"
 
 
 async def test_httpx_json_client_maps_transport_errors() -> None:
@@ -149,8 +164,11 @@ async def test_httpx_json_client_maps_transport_errors() -> None:
             user_agent="capitalcite-tests tests@example.com",
             transport=httpx.MockTransport(handler),
         )
-        with pytest.raises(ValueError, match="request failed"):
+        with pytest.raises(ValueError, match="request failed") as failed:
             await client.get_json("https://data.sec.gov/api/xbrl/companyfacts/CIK1.json")
+        from capitalcite.agent.http import HttpTransportError
+
+        assert isinstance(failed.value, HttpTransportError)
 
 
 async def test_xbrl_and_fdic_transport_errors_are_tool_failures() -> None:

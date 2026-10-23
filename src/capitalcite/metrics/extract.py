@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 from pydantic import ValidationError
 
 from capitalcite.agent.fdic import BANKFIND_ORIGIN, Institution, institutions, lead_institutions_url
-from capitalcite.agent.http import BytesClient
+from capitalcite.agent.http import BytesClient, HttpClientError
 from capitalcite.agent.xbrl import companyfacts_url
 from capitalcite.holdings import HoldingCompany, holding_companies
 from capitalcite.metrics.snapshot import (
@@ -141,11 +141,10 @@ class LiveBatch:
     async def _get(self, client: BytesClient, url: str) -> bytes:
         try:
             return await client.get_bytes(url)
+        except HttpClientError as exc:
+            raise MetricsUnavailable(str(exc)) from exc
         except ValueError as exc:
-            text = str(exc)
-            if text.startswith("HTTP ") or text.startswith("request failed"):
-                raise MetricsUnavailable(text) from exc
-            raise MetricsInputError(text) from exc
+            raise MetricsInputError(str(exc)) from exc
 
 
 class FixtureBatch:

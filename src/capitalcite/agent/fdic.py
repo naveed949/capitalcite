@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from importlib.metadata import version
 from typing import Protocol
 from urllib.parse import urlencode
 
 from pydantic import BaseModel, ConfigDict
 
 BANKFIND_ORIGIN = "https://api.fdic.gov/banks"
+BANKFIND_TIMEOUT = 30.0
 _BANKFIND = f"{BANKFIND_ORIGIN}/institutions"
+
+
+def bankfind_user_agent() -> str:
+    return f"capitalcite/{version('capitalcite')}"
 
 
 class JsonClient(Protocol):

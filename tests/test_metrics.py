@@ -12,7 +12,7 @@ import pytest
 from typer.testing import CliRunner
 
 from capitalcite.agent.fdic import lead_institutions_url, search_institutions_url
-from capitalcite.agent.http import HttpxJsonClient
+from capitalcite.agent.http import HttpTransportError, HttpxJsonClient
 from capitalcite.agent.xbrl import companyfacts_url
 from capitalcite.cli import FIXTURES, app
 from capitalcite.holdings import HoldingCompany, holding_companies, holding_company
@@ -35,7 +35,7 @@ from capitalcite.metrics.snapshot import (
 )
 
 runner = CliRunner()
-ROOT = Path("tests/fixtures/metrics")
+ROOT = FIXTURES
 
 
 def test_bankfind_urls_use_api_fdic_gov() -> None:
@@ -410,6 +410,27 @@ def test_cli_fixtures_are_byte_identical(tmp_path: Path) -> None:
     assert [link.ticker for link in links] == [company.ticker for company in holding_companies()]
 
 
+def test_cli_fixtures_resolve_from_another_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert not Path("tests/fixtures/metrics").exists()
+    result = runner.invoke(
+        app,
+        [
+            "metrics",
+            "extract",
+            "--fixtures",
+            "--tickers",
+            "JPM,BAC,WFC,C",
+            "--output-dir",
+            str(tmp_path / "out"),
+        ],
+    )
+    assert result.exit_code == 0, result.stdout + result.stderr
+    _assert_tree_matches_fixtures(tmp_path / "out", result.stdout)
+
+
 def test_cli_fixtures_do_not_need_sec_user_agent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -490,7 +511,7 @@ def test_live_command_limits_sec_only(tmp_path: Path, monkeypatch: pytest.Monkey
             constructed.append(kwargs)
 
         async def get_bytes(self, url: str) -> bytes:
-            raise ValueError(f"request failed for {url}")
+            raise HttpTransportError(url)
 
     monkeypatch.setattr("capitalcite.agent.http.HttpxJsonClient", FakeClient)
     result = runner.invoke(
@@ -501,10 +522,50 @@ def test_live_command_limits_sec_only(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "error:" in result.stdout + result.stderr
     assert list(tmp_path.rglob("*")) == []
     assert len(constructed) == 2
-    assert constructed[0]["user_agent"] == constructed[1]["user_agent"]
+    from capitalcite.agent.fdic import BANKFIND_TIMEOUT, bankfind_user_agent
+
+    assert constructed[0]["user_agent"] != constructed[1]["user_agent"]
     assert constructed[0]["limiter"] is shared_limiter()
     assert constructed[0]["timeout"] == 120.0
+    assert constructed[1]["user_agent"] == bankfind_user_agent()
+    assert "@" not in str(constructed[1]["user_agent"])
+    assert constructed[1]["timeout"] == BANKFIND_TIMEOUT
     assert constructed[1].get("limiter") is None
+
+
+def test_live_command_maps_typed_http_errors_not_message_prefixes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from capitalcite.agent.http import HttpStatusError
+
+    class PrefixLookalike:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def get_bytes(self, url: str) -> bytes:
+            raise ValueError("HTTP 301 lookalike")
+
+    monkeypatch.setattr("capitalcite.agent.http.HttpxJsonClient", PrefixLookalike)
+    lookalike = runner.invoke(
+        app,
+        ["metrics", "extract", "--tickers", "JPM", "--output-dir", str(tmp_path / "lookalike")],
+    )
+    assert lookalike.exit_code == 1, lookalike.stdout + lookalike.stderr
+
+    class StatusFailure:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        async def get_bytes(self, url: str) -> bytes:
+            raise HttpStatusError(301, url)
+
+    monkeypatch.setattr("capitalcite.agent.http.HttpxJsonClient", StatusFailure)
+    status = runner.invoke(
+        app,
+        ["metrics", "extract", "--tickers", "JPM", "--output-dir", str(tmp_path / "status")],
+    )
+    assert status.exit_code == 2, status.stdout + status.stderr
+    assert "HTTP 301" in status.stdout + status.stderr
 
 
 def _clock() -> datetime:

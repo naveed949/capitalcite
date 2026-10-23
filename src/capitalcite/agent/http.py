@@ -12,9 +12,26 @@ class Limiter(Protocol):
     async def acquire(self) -> None: ...
 
 
+class HttpClientError(ValueError):
+    pass
+
+
+class HttpTransportError(HttpClientError):
+    def __init__(self, url: str) -> None:
+        self.url = url
+        super().__init__(f"request failed for {url}")
+
+
+class HttpStatusError(HttpClientError):
+    def __init__(self, status_code: int, url: str) -> None:
+        self.status_code = status_code
+        self.url = url
+        super().__init__(f"HTTP {status_code} for {url}")
+
+
 class BytesClient(Protocol):
     async def get_bytes(self, url: str) -> bytes:
-        """HTTP 200 body. Any other status, including 301, raises ValueError."""
+        """HTTP 200 body. Non-200, including 301, raises HttpStatusError."""
 
 
 class HttpxJsonClient:
@@ -42,9 +59,9 @@ class HttpxJsonClient:
             ) as client:
                 response = await client.get(url, headers={"User-Agent": self._user_agent})
         except httpx.HTTPError as exc:
-            raise ValueError(f"request failed for {url}") from exc
+            raise HttpTransportError(url) from exc
         if response.status_code != 200:
-            raise ValueError(f"HTTP {response.status_code} for {url}")
+            raise HttpStatusError(response.status_code, url)
         return response.content
 
     async def get_json(self, url: str) -> object:
