@@ -48,4 +48,8 @@ data/raw/metrics/lead_banks.json
 `lead_banks.json` maps ticker to certificate and holds no dollar amounts.
 Each sidecar has `url`, `fetched_at`, `sha256`, and `bytes`. `sha256` is the
 hash of the sibling payload. `--fixtures` writes this same layout from
-`tests/fixtures/metrics` and does not open a socket.
+`tests/fixtures/metrics` at the repository root and does not open a socket.
+
+FDIC `ASSET`, `DEP`, and `NETINC` are thousands of USD. `NIMY` and `EEFFR`
+are percent. `NETINC` is year-to-date cumulative. SEC companyfacts values
+in USD units are whole USD.

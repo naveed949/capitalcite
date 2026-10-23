@@ -1,10 +1,8 @@
-# 0019a. BankFind host and metrics extract
+# 0022. BankFind host and metrics extract
 
 Date: 2026-10-23
 
 Status: Accepted
-
-`0019` and `0020` are unused. This record is `0019a`.
 
 Point institutions lookup at `api.fdic.gov/banks` and keep a 301 fail-closed.
 `capitalcite metrics extract` stores holding-company companyfacts and
@@ -15,14 +13,16 @@ open a socket.
 ## Keep a 301 fail-closed
 
 `HttpxJsonClient` sets `follow_redirects=False`. A replayed 301 raises
-`ValueError` matching `HTTP 301` after one request. The metrics command
-maps that error to exit 2. Transport failures still surface as
-`request failed`.
+`HttpStatusError` with status 301 after one request. A transport failure
+raises `HttpTransportError`. The metrics command maps those types to exit 2.
+It does not inspect message prefixes.
 
 Institutions are `https://api.fdic.gov/banks/institutions`. Financials are
 `https://api.fdic.gov/banks/financials`. The ask route still builds one SEC
-client with `shared_limiter` and one FDIC client without that limiter. Both
-send `SEC_USER_AGENT`. `ASK_MODEL=fake` still does not call either host.
+client with `shared_limiter` and `SEC_USER_AGENT`, and one FDIC client with
+timeout `30` seconds and User-Agent `capitalcite/<version>`. The FDIC client
+does not send the SEC contact email. `ASK_MODEL=fake` still does not call
+either host.
 
 ## Write two series from one command
 
@@ -57,10 +57,22 @@ Infinity are rejected. An integral float is stored as an int. `CERT` is an
 int. `REPDTE` is an eight-digit string. Trim is idempotent, so the committed
 fixtures are fixed points of the same projection a live run writes.
 
+`ASSET`, `DEP`, and `NETINC` are thousands of USD. `NIMY` and `EEFFR` are
+percent. SEC companyfacts values in USD units are whole USD.
+
+`NETINC` is year-to-date cumulative net income. FDIC BankFind Suite
+methodologies say bank Call Reports disclose income and expenses on a
+year-to-date basis, and that a quarter is derived by subtracting the prior
+Call Report. Source:
+https://banks.data.fdic.gov/bankfind-suite/help?helpTopic=disclaimers-and-methodologies
+A later dbt modeling step will de-cumulate. This record does not do that.
+
 Exit 1 is a bad flag, an unknown ticker, a dishonest fixture, a name that is
 not one active exact match, a truncated page, or a body for the wrong
-entity. Exit 2 is a transport failure or any non-200, including a 301.
-`--fixtures` reads `tests/fixtures/metrics`. There is no `--fixtures-dir`.
+entity. Exit 2 is `HttpTransportError` or `HttpStatusError`, including a 301.
+`--fixtures` reads `tests/fixtures/metrics` from the repository root that
+contains `pyproject.toml`, not from the process working directory. There is
+no `--fixtures-dir`.
 
 ## What BankFind and EDGAR returned on 2026-10-23
 
@@ -97,6 +109,3 @@ Committed financials files are the trim of those pages. Committed
 companyfacts files keep two `Assets` observations so the git objects stay
 small. SEC companyfacts for CIK `0000070858` named the entity
 `BofA Finance LLC`.
-
-A later dbt modeling step can read this layout. This record does not add
-that step.

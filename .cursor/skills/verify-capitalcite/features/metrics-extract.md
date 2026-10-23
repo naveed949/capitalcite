@@ -36,5 +36,7 @@ Preconditions:
 - `--fixtures` has no directory flag. The committed tree is `tests/fixtures/metrics`.
 - The holdings name for C is the BankFind legal name `Citibank, National Association`. The graph snapshot still stores the abbreviation `CITIBANK, N.A.`. That abbreviation returned zero active rows on 2026-10-23.
 - `rows=` is the count in the response or the fixture file. Do not treat a particular count as the pass check.
-- A 301 from BankFind is exit 2. The client does not follow it.
+- A 301 from BankFind is exit 2. The client sets `follow_redirects=False`.
+- The FDIC client sends User-Agent `capitalcite/<version>` and a 30 second timeout. It does not send `SEC_USER_AGENT`.
+- `--fixtures` resolves `tests/fixtures/metrics` from the repository root, not from the working directory.
 - `ASK_MODEL=fake` does not run this command and does not call FDIC.
