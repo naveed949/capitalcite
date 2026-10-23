@@ -104,6 +104,30 @@ graph_app = typer.Typer(
 )
 app.add_typer(graph_app, name="graph")
 
+metrics_app = typer.Typer(
+    help="Save companyfacts and lead-bank call reports.",
+    no_args_is_help=True,
+)
+app.add_typer(metrics_app, name="metrics")
+
+
+def _repo_root() -> Path | None:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        markers = (parent / "pyproject.toml", parent / "tests" / "fixtures" / "metrics")
+        if all(path.exists() for path in markers):
+            return parent
+    return None
+
+
+def metrics_fixtures() -> Path:
+    root = _repo_root()
+    if root is None:
+        raise FileNotFoundError(
+            "cannot locate tests/fixtures/metrics. --fixtures needs a source checkout"
+        )
+    return root / "tests" / "fixtures" / "metrics"
+
 
 @audit_app.command("verify")
 def audit_verify(
@@ -373,6 +397,98 @@ def graph_query_cmd(
     except (OSError, ValueError) as exc:
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+
+@metrics_app.command("extract")
+def metrics_extract(
+    tickers: str = typer.Option(
+        ...,
+        "--tickers",
+        help="Comma-separated tickers, e.g. JPM,BAC,WFC,C.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Root for raw snapshots. Defaults to DATA_DIR.",
+    ),
+    fixtures: bool = typer.Option(
+        False,
+        "--fixtures",
+        help="Copy tests/fixtures/metrics. No network.",
+    ),
+) -> None:
+    """Write SEC companyfacts and FDIC lead-bank financials as separate files."""
+    from capitalcite.agent.fdic import BANKFIND_TIMEOUT, bankfind_user_agent
+    from capitalcite.agent.http import HttpxJsonClient
+    from capitalcite.holdings import holding_company
+    from capitalcite.ingest.rate_limit import shared_limiter
+    from capitalcite.metrics import (
+        FixtureBatch,
+        LiveBatch,
+        MetricsInputError,
+        MetricsStore,
+        MetricsUnavailable,
+        run_extract,
+    )
+    from capitalcite.metrics.extract import utc_now
+
+    try:
+        parsed = parse_tickers(tickers)
+        companies = tuple(holding_company(ticker) for ticker in parsed)
+    except ParseError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except KeyError as exc:
+        typer.echo(f"error: unknown ticker {exc.args[0]}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if fixtures:
+        try:
+            fixture_root = metrics_fixtures()
+        except FileNotFoundError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        root = output_dir if output_dir is not None else Path("data")
+        batch: FixtureBatch | LiveBatch = FixtureBatch(fixture_root)
+    else:
+        settings = get_settings()
+        root = output_dir if output_dir is not None else settings.data_dir
+        batch = LiveBatch(
+            sec=HttpxJsonClient(
+                user_agent=settings.sec_user_agent,
+                limiter=shared_limiter(),
+                timeout=120.0,
+            ),
+            fdic=HttpxJsonClient(
+                user_agent=bankfind_user_agent(),
+                timeout=BANKFIND_TIMEOUT,
+            ),
+            clock=utc_now,
+        )
+    try:
+        receipt = asyncio.run(run_extract(companies, batch, MetricsStore(root)))
+    except MetricsInputError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except MetricsUnavailable as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+
+    for company in receipt.companies:
+        typer.echo(f"lead ticker={company.lead.company.ticker} cert={company.lead.cert}")
+        typer.echo(
+            f"xbrl ticker={company.xbrl.ticker} bytes={company.xbrl.metadata.bytes} "
+            f"sha256={company.xbrl.metadata.sha256}"
+        )
+        typer.echo(
+            f"financials cert={company.financials.cert} rows={company.financials.rows} "
+            f"bytes={company.financials.metadata.bytes} "
+            f"sha256={company.financials.metadata.sha256}"
+        )
+    typer.echo(
+        f"metrics extract xbrl={len(receipt.companies)} "
+        f"financials={len(receipt.companies)} output={root}"
+    )
 
 
 @app.command("ingest")

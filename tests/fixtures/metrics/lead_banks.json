@@ -1,0 +1,18 @@
+[
+  {
+    "cert": "628",
+    "ticker": "JPM"
+  },
+  {
+    "cert": "3510",
+    "ticker": "BAC"
+  },
+  {
+    "cert": "3511",
+    "ticker": "WFC"
+  },
+  {
+    "cert": "7213",
+    "ticker": "C"
+  }
+]

@@ -3,7 +3,8 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 WORKDIR /src
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=0
+    UV_PYTHON_DOWNLOADS=0 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
@@ -16,7 +17,7 @@ RUN useradd --uid 65532 --create-home --home-dir /home/app app \
     && mkdir -p /home/app/data \
     && chown -R app:app /home/app
 
-COPY --from=builder /src/.venv /app/.venv
+COPY --from=builder /app/.venv /app/.venv
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \

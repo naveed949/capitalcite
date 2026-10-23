@@ -3,14 +3,33 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from importlib.metadata import PackageNotFoundError, version
 from typing import Protocol
 from urllib.parse import urlencode
 
-_BANKFIND = "https://banks.data.fdic.gov/api/institutions"
+from pydantic import BaseModel, ConfigDict
+
+BANKFIND_ORIGIN = "https://api.fdic.gov/banks"
+BANKFIND_TIMEOUT = 30.0
+_BANKFIND = f"{BANKFIND_ORIGIN}/institutions"
+
+
+def bankfind_user_agent() -> str:
+    try:
+        return f"capitalcite/{version('capitalcite')}"
+    except PackageNotFoundError:
+        return "capitalcite"
 
 
 class JsonClient(Protocol):
     async def get_json(self, url: str) -> object: ...
+
+
+class Institution(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    name: str
+    cert: str
+    active: bool
 
 
 class FdicClient:
@@ -21,11 +40,15 @@ class FdicClient:
         needle = query.strip()
         if not needle:
             raise ValueError("fdic_bankfind query is empty")
-        url = f"{_BANKFIND}?" + urlencode(
-            {"filters": f'NAME:"{needle}"', "limit": "5", "format": "json"}
-        )
-        payload = await self._client.get_json(url)
-        return _summarize(payload, needle)
+        payload = await self._client.get_json(search_institutions_url(needle))
+        _total, rows = institutions(payload)
+        parts: list[str] = []
+        for row in rows[:5]:
+            name = row.name or needle
+            parts.append(f"{name} CERT={row.cert}".strip())
+        if not parts:
+            raise ValueError(f"no FDIC institution matched {query!r}")
+        return "; ".join(parts)
 
 
 class FakeFdicClient:
@@ -40,22 +63,84 @@ class FakeFdicClient:
         raise ValueError(f"no FDIC institution matched {query!r}")
 
 
-def _summarize(payload: object, query: str) -> str:
+def search_institutions_url(query: str) -> str:
+    return _institutions_url({"filters": f'NAME:"{query}"', "limit": "5", "format": "json"})
+
+
+def lead_institutions_url(legal_name: str) -> str:
+    if '"' in legal_name:
+        raise ValueError("lead bank name cannot contain a double quote")
+    filters = f'NAME:"{legal_name}" AND ACTIVE:1'
+    return _institutions_url({"filters": filters, "limit": "10", "format": "json"})
+
+
+def institutions(payload: object) -> tuple[int | None, tuple[Institution, ...]]:
     if not isinstance(payload, dict):
         raise ValueError("fdic_bankfind response was not an object")
     data = payload.get("data")
-    if not isinstance(data, list) or not data:
-        raise ValueError(f"no FDIC institution matched {query!r}")
-    parts: list[str] = []
-    for row in data[:5]:
-        if not isinstance(row, dict):
+    if not isinstance(data, list):
+        raise ValueError("fdic_bankfind response has no data list")
+    total = _page_total(payload.get("meta"))
+    rows: list[Institution] = []
+    for row in data:
+        body = _row_body(row)
+        if body is None:
             continue
-        body = row.get("data") if isinstance(row.get("data"), dict) else row
-        if not isinstance(body, dict):
-            continue
-        name = body.get("NAME") or body.get("name") or query
-        cert = body.get("CERT") or body.get("cert") or ""
-        parts.append(f"{name} CERT={cert}".strip())
-    if not parts:
-        raise ValueError(f"no FDIC institution matched {query!r}")
-    return "; ".join(parts)
+        rows.append(
+            Institution(
+                name=_text(body.get("NAME"), body.get("name")),
+                cert=_cert_text(body.get("CERT"), body.get("cert")),
+                active=_is_active(body.get("ACTIVE", body.get("active"))),
+            )
+        )
+    return total, tuple(rows)
+
+
+def _institutions_url(params: dict[str, str]) -> str:
+    return f"{_BANKFIND}?" + urlencode(params)
+
+
+def _page_total(meta: object) -> int | None:
+    if not isinstance(meta, dict):
+        return None
+    total = meta.get("total")
+    if isinstance(total, bool) or not isinstance(total, int):
+        return None
+    return total
+
+
+def _row_body(row: object) -> dict[str, object] | None:
+    if not isinstance(row, dict):
+        return None
+    inner = row.get("data")
+    if isinstance(inner, dict):
+        return inner
+    return row
+
+
+def _text(primary: object, fallback: object) -> str:
+    chosen = primary if _present(primary) else fallback
+    if not _present(chosen):
+        return ""
+    return str(chosen).strip()
+
+
+def _cert_text(primary: object, fallback: object) -> str:
+    chosen = primary if _present(primary) else fallback
+    if not _present(chosen):
+        return ""
+    if isinstance(chosen, bool):
+        return str(chosen)
+    if isinstance(chosen, int):
+        return str(chosen)
+    if isinstance(chosen, float) and chosen.is_integer():
+        return str(int(chosen))
+    return str(chosen).strip()
+
+
+def _present(value: object) -> bool:
+    return value is not None and value != ""
+
+
+def _is_active(value: object) -> bool:
+    return value in (1, "1", True)

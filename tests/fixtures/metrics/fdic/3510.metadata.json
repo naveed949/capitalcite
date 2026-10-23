@@ -1,0 +1,6 @@
+{
+  "bytes": 24615,
+  "fetched_at": "2026-10-23T11:20:00Z",
+  "sha256": "f537664564a64a9082f272c7e91cc3e597df91f0076a9f9add1b1530f1f77690",
+  "url": "https://api.fdic.gov/banks/financials?filters=CERT%3A3510&fields=CERT%2CREPDTE%2CASSET%2CDEP%2CNIMY%2CEEFFR%2CNETINC&limit=10000&sort_by=REPDTE&sort_order=ASC&format=json"
+}

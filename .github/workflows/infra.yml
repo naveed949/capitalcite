@@ -40,6 +40,32 @@ jobs:
       - name: Build API image
         run: docker build -t capitalcite:ci .
 
+      - name: CLI help from the image
+        run: docker run --rm --entrypoint capitalcite capitalcite:ci --help
+
+      - name: Health from the image
+        run: |
+          set -euo pipefail
+          cid="$(docker run -d --name capitalcite-ci-health \
+            -e SEC_USER_AGENT='capitalcite-ci ci@example.invalid' \
+            -p 127.0.0.1:8000:8000 \
+            capitalcite:ci)"
+          cleanup() {
+            docker stop "$cid" >/dev/null 2>&1 || true
+            docker rm -f "$cid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if body="$(curl -sf http://127.0.0.1:8000/health)"; then
+              printf '%s\n' "$body"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "GET /health did not return 200" >&2
+          docker logs "$cid" >&2 || true
+          exit 1
+
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest

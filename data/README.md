@@ -32,3 +32,24 @@ The name is `{QDRANT_COLLECTION}-{config_hash}`.
 ```
 data/index/{collection_name}.json
 ```
+
+`capitalcite metrics extract` writes companyfacts and lead-bank call reports.
+A rerun replaces the files it names. It does not delete a certificate file
+the new link no longer names.
+
+```
+data/raw/xbrl/{ticker}.json
+data/raw/xbrl/{ticker}.metadata.json
+data/raw/fdic/financials/{cert}.json
+data/raw/fdic/financials/{cert}.metadata.json
+data/raw/metrics/lead_banks.json
+```
+
+`lead_banks.json` maps ticker to certificate and holds no dollar amounts.
+Each sidecar has `url`, `fetched_at`, `sha256`, and `bytes`. `sha256` is the
+hash of the sibling payload. `--fixtures` writes this same layout from
+`tests/fixtures/metrics` at the repository root and does not open a socket.
+
+FDIC `ASSET`, `DEP`, and `NETINC` are thousands of USD. `NIMY` and `EEFFR`
+are percent. `NETINC` is year-to-date cumulative. SEC companyfacts values
+in USD units are whole USD.
