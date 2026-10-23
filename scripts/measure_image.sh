@@ -62,6 +62,7 @@ for line in raw.splitlines():
                 "host_port=",
                 "disk ",
                 "VmRSS:",
+                "VmHWM:",
                 "VmPeak:",
                 "Rss:",
                 "Pss:",

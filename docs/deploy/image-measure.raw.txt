@@ -1,0 +1,214 @@
+nproc=4
+uptime= 17:19:37 up 42 min,  0 user,  load average: 0.11, 0.15, 0.09
+command: make image IMAGE=capitalcite:local
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.65kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+#2 ...
+
+#3 [internal] load metadata for docker.io/library/python:3.12-slim-bookworm
+#3 DONE 0.3s
+
+#2 [internal] load metadata for ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+#2 DONE 0.3s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 400B done
+#4 DONE 0.0s
+
+#5 [runtime 1/6] FROM docker.io/library/python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70
+#5 resolve docker.io/library/python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70 done
+#5 DONE 0.0s
+
+#6 [builder 1/8] FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58
+#6 resolve ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 done
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 7.30kB done
+#7 DONE 0.0s
+
+#8 [builder 7/8] RUN mkdir -p /app/fastembed /app/qdrant     && capitalcite chunk --input-dir /tmp/corpus --chunker section --output-dir /tmp/demo     && capitalcite index --input-dir /tmp/demo --embedder bge-small     && python -c 'from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
+#8 CACHED
+
+#9 [builder 4/8] COPY src ./src
+#9 CACHED
+
+#10 [runtime 3/6] COPY --from=builder --chown=65532:65532 /app/.venv /app/.venv
+#10 CACHED
+
+#11 [builder 3/8] COPY pyproject.toml uv.lock README.md ./
+#11 CACHED
+
+#12 [builder 6/8] COPY tests/fixtures/chunking/corpus /tmp/corpus
+#12 CACHED
+
+#13 [runtime 2/6] RUN useradd --uid 65532 --create-home --home-dir /home/app app     && mkdir -p /home/app/data     && chown -R app:app /home/app
+#13 CACHED
+
+#14 [runtime 4/6] COPY --from=builder --chown=65532:65532 /app/qdrant /app/qdrant
+#14 CACHED
+
+#15 [builder 5/8] RUN uv sync --frozen --no-dev --no-editable
+#15 CACHED
+
+#16 [builder 8/8] RUN python -c 'import os; from pathlib import Path; cache=Path(os.environ["FASTEMBED_CACHE_PATH"]); snaps=list(cache.glob("models--Qdrant--bm25/snapshots/*")); assert snaps, "bm25 snapshot missing"; [(snap / "mock.file").touch() for snap in snaps]; [(snap / "tamil.txt").touch() for snap in snaps]; os.environ["HF_HUB_OFFLINE"]="1"; from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
+#16 CACHED
+
+#17 [builder 2/8] WORKDIR /src
+#17 CACHED
+
+#18 [runtime 5/6] COPY --from=builder --chown=65532:65532 /app/fastembed /app/fastembed
+#18 CACHED
+
+#19 [runtime 6/6] WORKDIR /home/app
+#19 CACHED
+
+#20 exporting to image
+#20 exporting layers done
+#20 exporting manifest sha256:c81e7d842a494add68ee1d3ef0f35338f89af4e7bef937cc39090d512a360c8c done
+#20 exporting config sha256:210c3817b262d7f56fa4bb8108eb6286c2cb9cc4ab7dbbe6509f7dcc9b406b53 done
+#20 exporting attestation manifest sha256:92e1feea2c0fe3fe89d132c69a45b172f74d80df33489719f41c1af4c5a02b6e done
+#20 exporting manifest list sha256:793d9990439554edc1b1fd3638170f4dde62deabb684d021ad57a4c88feffa6a done
+#20 naming to docker.io/library/capitalcite:local done
+#20 unpacking to docker.io/library/capitalcite:local done
+#20 DONE 0.0s
+command: sudo docker image inspect capitalcite:local --format Size={{.Size}}
+Size=230276144
+command: sudo docker run -d --name capitalcite-measure-12604 --memory 512m --memory-swap 512m -p 127.0.0.1::8000 -e SEC_USER_AGENT=capitalcite-measure you@example.com -e ASK_MODEL=fake capitalcite:local
+09c363e3b5e4066fa3cee4928057b7bf0d36177c361be81264a56cae21eb578b
+host_port=32769
+health_poll http=000
+health_poll http=000
+health_poll http=200
+cold_start_ns=2276761650
+cold_start_s=2.27676165
+health_json={"status":"ok","service":"capitalcite","version":"0.1.0","git_sha":"deee14b2e0354578c3c4d855cdb850084d3c3d1e","point_count":12}
+command: 20x POST /ask/stream model=fake
+ask 1 http=200 bytes=9076
+ask 2 http=200 bytes=9076
+ask 3 http=200 bytes=9076
+ask 4 http=200 bytes=9076
+ask 5 http=200 bytes=9076
+ask 6 http=200 bytes=9076
+ask 7 http=200 bytes=9076
+ask 8 http=200 bytes=9076
+ask 9 http=200 bytes=9076
+ask 10 http=200 bytes=9076
+ask 11 http=200 bytes=9076
+ask 12 http=200 bytes=9076
+ask 13 http=200 bytes=9076
+ask 14 http=200 bytes=9076
+ask 15 http=200 bytes=9076
+ask 16 http=200 bytes=9076
+ask 17 http=200 bytes=9076
+ask 18 http=200 bytes=9076
+ask 19 http=200 bytes=9076
+ask 20 http=200 bytes=9076
+ask_http_200=20 ask_not_200=0 codes= 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200 200
+command: sudo docker inspect State
+OOMKilled=false Status=running ExitCode=0 Error=
+command: du -sb /app/fastembed /app/qdrant /app/.venv
+disk 67287419	/app/fastembed
+disk 94877	/app/qdrant
+disk 392773593	/app/.venv
+command: /proc/1/status
+Name:	uvicorn
+Umask:	0022
+State:	S (sleeping)
+Tgid:	1
+Ngid:	0
+Pid:	1
+PPid:	0
+TracerPid:	0
+Uid:	65532	65532	65532	65532
+Gid:	65532	65532	65532	65532
+FDSize:	64
+Groups:	65532 
+NStgid:	1
+NSpid:	1
+NSpgid:	1
+NSsid:	1
+Kthread:	0
+VmPeak:	 1404124 kB
+VmSize:	 1371488 kB
+VmLck:	       0 kB
+VmPin:	       0 kB
+VmHWM:	  387832 kB
+VmRSS:	  387832 kB
+RssAnon:	  319984 kB
+RssFile:	   67848 kB
+RssShmem:	       0 kB
+VmData:	  601684 kB
+VmStk:	     132 kB
+VmExe:	       4 kB
+VmLib:	  102232 kB
+VmPTE:	    1040 kB
+VmSwap:	       0 kB
+HugetlbPages:	       0 kB
+CoreDumping:	0
+THP_enabled:	1
+untag_mask:	0xffffffffffffffff
+Threads:	18
+SigQ:	0/63994
+SigPnd:	0000000000000000
+ShdPnd:	0000000000000000
+SigBlk:	0000000000000000
+SigIgn:	0000000001001000
+SigCgt:	0000000100004002
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	00000000a80425fb
+CapAmb:	0000000000000000
+NoNewPrivs:	0
+Seccomp:	2
+Seccomp_filters:	1
+Speculation_Store_Bypass:	thread vulnerable
+SpeculationIndirectBranch:	conditional enabled
+Cpus_allowed:	f
+Cpus_allowed_list:	0-3
+Mems_allowed:	00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000000,00000001
+Mems_allowed_list:	0
+voluntary_ctxt_switches:	179
+nonvoluntary_ctxt_switches:	255
+command: /proc/1/smaps_rollup
+555c4ecb2000-7ffc48217000 ---p 00000000 00:00 0                          [rollup]
+Rss:              387832 kB
+Pss:              387072 kB
+Pss_Dirty:        319984 kB
+Pss_Anon:         319984 kB
+Pss_File:          67088 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       1516 kB
+Shared_Dirty:          0 kB
+Private_Clean:     66332 kB
+Private_Dirty:    319984 kB
+Referenced:       387832 kB
+Anonymous:        319984 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:         0 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB
+command: sudo docker logs
+container_log_bytes=1531
+stats_samples:
+68.22MiB / 512MiB 13.32% cpu=99.06%
+vmrss_kb=102768
+318.4MiB / 512MiB 62.19% cpu=173.64%
+vmrss_kb=387824
+peak_stats_parsed_bytes=333866598
+peak_stats_line=318.4MiB / 512MiB 62.19% cpu=173.64%
+vmrss_kb_samples=2
+vmrss_kb_max=387824
+wrote /workspace/docs/deploy/image-measure.md

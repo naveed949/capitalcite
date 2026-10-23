@@ -1,0 +1,18 @@
+follow-up after one POST /ask/stream, not the 20-request run
+rss_kb path
+262836 anon
+51308 [heap]
+20268 /app/.venv/lib/python3.12/site-packages/onnxruntime/capi/onnxruntime_pybind11_state.cpython-312-x86_64-linux-gnu.so
+6052 /app/.venv/lib/python3.12/site-packages/grpc/_cython/cygrpc.cpython-312-x86_64-linux-gnu.so
+5576 /app/.venv/lib/python3.12/site-packages/tokenizers/tokenizers.abi3.so
+5572 /usr/local/lib/libpython3.12.so.1.0
+5220 /app/.venv/lib/python3.12/site-packages/cryptography/hazmat/bindings/_rust.abi3.so
+4056 /app/.venv/lib/python3.12/site-packages/numpy/_core/_multiarray_umath.cpython-312-x86_64-linux-gnu.so
+3688 /app/.venv/lib/python3.12/site-packages/pydantic_core/_pydantic_core.cpython-312-x86_64-linux-gnu.so
+3520 /usr/lib/x86_64-linux-gnu/libcrypto.so.3
+1612 /app/.venv/lib/python3.12/site-packages/uvloop/loop.cpython-312-x86_64-linux-gnu.so
+1612 /usr/lib/x86_64-linux-gnu/libc.so.6
+1516 /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30
+1228 /app/.venv/lib/python3.12/site-packages/numpy.libs/libscipy_openblas64_-f48b354e.so
+1196 /usr/lib/x86_64-linux-gnu/libsqlite3.so.0.8.6
+rss_kb_total 387772
