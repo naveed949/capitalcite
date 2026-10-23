@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator, Sequence
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import TypeAdapter
+from starlette.responses import StreamingResponse
 
 from capitalcite.agent import (
     AgentResult,
@@ -25,15 +29,30 @@ from capitalcite.agent.fdic import (
     bankfind_user_agent,
 )
 from capitalcite.agent.http import HttpxJsonClient
+from capitalcite.agent.observe import Observe
 from capitalcite.agent.xbrl import FakeXbrlClient, XbrlClient
+from capitalcite.api.ask_models import (
+    AnsweredEvent,
+    AskEvent,
+    AskFault,
+    AskRequest,
+    AskResponse,
+    DoneEvent,
+    ErrorEvent,
+    PlanEvent,
+    RefusedEvent,
+    ToolCallEvent,
+    encode_sse,
+    fold_response,
+    terminal_facts,
+    tool_fact,
+)
 from capitalcite.api.routes.search import get_setup
 from capitalcite.ask.models import FakeStructuredModel, StructuredModel, build_structured_model
 from capitalcite.ask.service import ask
 from capitalcite.ask.types import (
     Answer,
     Answered,
-    AskModelName,
-    Citation,
     ModelNotConfigured,
     ModelUnavailable,
 )
@@ -59,57 +78,27 @@ from capitalcite.trace import ObservationKind, ask_attrs, git_sha, observation
 
 router = APIRouter(tags=["ask"])
 
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",
+}
 
-class AskRequest(BaseModel):
-    question: str = Field(min_length=1)
-    k: int | None = Field(default=None, ge=1, le=50)
-    ticker: str | None = None
-    form: str | None = None
-    period: str | None = None
-    model: AskModelName | None = None
-    path: AskPath = "rag"
-
-    @field_validator("question")
-    @classmethod
-    def question_not_blank(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
-            raise ValueError("question must not be blank")
-        return stripped
+_STREAM_FAULTS = (IndexUnavailable, IndexNotBuilt, ModelNotConfigured, ModelUnavailable)
 
 
-class AskResponse(BaseModel):
-    kind: Literal["answered", "refused"]
-    answer: str | None = None
-    citations: list[Citation]
-    retrieval_score: float
-    refusal_reason: str | None = None
-    config_hash: str
-    collection_name: str
-    point_count: int = Field(ge=0)
-    path: AskPath = "rag"
-    plan: list[PlanStep] = Field(default_factory=list)
-    traces: list[TraceStep] = Field(default_factory=list)
-    steps_used: int = Field(default=0, ge=0)
-    tokens_used: int = Field(default=0, ge=0)
+class _QueueObserve(Observe):
+    def __init__(self, queue: asyncio.Queue[AskEvent]) -> None:
+        self._queue = queue
 
-    @model_validator(mode="after")
-    def legal_shape(self) -> AskResponse:
-        if self.kind == "answered":
-            if self.answer is None or not self.answer.strip():
-                raise ValueError("answered response needs an answer")
-            if not self.citations:
-                raise ValueError("answered response needs citations")
-            if self.refusal_reason is not None:
-                raise ValueError("answered response must not include refusal_reason")
-            return self
-        if self.answer is not None:
-            raise ValueError("refused response must not include an answer")
-        if self.citations:
-            raise ValueError("refused response must not include citations")
-        if self.refusal_reason is None or not self.refusal_reason.strip():
-            raise ValueError("refused response needs a reason")
-        return self
+    def plan(self, steps: Sequence[PlanStep]) -> None:
+        if steps:
+            self._queue.put_nowait(PlanEvent(plan=list(steps)))
+
+    def tool_call(self, step: PlanStep) -> None:
+        self._queue.put_nowait(ToolCallEvent(step=step))
+
+    def tool_finished(self, trace: TraceStep, reason: str | None) -> None:
+        self._queue.put_nowait(tool_fact(trace, reason))
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -119,56 +108,210 @@ async def post_ask(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> AskResponse:
     """Return a grounded answer or a refusal. Both are HTTP 200."""
+    try:
+        return await fold_response(iter_ask(body, setup, settings))
+    except AskFault as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except _STREAM_FAULTS as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post(
+    "/ask/stream",
+    openapi_extra={
+        "responses": {
+            "200": {
+                "content": {
+                    "text/event-stream": {
+                        "schema": TypeAdapter(AskEvent).json_schema(),
+                    }
+                }
+            }
+        }
+    },
+)
+async def post_ask_stream(
+    body: AskRequest,
+    setup: Annotated[RetrievalSetup, Depends(get_setup)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> StreamingResponse:
+    """Return the same run as ``POST /ask`` as ``text/event-stream``."""
+    events = iter_ask(body, setup, settings)
+    try:
+        first = await anext(events)
+    except ValueError as exc:
+        await events.aclose()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except _STREAM_FAULTS as exc:
+        await events.aclose()
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception:
+        await events.aclose()
+        raise
+    if isinstance(first, ErrorEvent):
+        await events.aclose()
+        raise HTTPException(status_code=first.status, detail=first.detail)
+
+    async def frames() -> AsyncIterator[bytes]:
+        try:
+            yield encode_sse(first)
+            async for event in events:
+                yield encode_sse(event)
+        finally:
+            await events.aclose()
+
+    return StreamingResponse(
+        frames(),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )
+
+
+async def iter_ask(
+    body: AskRequest,
+    setup: RetrievalSetup,
+    settings: Settings,
+) -> AsyncIterator[AskEvent]:
+    """Yield one run, then exactly one ``done``."""
     with observation(
         "ask",
         ObservationKind.ASK,
         **ask_attrs(path=body.path, question=body.question),
     ) as span:
+        fault: ErrorEvent | None = None
+        response: AskResponse | None = None
         try:
             count = await point_count(setup)
             if body.path == "agent":
-                result = await _run_agent(body, setup, settings)
-                response = _flatten(
-                    result.answer,
-                    setup,
-                    count,
-                    path="agent",
-                    plan=list(result.plan),
-                    traces=list(result.traces),
-                    steps_used=result.steps_used,
-                    tokens_used=result.tokens_used,
-                )
+                async for event in _agent_events(body, setup, settings, count):
+                    if isinstance(event, AnsweredEvent | RefusedEvent):
+                        response = event.response
+                    elif isinstance(event, ErrorEvent):
+                        fault = event
+                    yield event
             else:
-                filters = parse_filters(ticker=body.ticker, form=body.form, period=body.period)
-                limit = body.k if body.k is not None else setup.search_k
-                hits = await retrieve(
-                    setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters
-                )
-                answer = await ask(
-                    hits,
-                    body.question,
-                    _model_for(body, settings, hits_exist=bool(hits)),
-                    min_score=settings.ask_min_hit_score,
-                )
-                response = _flatten(answer, setup, count)
+                async for event in _rag_events(body, setup, settings, count):
+                    if isinstance(event, AnsweredEvent | RefusedEvent):
+                        response = event.response
+                    elif isinstance(event, ErrorEvent):
+                        fault = event
+                    yield event
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except (IndexUnavailable, IndexNotBuilt, ModelNotConfigured, ModelUnavailable) as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        span.set(
-            **ask_attrs(
-                path=response.path,
-                question=body.question,
-                outcome=response.kind,
-                refusal_reason=response.refusal_reason,
-                config_hash=response.config_hash,
-                git_sha=git_sha(),
+            fault = ErrorEvent(status=422, detail=str(exc))
+            yield fault
+        except _STREAM_FAULTS as exc:
+            fault = ErrorEvent(status=503, detail=str(exc))
+            yield fault
+        if response is not None:
+            span.set(
+                **ask_attrs(
+                    path=response.path,
+                    question=body.question,
+                    outcome=response.kind,
+                    refusal_reason=response.refusal_reason,
+                    config_hash=response.config_hash,
+                    git_sha=git_sha(),
+                )
             )
-        )
-        return response
+        elif fault is not None:
+            span.set(
+                **ask_attrs(
+                    path=body.path,
+                    question=body.question,
+                    outcome="error",
+                    git_sha=git_sha(),
+                )
+            )
+        yield DoneEvent()
 
 
-async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings) -> AgentResult:
+async def _rag_events(
+    body: AskRequest,
+    setup: RetrievalSetup,
+    settings: Settings,
+    count: int,
+) -> AsyncIterator[AskEvent]:
+    filters = parse_filters(ticker=body.ticker, form=body.form, period=body.period)
+    limit = body.k if body.k is not None else setup.search_k
+    hits = await retrieve(
+        setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters
+    )
+    answer = await ask(
+        hits,
+        body.question,
+        _model_for(body, settings, hits_exist=bool(hits)),
+        min_score=settings.ask_min_hit_score,
+    )
+    for event in terminal_facts(_flatten(answer, setup, count)):
+        yield event
+
+
+async def _agent_events(
+    body: AskRequest,
+    setup: RetrievalSetup,
+    settings: Settings,
+    count: int,
+) -> AsyncIterator[AskEvent]:
+    queue: asyncio.Queue[AskEvent] = asyncio.Queue()
+    task = asyncio.create_task(
+        _run_agent(body, setup, settings, observe=_QueueObserve(queue))
+    )
+    getter: asyncio.Task[AskEvent] | None = None
+    try:
+        while True:
+            if task.done() and queue.empty():
+                break
+            if task.done():
+                yield queue.get_nowait()
+                continue
+            getter = asyncio.create_task(queue.get())
+            _done, pending = await asyncio.wait(
+                {getter, task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if getter in pending:
+                getter.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await getter
+                getter = None
+                continue
+            event = getter.result()
+            getter = None
+            yield event
+        result = await task
+        for event in terminal_facts(
+            _flatten(
+                result.answer,
+                setup,
+                count,
+                path="agent",
+                plan=list(result.plan),
+                traces=list(result.traces),
+                steps_used=result.steps_used,
+                tokens_used=result.tokens_used,
+            )
+        ):
+            yield event
+    finally:
+        if getter is not None and not getter.done():
+            getter.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await getter
+        if not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+async def _run_agent(
+    body: AskRequest,
+    setup: RetrievalSetup,
+    settings: Settings,
+    *,
+    observe: Observe | None = None,
+) -> AgentResult:
     selected = body.model if body.model is not None else settings.ask_model
     model = build_agent_model(
         selected,
@@ -221,6 +364,7 @@ async def _run_agent(body: AskRequest, setup: RetrievalSetup, settings: Settings
             tools,
             Budgets(max_steps=settings.ask_max_steps, max_tokens=settings.ask_max_tokens),
             min_score=settings.ask_min_hit_score,
+            observe=observe,
         )
     finally:
         if graph is not None:

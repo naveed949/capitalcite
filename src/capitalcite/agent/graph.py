@@ -8,6 +8,7 @@ from typing import Any, Literal, TypedDict, cast
 from langgraph.graph import END, START, StateGraph
 
 from capitalcite.agent.models import AgentModel
+from capitalcite.agent.observe import Observe, resolve_observe
 from capitalcite.agent.tools import ToolExecutor
 from capitalcite.agent.types import AgentResult, Budgets, PlanStep, TraceStep
 from capitalcite.ask.service import ask
@@ -59,9 +60,10 @@ async def run_agent(
     budgets: Budgets,
     *,
     min_score: float = 0.0,
+    observe: Observe | None = None,
 ) -> AgentResult:
     """Run planner → tools → synthesizer. The synthesizer is ask()/ground()/guard."""
-    graph = _compile(model, tools, min_score)
+    graph = _compile(model, tools, min_score, resolve_observe(observe))
     with observation("agent", ObservationKind.AGENT):
         raw = await graph.ainvoke(
             {
@@ -95,7 +97,9 @@ async def run_agent(
     )
 
 
-def _compile(model: AgentModel, tools: ToolExecutor, min_score: float) -> Any:
+def _compile(
+    model: AgentModel, tools: ToolExecutor, min_score: float, observe: Observe
+) -> Any:
     async def plan_node(state: GraphState) -> dict[str, object]:
         reason = _over_budget(state)
         if reason is not None:
@@ -116,6 +120,7 @@ def _compile(model: AgentModel, tools: ToolExecutor, min_score: float) -> Any:
             PlanStep(tool=call.name, args=dict(call.args), status="pending")
             for call in decision.calls
         ]
+        observe.plan(plan)
         return {
             "plan": plan,
             "cursor": 0,
@@ -138,16 +143,19 @@ def _compile(model: AgentModel, tools: ToolExecutor, min_score: float) -> Any:
                 "answer": Refused(refusal_reason=reason),
             }
         step = state["plan"][state["cursor"]]
+        observe.tool_call(step)
         result = await tools.execute(step.tool, step.args)
         traces = list(state["traces"])
-        traces.append(
-            TraceStep(
-                tool=result.tool,
-                args=result.args,
-                ok=result.ok,
-                detail=result.detail,
-            )
+        trace = TraceStep(
+            tool=result.tool,
+            args=result.args,
+            ok=result.ok,
+            detail=result.detail,
         )
+        observe.tool_finished(
+            trace, None if result.reason is None else str(result.reason)
+        )
+        traces.append(trace)
         plan = list(state["plan"])
         plan[state["cursor"]] = step.model_copy(update={"status": "done" if result.ok else "error"})
         hits = list(state["hits"])
