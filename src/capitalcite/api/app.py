@@ -6,7 +6,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from capitalcite.api.ask_limit import AskLimiter
 from capitalcite.api.ask_models import hoist_openapi_defs
 from capitalcite.api.routes.ask import router as ask_router
 from capitalcite.api.routes.health import router as health_router
@@ -35,6 +37,18 @@ def create_app() -> FastAPI:
         summary="Cited, evaluated answers over U.S. bank filings.",
         lifespan=lifespan,
     )
+    application.state.ask_limiter = AskLimiter(
+        limit=settings.ask_rate_limit,
+        window_s=settings.ask_rate_window_s,
+    )
+    if settings.cors_origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["*"],
+            allow_credentials=False,
+        )
     application.include_router(health_router)
     application.include_router(search_router)
     application.include_router(ask_router)

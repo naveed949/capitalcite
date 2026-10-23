@@ -33,6 +33,7 @@ from capitalcite.agent.fdic import (
 from capitalcite.agent.http import HttpxJsonClient
 from capitalcite.agent.observe import Observe
 from capitalcite.agent.xbrl import FakeXbrlClient, XbrlClient
+from capitalcite.api.ask_limit import enforce_ask_limit
 from capitalcite.api.ask_models import (
     AnsweredEvent,
     AskEvent,
@@ -80,7 +81,7 @@ from capitalcite.retrieval import (
 from capitalcite.retrieval.types import Hit
 from capitalcite.trace import ObservationKind, ask_attrs, git_sha, observation
 
-router = APIRouter(tags=["ask"])
+router = APIRouter(tags=["ask"], dependencies=[Depends(enforce_ask_limit)])
 logger = logging.getLogger(__name__)
 
 __all__ = ["AskRequest", "AskResponse", "iter_ask", "router"]
