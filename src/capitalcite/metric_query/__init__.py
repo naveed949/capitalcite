@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from capitalcite.agent.types import ToolResult
 
-from capitalcite.metric_query.backends import CatalogSql, LiveMetricFlow, load_catalog
+from capitalcite.metric_query.backends import (
+    CatalogSql,
+    LiveMetricFlow,
+    load_catalog,
+    profile_warehouse,
+)
 from capitalcite.metric_query.cite import CitationResolver, hits_for
 from capitalcite.metric_query.query import (
     MetricCell,
@@ -85,16 +90,16 @@ def open_metric_query(
 ) -> tuple[QueryBackend, CitationResolver]:
     """Process start. catalog requires catalog_path and warehouse.
 
-    live requires cwd, env with DBT_TARGET, and warehouse for citations.
+    live requires cwd and env with DBT_TARGET. Citations read the warehouse
+    the mf profile target opens, not the WAREHOUSE_PATH argument.
     Missing files raise MetricQueryError. Does not open a shared connection.
     """
-    if not warehouse.is_file():
-        raise MetricQueryError("warehouse is missing")
-    citations = CitationResolver(warehouse)
     if backend_name == "catalog":
+        if not warehouse.is_file():
+            raise MetricQueryError("warehouse is missing")
         if catalog_path is None or not catalog_path.is_file():
             raise MetricQueryError("catalog is missing")
-        return CatalogSql(load_catalog(catalog_path), warehouse), citations
+        return CatalogSql(load_catalog(catalog_path), warehouse), CitationResolver(warehouse)
     if backend_name == "live":
         if (
             cwd is None
@@ -103,5 +108,8 @@ def open_metric_query(
             or not str(env.get("DBT_TARGET") or "").strip()
         ):
             raise MetricQueryError("live metric query is not configured")
-        return LiveMetricFlow(cwd=cwd, env=env), citations
+        cite_warehouse = profile_warehouse(cwd=cwd, env=env)
+        if not cite_warehouse.is_file():
+            raise MetricQueryError("warehouse is missing")
+        return LiveMetricFlow(cwd=cwd, env=env), CitationResolver(cite_warehouse)
     raise MetricQueryError("unknown metric backend")

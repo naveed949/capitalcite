@@ -107,21 +107,29 @@ class CitationResolver:
     def resolve(self, cell: MetricCell) -> CitationBundle:
         if cell.value is None:
             raise MetricQueryError("metric cell is null")
-        row = self._read(cell.query)
         kind = cite_kind(cell.query.metric)
         sources: tuple[SourceRef, ...]
         match kind:
             case CiteKind.FDIC:
-                sources = (_fdic_source(row),)
+                sources = self._fdic_sources(cell.query)
             case CiteKind.SEC_ASSETS:
+                row = self._read(cell.query)
                 sources = (_sec_source(row, row.assets_sec_accn),)
             case CiteKind.SEC_DEPOSITS:
+                row = self._read(cell.query)
                 sources = (_sec_source(row, row.deposits_sec_accn),)
             case CiteKind.SEC_NET_INCOME:
-                sources = _net_income_sources(row)
+                sources = _net_income_sources(self._read(cell.query))
             case _:
                 assert_never(kind)
         return CitationBundle(sources=sources)
+
+    def _fdic_sources(self, query: MetricQuery) -> tuple[SourceRef, ...]:
+        current = _fdic_source(self._read(query))
+        if query.metric is not MetricName.DEPOSITS_QOQ_GROWTH:
+            return (current,)
+        prior = query.model_copy(update={"period": query.prior_quarter_end()})
+        return (current, _fdic_source(self._read(prior)))
 
     def _read(self, query: MetricQuery) -> FactRow:
         if not self._warehouse.is_file():

@@ -2674,9 +2674,9 @@ for mf_saved in lead_bank_deposits_qoq lead_bank_balance_sheet lead_bank_earning
   log "verify: mf saved query ${mf_saved} ok"
 done
 
-log "verify: pytest tests/test_mf_metrics.py -m mf"
+log "verify: pytest -m mf"
 set +e
-uv run --frozen --group metrics --group dev pytest tests/test_mf_metrics.py -m mf \
+uv run --frozen --group metrics --group dev pytest -m mf \
   >"${ART}/mf-pytest.out" 2>"${ART}/mf-pytest.err"
 mf_pytest_rc=$?
 set -e

@@ -106,6 +106,11 @@ def test_gate_metric_query_rule_loads() -> None:
     assert rule.max_arg_bytes == 1024
     assert rule.args["additionalProperties"] is False
     assert rule.args["required"] == ["metric", "group_by", "ticker", "period"]
+    properties = rule.args["properties"]
+    assert isinstance(properties, dict)
+    ticker = properties["ticker"]
+    assert isinstance(ticker, dict)
+    assert ticker["pattern"] == r"^[A-Z][A-Z0-9]{0,5}$"
 
 
 def test_locked_level_matches_yaml_filters() -> None:
@@ -294,6 +299,7 @@ def _warehouse(path: Path) -> None:
         """
         insert into fct_bank_financials_quarterly values
             (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
             (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
@@ -318,6 +324,17 @@ def _warehouse(path: Path) -> None:
             None,
             None,
             "20241231",
+            _FDIC_URL,
+            "JPM|bank_subsidiary",
+            "JPM",
+            date(2024, 9, 30),
+            "bank_subsidiary",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "20240930",
             _FDIC_URL,
         ],
     )
@@ -402,7 +419,7 @@ def test_fy_minus_9m_returns_two_hits_with_the_same_figure(tmp_path: Path) -> No
     assert accessions == [_TEN_K, _NINE_MONTH]
 
 
-def test_growth_cites_only_the_current_fdic_row(tmp_path: Path) -> None:
+def test_growth_cites_current_and_prior_fdic_rows(tmp_path: Path) -> None:
     warehouse = tmp_path / "facts.duckdb"
     _warehouse(warehouse)
     cell = _cell("deposits_qoq_growth", "JPM", "2024-12-31", Decimal("0.05"))
@@ -412,10 +429,11 @@ def test_growth_cites_only_the_current_fdic_row(tmp_path: Path) -> None:
         citations=CitationResolver(warehouse),
     )
     assert result.ok is True
-    assert len(result.hits) == 1
-    assert result.hits[0].chunk.doc_id == "fdic:20241231"
-    assert "Unit is a ratio." in result.hits[0].chunk.text
-    assert result.hits[0].chunk.text.count("0.05") == 1
+    assert len(result.hits) == 2
+    assert [hit.chunk.doc_id for hit in result.hits] == ["fdic:20241231", "fdic:20240930"]
+    for hit in result.hits:
+        assert "Unit is a ratio." in hit.chunk.text
+        assert hit.chunk.text.count("0.05") == 1
 
 
 def test_null_cell_returns_no_hit_and_no_figure() -> None:
@@ -501,6 +519,19 @@ def test_sql_from_explain_strips_ansi_and_keeps_the_statement() -> None:
     assert "plan" not in sql.splitlines()[0]
     with pytest.raises(MetricQueryError):
         sql_from_explain("SELECT 1")
+
+
+def test_where_clause_rejects_a_constructed_ticker() -> None:
+    for ticker in ("X' OR '1'='1", "JP'M", "JPM;DROP"):
+        query = MetricQuery.model_construct(
+            metric=MetricName.TOTAL_DEPOSITS,
+            group_by=GroupBy.QUARTER_AND_TICKER,
+            ticker=ticker,
+            period=date(2024, 12, 31),
+            entity_level=EntityLevel.BANK_SUBSIDIARY,
+        )
+        with pytest.raises(MetricQueryError, match="invalid ticker"):
+            where_clause(query)
 
 
 def test_where_clause_emits_typed_fields_in_order() -> None:
@@ -913,25 +944,79 @@ async def test_fake_plan_reads_a_compact_quarter() -> None:
 
 async def test_fake_plan_maps_each_metric_phrase() -> None:
     questions = {
-        MetricName.TOTAL_DEPOSITS: "JPM total deposits in 2024",
-        MetricName.TOTAL_ASSETS: "JPM total assets in 2024",
-        MetricName.NET_INCOME: "JPM net income in 2024",
-        MetricName.NIM: "JPM nim in Q2 2024",
-        MetricName.EFFICIENCY_RATIO: "JPM efficiency ratio in 2024",
-        MetricName.HOLDING_COMPANY_ASSETS: "JPM holding company assets in 2024",
-        MetricName.HOLDING_COMPANY_DEPOSITS: "JPM holding company deposits in 2024",
-        MetricName.HOLDING_COMPANY_NET_INCOME: "JPM holding company net income in 2024",
-        MetricName.DEPOSITS_QOQ_GROWTH: "JPM deposit growth in 2023 and 2024",
+        MetricName.TOTAL_DEPOSITS: "What were JPM total deposits in 2024",
+        MetricName.TOTAL_ASSETS: "What were JPM total assets in 2024",
+        MetricName.NET_INCOME: "What was JPM net income in Q4 2024",
+        MetricName.NIM: "What was JPM nim in Q2 2024",
+        MetricName.EFFICIENCY_RATIO: "What was JPM efficiency ratio in 2024",
+        MetricName.HOLDING_COMPANY_ASSETS: "What were JPM holding company assets in 2024",
+        MetricName.HOLDING_COMPANY_DEPOSITS: "What were JPM holding company deposits in 2024",
+        MetricName.HOLDING_COMPANY_NET_INCOME: "What was JPM holding company net income in Q4 2024",
+        MetricName.DEPOSITS_QOQ_GROWTH: "What was JPM deposit growth in 2023 and 2024",
     }
     assert set(questions) == set(MetricName)
     nim = await FakeAgentModel().plan(questions[MetricName.NIM], [], [])
     assert nim.calls[0].args["period"] == "2024-06-30"
     assert nim.calls[0].args["metric"] == "nim"
+    income = await FakeAgentModel().plan(questions[MetricName.NET_INCOME], [], [])
+    assert income.calls[0].args == {
+        "metric": "net_income",
+        "group_by": _GROUP,
+        "ticker": "JPM",
+        "period": "2024-12-31",
+    }
     growth = await FakeAgentModel().plan(questions[MetricName.DEPOSITS_QOQ_GROWTH], [], [])
     assert [call.args["period"] for call in growth.calls] == ["2023-12-31", "2024-12-31"]
     assert all(call.name == "metric_query" for call in growth.calls)
     holding = await FakeAgentModel().plan(questions[MetricName.HOLDING_COMPANY_ASSETS], [], [])
     assert [call.name for call in holding.calls] == ["metric_query"]
+
+
+async def test_fake_plan_year_only_net_income_stays_on_search() -> None:
+    decision = await FakeAgentModel().plan("What was JPM's net income in 2025?", [], [])
+    assert decision.calls
+    assert {call.name for call in decision.calls} == {"search_filings"}
+
+
+async def test_fake_plan_narrative_deposits_stays_on_search() -> None:
+    decision = await FakeAgentModel().plan(
+        "How does JPM describe its total deposits strategy in the 2025 10-K?",
+        [],
+        [],
+    )
+    assert decision.calls
+    assert {call.name for call in decision.calls} == {"search_filings"}
+
+
+async def test_fake_plan_holding_company_anywhere_remaps_assets() -> None:
+    decision = await FakeAgentModel().plan(
+        "What was JPM's total assets for the holding company in 2026Q2?",
+        [],
+        [],
+    )
+    assert [call.name for call in decision.calls] == ["metric_query"]
+    assert decision.calls[0].args == {
+        "metric": "holding_company_assets",
+        "group_by": _GROUP,
+        "ticker": "JPM",
+        "period": "2026-06-30",
+    }
+    parent = await FakeAgentModel().plan(
+        "What was JPM's total assets for the parent in 2026Q2?",
+        [],
+        [],
+    )
+    assert parent.calls[0].args["metric"] == "holding_company_assets"
+
+
+async def test_fake_plan_rejects_an_invalid_calendar_date() -> None:
+    question = "What were JPM's total deposits at 2026-06-31?"
+    decision = await FakeAgentModel().plan(question, [], [])
+    assert decision.kind == "synthesize"
+    assert decision.calls == ()
+    draft = await FakeAgentModel().complete(question, [])
+    assert draft.kind == "refused"
+    assert draft.refusal_reason == "period is not a valid date"
 
 
 async def test_fake_plan_without_a_metric_or_ticker_stays_on_search() -> None:
@@ -1078,6 +1163,22 @@ def test_open_metric_query_fails_closed_without_files(tmp_path: Path) -> None:
     result = run_metric_query(_wire(), backend=backend, citations=citations)
     assert result.ok is False
     assert result.hits == ()
+
+
+def test_open_metric_query_live_cites_the_profile_warehouse(tmp_path: Path) -> None:
+    project = tmp_path / "dbt"
+    (project / "target").mkdir(parents=True)
+    profile = project / "target" / "ci.duckdb"
+    other = tmp_path / "other.duckdb"
+    duckdb.connect(str(profile)).close()
+    duckdb.connect(str(other)).close()
+    _backend, citations = open_metric_query(
+        backend_name="live",
+        warehouse=other,
+        cwd=tmp_path,
+        env={"DBT_TARGET": "ci", "DBT_PROJECT_DIR": str(project)},
+    )
+    assert citations._warehouse == profile
 
 
 def _metric_hit(section: str, accession: str, text: str) -> Hit:

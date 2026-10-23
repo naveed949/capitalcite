@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import calendar
 import math
+import re
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import Protocol, assert_never
@@ -13,6 +14,7 @@ from typing import Protocol, assert_never
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 _QUARTER_START_MONTH = {3: 1, 6: 4, 9: 7, 12: 10}
+TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _FIGURE_QUANTUM = Decimal("0.0000000001")
 _WIRE_FIELDS = frozenset({"metric", "group_by", "ticker", "period", "entity_level"})
 
@@ -46,7 +48,7 @@ class MetricQuery(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     metric: MetricName
     group_by: GroupBy
-    ticker: str = Field(pattern=r"^[A-Z][A-Z0-9]{0,5}$")
+    ticker: str = Field(pattern=TICKER_PATTERN.pattern)
     period: date
     entity_level: EntityLevel
 
@@ -60,6 +62,9 @@ class MetricQuery(BaseModel):
 
     def quarter_start(self) -> date:
         return date(self.period.year, _QUARTER_START_MONTH[self.period.month], 1)
+
+    def prior_quarter_end(self) -> date:
+        return self.quarter_start() - timedelta(days=1)
 
 
 class MetricCell(BaseModel):

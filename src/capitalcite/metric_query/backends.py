@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from capitalcite.atomic import atomic_write_text
 from capitalcite.metric_query.query import (
+    TICKER_PATTERN,
     EntityLevel,
     GroupBy,
     MetricCell,
@@ -37,6 +38,18 @@ ParamName = Literal["ticker", "quarter_start"]
 _MfMode = Literal["csv", "explain"]
 
 
+def profile_warehouse(*, cwd: Path, env: Mapping[str, str]) -> Path:
+    """Same file mf opens. Mirrors dbt/profiles.yml outputs."""
+    target = str(env.get("DBT_TARGET") or "").strip()
+    raw_project = str(env.get("DBT_PROJECT_DIR") or "").strip()
+    project = Path(raw_project) if raw_project else cwd / "dbt"
+    if target == "ci":
+        return project / "target" / "ci.duckdb"
+    if target == "dev":
+        return (project / ".." / "data" / "warehouse" / "capitalcite.duckdb").resolve()
+    raise MetricQueryError("live metric query is not configured")
+
+
 def where_clause(query: MetricQuery) -> str:
     """deposits_qoq_growth keeps the quarter literal behind OR 1 = 1.
 
@@ -44,6 +57,8 @@ def where_clause(query: MetricQuery) -> str:
     removes the prior quarter and the growth cell is null. Execute keeps
     the row whose metric_time__quarter is quarter_start.
     """
+    if TICKER_PATTERN.fullmatch(query.ticker) is None:
+        raise MetricQueryError("invalid ticker")
     ticker = query.ticker
     quarter = query.quarter_start().isoformat()
     level = query.entity_level.value

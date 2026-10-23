@@ -59,9 +59,17 @@ and runs that statement. The runtime image does not install MetricFlow.
 A catalog whose bytes differ from a fresh compile fails CI. The semantic
 hash on the file is the sha256 of `dbt/models/semantic/bank_financials.yml`.
 Local and CI set `METRIC_QUERY_BACKEND=live` and shell `mf query` on each
-call. `DBT_TARGET` selects the warehouse. A test compares the catalog cell
-to the live cell on JPM, BAC, WFC, and C. Drift in the YAML, the compiler,
-or the committed SQL fails that test.
+call. `DBT_TARGET` selects the warehouse. The dbt CI job runs `pytest -m mf`,
+which includes `test_catalog_matches_live_metricflow_on_golden_tickers`.
+That test compares the catalog cell to the live cell on JPM, BAC, WFC, and
+C. Drift in the YAML, the compiler, or the committed SQL fails that test.
+
+The committed catalog is compiled under `DBT_TARGET=ci`. DuckDB names the
+attached catalog after the file stem `ci.duckdb`, so the baked SQL
+qualifies tables as `"ci"."main"."fct_bank_financials_quarterly"`. A compile
+under `dev` would write a different qualifier. Live citations open the same
+file the mf profile target uses (`dbt/profiles.yml`), not a second
+`WAREHOUSE_PATH`.
 
 `deposits_qoq_growth` keeps the quarter literal behind `OR 1 = 1`.
 MetricFlow applies `where` before the one-quarter offset, so a real time
@@ -100,8 +108,8 @@ cite `fdic_repdte` and `fdic_source_url`. Holding-company assets and
 deposits cite the matching SEC accession. Holding-company net income cites
 the quarterly accession, and also the nine-month accession when
 `net_income_method` is `fy_minus_9m`. `deposits_qoq_growth` cites the
-current FDIC row. The prior quarter is an input to the expression and is
-not a second hit.
+current FDIC row and the prior-quarter FDIC row. Both quotes carry the
+growth figure.
 
 The first sentence of the quote ends on the rendered figure. The next
 sentence is the unit. `nim` and `efficiency_ratio` repeat that figure with

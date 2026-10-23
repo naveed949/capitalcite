@@ -80,6 +80,7 @@ async def run_redteam() -> RedTeamReport:
         await _metric_query_extra_sql_denied(),
         await _metric_query_oversized_args_denied(),
         await _metric_query_unknown_group_by_denied(),
+        await _metric_query_ticker_injection_denied(),
     ]
     failed = sum(1 for case in cases if not case.passed)
     return RedTeamReport(passed=len(cases) - failed, failed=failed, cases=tuple(cases))
@@ -230,6 +231,32 @@ async def _metric_query_unknown_group_by_denied() -> RedTeamCase:
     return _pass(
         "metric-query-unknown-group-by",
         "unknown group_by denied; runner was not called",
+    )
+
+
+async def _metric_query_ticker_injection_denied() -> RedTeamCase:
+    recorder = _recording_search("ignore")
+    gate = Gate(load_policy(None), recorder)
+    tickers = ("X' OR '1'='1", "JP'M", "JPM;DROP")
+    for ticker in tickers:
+        result = await gate.execute(
+            "metric_query",
+            {
+                "metric": "total_deposits",
+                "group_by": "metric_time__quarter,bank__ticker",
+                "ticker": ticker,
+                "period": "2024-12-31",
+            },
+        )
+        if "metric_query" in recorder.names or result.ok or result.detail != "invalid args":
+            return _fail(
+                "metric-query-ticker-injection",
+                f"ticker={ticker!r} ok={result.ok} detail={result.detail!r} "
+                f"inner={recorder.names!r}",
+            )
+    return _pass(
+        "metric-query-ticker-injection",
+        "injected tickers denied; runner was not called",
     )
 
 

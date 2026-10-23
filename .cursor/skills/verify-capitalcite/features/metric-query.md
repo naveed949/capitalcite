@@ -68,6 +68,6 @@ PY
 - An unset `WAREHOUSE_PATH` makes the API tool return `metric query is not configured`. The process still boots.
 - A set path whose file is missing fails `open_metric_query` during API startup.
 - `period` is the quarter-end `quarter_id`. `metric_time__quarter` is the quarter start. `2026-06-30` is quarter start `2026-04-01`.
-- `deposits_qoq_growth` cites the current FDIC row only.
+- `deposits_qoq_growth` cites the current and prior FDIC rows.
 - Holding-company deposits and holding-company net income are null on the committed fixtures.
 - The image measure after copying the warehouse is UNVERIFIED when Docker cannot run.

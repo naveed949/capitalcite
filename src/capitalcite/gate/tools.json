@@ -103,7 +103,11 @@
             "type": "string",
             "enum": ["metric_time__quarter,bank__ticker"]
           },
-          "ticker": {"type": "string", "minLength": 1},
+          "ticker": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Z][A-Z0-9]{0,5}$"
+          },
           "period": {"type": "string", "minLength": 10},
           "entity_level": {
             "type": "string",
