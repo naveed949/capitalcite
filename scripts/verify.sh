@@ -2,7 +2,7 @@
 # Drive capitalcite the way a user does: live uvicorn + CLI.
 # Usage (repo root): ./scripts/verify.sh [--small]
 # Evidence: artifacts/verify/<UTC-timestamp>/  (gitignored)
-# Cleanup kills only the uvicorn this script started; evidence is kept.
+# Cleanup kills only the uvicorn and Next process this script started; evidence is kept.
 # --small skips live EDGAR and indexes the fixture chunks for /ask/stream.
 
 set -euo pipefail
@@ -39,6 +39,7 @@ mkdir -p "$ART"
 
 UVICORN_PID=""
 LIMIT_PID=""
+NEXT_PID=""
 
 log() {
   printf '%s\n' "$*"
@@ -110,8 +111,45 @@ start_main_uvicorn() {
   fi
 }
 
+kill_tree() {
+  local pid="$1"
+  local child
+  local children=""
+  children="$(pgrep -P "${pid}" 2>/dev/null || true)"
+  for child in ${children}; do
+    kill_tree "${child}"
+  done
+  if kill -0 "${pid}" 2>/dev/null; then
+    kill "${pid}" 2>/dev/null || true
+  fi
+}
+
+stop_next() {
+  if [[ -z "${NEXT_PID}" ]]; then
+    return 0
+  fi
+  kill_tree "${NEXT_PID}"
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "${NEXT_PID}" 2>/dev/null || break
+    sleep 0.1
+  done
+  if kill -0 "${NEXT_PID}" 2>/dev/null; then
+    kill -9 "${NEXT_PID}" 2>/dev/null || true
+    local leftover=""
+    leftover="$(pgrep -P "${NEXT_PID}" 2>/dev/null || true)"
+    if [[ -n "${leftover}" ]]; then
+      # shellcheck disable=SC2086
+      kill -9 ${leftover} 2>/dev/null || true
+    fi
+  fi
+  wait "${NEXT_PID}" 2>/dev/null || true
+  NEXT_PID=""
+}
+
 cleanup() {
   local rc=$?
+  stop_next
   stop_pid "${UVICORN_PID}"
   stop_pid "${LIMIT_PID}"
   if [[ "${rc}" -ne 0 ]]; then
@@ -2771,6 +2809,109 @@ PY
   log "verify: image /health ok"
 fi
 
+web_ask() {
+  if [[ -f "${ART}/stream.unreachable" ]]; then
+    write web.unreachable "POST /ask/stream was unverified"
+    log "verify: web ask UNVERIFIED (stream unreachable)"
+    return 0
+  fi
+  if ! command -v pnpm >/dev/null 2>&1 || ! command -v node >/dev/null 2>&1; then
+    write web.unreachable "pnpm or node is missing"
+    log "verify: web ask UNVERIFIED (pnpm or node missing)"
+    return 0
+  fi
+
+  log "verify: pnpm --dir web install --frozen-lockfile"
+  if ! pnpm --dir web install --frozen-lockfile >"${ART}/web.install.log" 2>&1; then
+    log "verify: web install failed"
+    cat "${ART}/web.install.log" >&2 || true
+    exit 1
+  fi
+
+  local web_port
+  web_port="$(
+    uv run python - <<'PY'
+import socket
+
+while True:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    if port != 3000:
+        print(port)
+        break
+PY
+  )"
+  write web.port "${web_port}"
+  log "verify: launching Next on 127.0.0.1:${web_port}"
+  CAPITALCITE_API_ORIGIN="http://127.0.0.1:${PORT}" ASK_MODEL=fake \
+    pnpm --dir web exec next dev --hostname 127.0.0.1 --port "${web_port}" \
+    >"${ART}/web.dev.log" 2>&1 &
+  NEXT_PID=$!
+
+  local ready=0
+  local i
+  for i in $(seq 1 180); do
+    if curl -sf -o /dev/null "http://127.0.0.1:${web_port}/"; then
+      ready=1
+      break
+    fi
+    if ! kill -0 "${NEXT_PID}" 2>/dev/null; then
+      break
+    fi
+    sleep 0.5
+  done
+  if [[ "${ready}" -ne 1 ]]; then
+    log "verify: Next did not answer on 127.0.0.1:${web_port}"
+    cat "${ART}/web.dev.log" >&2 || true
+    stop_next
+    exit 1
+  fi
+
+  if ! curl -sf "http://127.0.0.1:${web_port}/" >"${ART}/web.page.html"; then
+    log "verify: web page curl failed"
+    stop_next
+    exit 1
+  fi
+  if ! grep -q "Ask a filing question" "${ART}/web.page.html"; then
+    log "verify: web page missing heading"
+    stop_next
+    exit 1
+  fi
+  if ! grep -q "deterministic demo model" "${ART}/web.page.html"; then
+    log "verify: web page missing demo label"
+    stop_next
+    exit 1
+  fi
+
+  set +e
+  node web/scripts/verify-browser.mjs \
+    --base-url "http://127.0.0.1:${web_port}" \
+    --out "${ART}" \
+    >"${ART}/web.browser.log" 2>&1
+  local browser_rc=$?
+  set -e
+  write web.exit "${browser_rc}"
+  if [[ "${browser_rc}" -eq 2 ]]; then
+    write web.browser.unverified "browser driver unavailable"
+    log "verify: web ask UNVERIFIED (browser)"
+    cat "${ART}/web.browser.log" >&2 || true
+    stop_next
+    return 0
+  fi
+  if [[ "${browser_rc}" -ne 0 ]]; then
+    log "verify: web ask failed"
+    cat "${ART}/web.browser.log" >&2 || true
+    stop_next
+    exit 1
+  fi
+  log "verify: web ask ok"
+  stop_next
+}
+
+web_ask
+
 {
   echo "timestamp ${TS}"
   echo "writeup-numbers.exit $(cat "${ART}/writeup-numbers.exit")"
@@ -2843,6 +2984,13 @@ fi
   elif [[ -f "${ART}/stream.http" ]]; then
     echo "stream.http $(cat "${ART}/stream.http")"
     echo "stream.exit $(cat "${ART}/stream.exit")"
+  fi
+  if [[ -f "${ART}/web.unreachable" ]]; then
+    echo "web unreachable ($(cat "${ART}/web.unreachable"))"
+  elif [[ -f "${ART}/web.browser.unverified" ]]; then
+    echo "web browser unverified ($(cat "${ART}/web.browser.unverified"))"
+  elif [[ -f "${ART}/web.exit" ]]; then
+    echo "web.exit $(cat "${ART}/web.exit")"
   fi
   if [[ -f "${ART}/ask.openai.unverified" ]]; then
     echo "ask openai unverified ($(cat "${ART}/ask.openai.unverified"))"
