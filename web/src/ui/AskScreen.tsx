@@ -93,7 +93,7 @@ export function AskSessionView(props: {
         </p>
       ) : null}
       {openedSpan !== undefined ? (
-        <SpanViewer span={openedSpan} onClose={closeViewer} viewerRef={viewerRef} />
+        <SpanViewer ref={viewerRef} span={openedSpan} onClose={closeViewer} />
       ) : null}
     </div>
   );

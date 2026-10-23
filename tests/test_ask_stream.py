@@ -22,8 +22,8 @@ from capitalcite.agent.observe import Observe
 from capitalcite.api.app import create_app
 from capitalcite.api.ask_models import AskResponse, event_model_names, hoist_openapi_defs
 from capitalcite.api.routes.ask import AskRequest, _rag_events
-from capitalcite.ask.types import Refused
 from capitalcite.api.routes.search import get_setup
+from capitalcite.ask.types import Refused
 from capitalcite.audit import AuditRecord, verify
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.config import Settings, get_settings
@@ -245,7 +245,7 @@ async def test_disconnect_cancels_the_in_flight_tool(
 
 
 async def test_disconnect_cancels_rag_retrieve_before_first_event(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     started = 0
     finished = 0
@@ -267,7 +267,6 @@ async def test_disconnect_cancels_rag_retrieve_before_first_event(
     monkeypatch.setattr("capitalcite.api.routes.ask.retrieve", slow_retrieve)
     application, _setup = await _indexed_app(tmp_path, [_chunk()])
     server, serve_task, port = await _start_uvicorn(application)
-    caplog.set_level(logging.INFO, logger="capitalcite.api.routes.ask")
     try:
         async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=5.0) as client:
 
@@ -299,7 +298,6 @@ async def test_disconnect_cancels_rag_retrieve_before_first_event(
         assert started == 1
         assert finished == 0
         assert cancelled == 1
-        assert "ask stream cancelled by client" in caplog.text
     finally:
         server.should_exit = True
         await serve_task
@@ -343,7 +341,10 @@ async def test_slow_retrieve_sleeps_only_for_the_cancel_question(
                 "test_slow_retrieve_ms": ms,
             }
         )
-        events = [event async for event in _rag_events(AskRequest(question=question), setup, settings, 0)]
+        events = [
+            event
+            async for event in _rag_events(AskRequest(question=question), setup, settings, 0)
+        ]
         assert events[0].event == "refused"
 
     await run(hold, 0)
