@@ -112,10 +112,11 @@ class FastEmbedEmbedder:
     dense_size: int
     sparse_id: str = FASTEMBED_SPARSE_ID
 
-    def __init__(self, spec: EmbedderSpec) -> None:
+    def __init__(self, spec: EmbedderSpec, *, threads: int) -> None:
         self.id = spec.embedder_id
         self.dense_size = spec.dense_size
         self._spec = spec
+        self._threads = threads
         self._model: FastTextEmbedding | None = None
         self._lock = threading.Lock()
 
@@ -165,7 +166,7 @@ class FastEmbedEmbedder:
 
                 loaded = FastTextEmbedding(
                     model_name=self._spec.model_name,
-                    threads=os.cpu_count() or 4,
+                    threads=_thread_count(self._threads),
                 )
                 self._model = loaded
         return loaded
@@ -233,7 +234,12 @@ class OpenAIEmbedder:
         return out
 
 
-def build_embedder(settings_embedder: EmbedderName, api_key: str | None) -> Embedder:
+def build_embedder(
+    settings_embedder: EmbedderName,
+    api_key: str | None,
+    *,
+    threads: int = 0,
+) -> Embedder:
     spec = spec_for(settings_embedder)
     if spec.kind == "openai":
         key = (api_key or "").strip()
@@ -244,9 +250,23 @@ def build_embedder(settings_embedder: EmbedderName, api_key: str | None) -> Embe
         cached = _LOCAL.get(settings_embedder)
         if cached is not None:
             return cached
-        embedder = FastEmbedEmbedder(spec)
+        embedder = FastEmbedEmbedder(spec, threads=threads)
         _LOCAL[settings_embedder] = embedder
         return embedder
+
+
+def _thread_count(threads: int) -> int:
+    if threads > 0:
+        return threads
+    return os.cpu_count() or 4
+
+
+def _sparse_threads() -> int:
+    raw = os.environ.get("EMBED_THREADS", "0")
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
 
 
 def _forbid_fastembed() -> None:
@@ -267,7 +287,7 @@ def _load_sparse() -> FastSparseEmbedding:
 
             loaded = SparseTextEmbedding(
                 model_name=SPARSE_MODEL,
-                threads=os.cpu_count() or 4,
+                threads=_thread_count(_sparse_threads()),
             )
             _SPARSE = loaded
     return loaded

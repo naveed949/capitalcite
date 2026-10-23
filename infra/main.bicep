@@ -312,6 +312,10 @@ var apiEnv = concat(
       value: 'http://${qdrantAppName}:6333'
     }
     {
+      name: 'QDRANT_PATH'
+      value: ''
+    }
+    {
       name: 'AUDIT_LOG_PATH'
       value: '/home/app/data/audit.jsonl'
     }

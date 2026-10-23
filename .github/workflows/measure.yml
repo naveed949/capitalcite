@@ -1,0 +1,28 @@
+name: Measure image
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: measure-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: measure_image.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Measure the API image
+        run: ./scripts/measure_image.sh
+
+      - name: Upload raw measure files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-measure
+          path: docs/deploy/image-measure.*

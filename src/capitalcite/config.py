@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from capitalcite.chunking.models import ChunkerName
 
@@ -149,6 +149,48 @@ class Settings(BaseSettings):
         description="Append-only hash-chained JSONL of gated tool calls.",
     )
 
+    cors_origins: Annotated[tuple[str, ...], NoDecode] = Field(
+        default=(),
+        description=(
+            "Browser origins allowed to call the API. Comma-separated. "
+            "Empty adds no CORS middleware."
+        ),
+    )
+    ask_rate_limit: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Max POST /ask and POST /ask/stream requests per client address "
+            "in each window. 0 disables the limiter. The counter stays in this process."
+        ),
+    )
+    ask_rate_window_s: float = Field(
+        default=60.0,
+        gt=0,
+        description="Length of the ask rate window, in seconds.",
+    )
+    trusted_proxy_hops: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Number of trusted reverse proxies in front of the app. "
+            "0 keys the ask limiter on the TCP peer. "
+            "N>0 keys on the X-Forwarded-For entry N positions from the right."
+        ),
+    )
+    embed_threads: int = Field(
+        default=0,
+        ge=0,
+        description=("ONNX threads for FastEmbed. 0 uses os.cpu_count() or 4. The image sets 1."),
+    )
+    git_sha: str | None = Field(
+        default=None,
+        description=(
+            "Revision reported by GET /health. Blank uses git rev-parse HEAD, "
+            "or unknown when git is unavailable."
+        ),
+    )
+
     neo4j_uri: str | None = Field(
         default=None,
         description=(
@@ -173,6 +215,7 @@ class Settings(BaseSettings):
         "capitalcite_trace_file",
         "neo4j_uri",
         "neo4j_password",
+        "git_sha",
         mode="before",
     )
     @classmethod
@@ -181,6 +224,29 @@ class Settings(BaseSettings):
             return None
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def split_cors_origins(cls, value: object) -> object:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            parsed = tuple(part.strip() for part in value.split(",") if part.strip())
+            if "*" in parsed:
+                raise ValueError("CORS_ORIGINS cannot include '*'")
+            return parsed
+        if isinstance(value, (list, tuple)):
+            origins: list[str] = []
+            for item in value:
+                if not isinstance(item, str):
+                    return value
+                stripped = item.strip()
+                if stripped:
+                    origins.append(stripped)
+            if "*" in origins:
+                raise ValueError("CORS_ORIGINS cannot include '*'")
+            return tuple(origins)
         return value
 
     @field_validator("sec_user_agent")

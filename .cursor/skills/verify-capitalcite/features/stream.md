@@ -15,7 +15,7 @@ not call OpenAI. Verification uses the same Qdrant index as `/ask`.
 
 ## How to get to it (user POV)
 
-- Index the corpus, then start uvicorn with the same `QDRANT_PATH`. `scripts/verify.sh` sets `ASK_MODEL=fake` for that process.
+- Index the corpus, then start uvicorn with the same `QDRANT_PATH`. Embedded Qdrant locks the folder, so uvicorn cannot stay up during `capitalcite index`. `scripts/verify.sh` sets `ASK_MODEL=fake` for that process.
 - POST JSON to `http://127.0.0.1:${PORT}/ask/stream` with `Accept: text/event-stream` (optional) and `Content-Type: application/json`.
 - Use the same body fields as `POST /ask`: `question`, optional `ticker` / `form` / `period` / `k` / `model` / `path`.
 

@@ -40,7 +40,7 @@ Preconditions:
 ## Gotchas
 
 - Do not start Docker Compose to make this step pass. Embedded Qdrant (`QDRANT_PATH`) is the verify store. Compose Qdrant on `:6333` stays optional.
-- `QDRANT_URL=:memory:` cannot be shared between `capitalcite index` and uvicorn. Use a directory.
+- `QDRANT_URL=:memory:` cannot be shared between `capitalcite index` and uvicorn. Use a directory. Embedded Qdrant locks that directory. `scripts/verify.sh` stops uvicorn before `capitalcite index` and starts it after.
 - An empty index is a successful HTTP response and a failed proof. `point_count` 0 must not be reported as passed.
 - Hits that come back without citation fields, or that miss the gold span, are a product failure, not an unverified environment.
 - Quote-index sanity can run with no Qdrant process because it uses an in-memory client and `FakeEmbedder`. A high or low `recall_at_5` there does not fill the README eval table. The 12-filing matrix stays TBD until #6.

@@ -10,7 +10,13 @@ artifacts
 data
 evals
 docs
-tests
+tests/*
+!tests/fixtures
+tests/fixtures/*
+!tests/fixtures/chunking
+tests/fixtures/chunking/*
+!tests/fixtures/chunking/corpus
+!tests/fixtures/chunking/corpus/**
 infra
 .env
 .env.*

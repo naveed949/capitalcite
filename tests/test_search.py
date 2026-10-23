@@ -10,7 +10,7 @@ from qdrant_client import AsyncQdrantClient
 from capitalcite.api.app import create_app
 from capitalcite.api.routes.search import get_setup
 from capitalcite.chunking.models import Chunk, ChunkerName
-from capitalcite.config import Settings
+from capitalcite.config import Settings, get_settings
 from capitalcite.retrieval import (
     FakeEmbedder,
     build_index,
@@ -88,26 +88,25 @@ def test_post_search_rejects_bad_period() -> None:
     assert response.json()["detail"] == "period must be YYYY-MM-DD or a 4-digit year"
 
 
-def test_post_search_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = AsyncQdrantClient(":memory:")
-    closed = {"count": 0}
-    original = client.close
-
-    async def close(*_args: object, **_kwargs: object) -> None:
-        closed["count"] += 1
-        await original()
-
-    monkeypatch.setattr(client, "close", close)
-    setup = setup_retrieval(_settings(), client=client, embedder=FakeEmbedder())
-    monkeypatch.setattr(
-        "capitalcite.api.routes.search.create_retrieval_setup",
-        lambda _settings: setup,
-    )
+def test_shared_client_survives_a_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = tmp_path / "qdrant"
+    store.mkdir()
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("QDRANT_PATH", str(store))
+    monkeypatch.setenv("QDRANT_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("ASK_MODEL", "fake")
+    monkeypatch.setenv("LANGFUSE_TRACING_ENABLED", "false")
+    get_settings.cache_clear()
     application = create_app()
     with TestClient(application) as http:
-        response = http.post("/search", json={"query": "cet1"})
-    assert response.status_code == 503
-    assert closed["count"] == 1
+        first = http.get("/health")
+        setup = application.state.retrieval
+        second = http.get("/health")
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert setup is application.state.retrieval
+        assert setup is not None
+    assert application.state.retrieval is None
 
 
 def test_post_search_503_when_qdrant_is_down() -> None:
@@ -136,16 +135,18 @@ def test_api_and_cli_do_not_import_store_clients() -> None:
             assert needle not in text, f"{path} mentions {needle}"
 
 
-def test_health_does_not_construct_qdrant(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_stays_up_when_the_store_cannot_open(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("Qdrant client constructed")
+        raise RuntimeError("store unavailable")
 
     monkeypatch.setattr("capitalcite.retrieval.service.AsyncQdrantClient", boom)
     application = create_app()
     with TestClient(application) as http:
         response = http.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["point_count"] == 0
 
 
 def _settings() -> Settings:

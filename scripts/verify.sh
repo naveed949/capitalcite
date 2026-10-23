@@ -38,6 +38,7 @@ ART="${ROOT}/artifacts/verify/${TS}"
 mkdir -p "$ART"
 
 UVICORN_PID=""
+LIMIT_PID=""
 NEXT_PID=""
 
 log() {
@@ -53,6 +54,61 @@ write() {
 # Typer/Rich may insert SGR codes between the dashes in "--against-raw".
 plain() {
   sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' "$1"
+}
+
+stop_pid() {
+  local pid="$1"
+  if [[ -z "${pid}" ]]; then
+    return 0
+  fi
+  local children=""
+  children="$(pgrep -P "${pid}" 2>/dev/null || true)"
+  if kill -0 "${pid}" 2>/dev/null; then
+    # shellcheck disable=SC2086
+    kill ${pid} ${children} 2>/dev/null || true
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "${pid}" 2>/dev/null || break
+      sleep 0.1
+    done
+    if kill -0 "${pid}" 2>/dev/null; then
+      # shellcheck disable=SC2086
+      kill -9 ${pid} ${children} 2>/dev/null || true
+    fi
+    wait "${pid}" 2>/dev/null || true
+  fi
+}
+
+stop_main_uvicorn() {
+  stop_pid "${UVICORN_PID}"
+  UVICORN_PID=""
+}
+
+start_main_uvicorn() {
+  uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
+    >>"${ART}/uvicorn.log" 2>&1 &
+  UVICORN_PID=$!
+  write uvicorn.pid "${UVICORN_PID}"
+  local ready=0
+  local i=0
+  while [[ "${i}" -lt 60 ]]; do
+    if ! kill -0 "${UVICORN_PID}" 2>/dev/null; then
+      log "verify: uvicorn pid ${UVICORN_PID} exited before ready"
+      cat "${ART}/uvicorn.log" >&2 || true
+      exit 1
+    fi
+    if curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    i=$((i + 1))
+    sleep 0.25
+  done
+  if [[ "${ready}" -ne 1 ]]; then
+    log "verify: timed out waiting for GET /health on port ${PORT}"
+    cat "${ART}/uvicorn.log" >&2 || true
+    exit 1
+  fi
 }
 
 kill_tree() {
@@ -94,24 +150,8 @@ stop_next() {
 cleanup() {
   local rc=$?
   stop_next
-  if [[ -n "${UVICORN_PID}" ]]; then
-    local children=""
-    children="$(pgrep -P "${UVICORN_PID}" 2>/dev/null || true)"
-    if kill -0 "${UVICORN_PID}" 2>/dev/null; then
-      # shellcheck disable=SC2086
-      kill ${UVICORN_PID} ${children} 2>/dev/null || true
-      local i
-      for i in 1 2 3 4 5 6 7 8 9 10; do
-        kill -0 "${UVICORN_PID}" 2>/dev/null || break
-        sleep 0.1
-      done
-      if kill -0 "${UVICORN_PID}" 2>/dev/null; then
-        # shellcheck disable=SC2086
-        kill -9 ${UVICORN_PID} ${children} 2>/dev/null || true
-      fi
-      wait "${UVICORN_PID}" 2>/dev/null || true
-    fi
-  fi
+  stop_pid "${UVICORN_PID}"
+  stop_pid "${LIMIT_PID}"
   if [[ "${rc}" -ne 0 ]]; then
     log "verify: FAILED (exit ${rc}). evidence kept at ${ART}"
   fi
@@ -165,33 +205,10 @@ export CAPITALCITE_TRACE_FILE="${ART}/spans.jsonl"
 write capitalcite.trace.file "${CAPITALCITE_TRACE_FILE}"
 export AUDIT_LOG_PATH="${ART}/audit.live.jsonl"
 write audit.path "${AUDIT_LOG_PATH}"
+export CORS_ORIGINS="https://verify.example"
+write cors.origins "${CORS_ORIGINS}"
 
-uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
-  >"${ART}/uvicorn.log" 2>&1 &
-UVICORN_PID=$!
-write uvicorn.pid "${UVICORN_PID}"
-
-ready=0
-i=0
-while [[ "${i}" -lt 60 ]]; do
-  if ! kill -0 "${UVICORN_PID}" 2>/dev/null; then
-    log "verify: uvicorn pid ${UVICORN_PID} exited before ready"
-    cat "${ART}/uvicorn.log" >&2 || true
-    exit 1
-  fi
-  if curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  i=$((i + 1))
-  sleep 0.25
-done
-
-if [[ "${ready}" -ne 1 ]]; then
-  log "verify: timed out waiting for GET /health on port ${PORT}"
-  cat "${ART}/uvicorn.log" >&2 || true
-  exit 1
-fi
+start_main_uvicorn
 
 log "verify: doctor GET /health"
 set +e
@@ -227,6 +244,12 @@ if body.get("service") != "capitalcite":
 version = body.get("version")
 if not isinstance(version, str) or not version.strip():
     errors.append(f"version={version!r}")
+git_sha = body.get("git_sha")
+if not isinstance(git_sha, str) or not git_sha.strip():
+    errors.append(f"git_sha={git_sha!r}")
+point_count = body.get("point_count")
+if isinstance(point_count, bool) or not isinstance(point_count, int) or point_count < 0:
+    errors.append(f"point_count={point_count!r}")
 if errors:
     sys.stderr.write("verify: /health JSON failed: " + ", ".join(errors) + "\n")
     sys.exit(1)
@@ -234,6 +257,165 @@ print(json.dumps(body, sort_keys=True))
 PY
 
 log "verify: doctor passed (/health JSON ok)"
+
+log "verify: CORS allowed and denied origins"
+set +e
+curl -sS -D "${ART}/cors.allowed.headers" -o "${ART}/cors.allowed.body" \
+  -H "Origin: https://verify.example" \
+  "http://127.0.0.1:${PORT}/health" \
+  >"${ART}/cors.allowed.curl.err" 2>&1
+cors_allowed_rc=$?
+curl -sS -D "${ART}/cors.denied.headers" -o "${ART}/cors.denied.body" \
+  -H "Origin: https://denied.example" \
+  "http://127.0.0.1:${PORT}/health" \
+  >"${ART}/cors.denied.curl.err" 2>&1
+cors_denied_rc=$?
+set -e
+write cors.allowed.exit "${cors_allowed_rc}"
+write cors.denied.exit "${cors_denied_rc}"
+if [[ "${cors_allowed_rc}" -ne 0 || "${cors_denied_rc}" -ne 0 ]]; then
+  log "verify: CORS curl failed"
+  exit 1
+fi
+uv run python - "${ART}/cors.allowed.headers" "${ART}/cors.denied.headers" <<'PY'
+import sys
+from pathlib import Path
+
+
+def origin(path: str) -> str | None:
+    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.lower().startswith("access-control-allow-origin:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+allowed = origin(sys.argv[1])
+denied = origin(sys.argv[2])
+errors = []
+if allowed != "https://verify.example":
+    errors.append(f"allowed={allowed!r}")
+if denied is not None:
+    errors.append(f"denied={denied!r}")
+if errors:
+    sys.stderr.write("verify: CORS failed: " + ", ".join(errors) + "\n")
+    sys.exit(1)
+print(f"allowed={allowed}")
+PY
+log "verify: CORS ok"
+
+log "verify: ask rate limit on a second uvicorn"
+LIMIT_PORT="$(uv run python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+write limit.port "${LIMIT_PORT}"
+LIMIT_QDRANT="${ART}/qdrant-limit"
+mkdir -p "${LIMIT_QDRANT}"
+ASK_RATE_LIMIT=2 \
+  ASK_RATE_WINDOW_S=60 \
+  QDRANT_PATH="${LIMIT_QDRANT}" \
+  AUDIT_LOG_PATH="${ART}/audit.limit.jsonl" \
+  uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${LIMIT_PORT}" \
+  >"${ART}/limit.uvicorn.log" 2>&1 &
+LIMIT_PID=$!
+write limit.pid "${LIMIT_PID}"
+limit_ready=0
+i=0
+while [[ "${i}" -lt 40 ]]; do
+  if ! kill -0 "${LIMIT_PID}" 2>/dev/null; then
+    log "verify: rate-limit uvicorn exited before ready"
+    cat "${ART}/limit.uvicorn.log" >&2 || true
+    exit 1
+  fi
+  if curl -sf "http://127.0.0.1:${LIMIT_PORT}/health" >/dev/null 2>&1; then
+    limit_ready=1
+    break
+  fi
+  i=$((i + 1))
+  sleep 0.25
+done
+if [[ "${limit_ready}" -ne 1 ]]; then
+  log "verify: timed out waiting for rate-limit /health"
+  cat "${ART}/limit.uvicorn.log" >&2 || true
+  exit 1
+fi
+limit_payload='{"question":"What is the tier 1 capital buffer?","model":"fake"}'
+for n in 1 2 3 4; do
+  code="$(curl -sS -o "${ART}/limit.health.${n}.body" -w '%{http_code}' \
+    "http://127.0.0.1:${LIMIT_PORT}/health")"
+  write "limit.health.${n}.http" "${code}"
+  if [[ "${code}" != "200" ]]; then
+    log "verify: limited server /health ${n} returned ${code}"
+    exit 1
+  fi
+done
+for n in 1 2 3; do
+  code="$(curl -sS -D "${ART}/limit.ask.${n}.headers" -o "${ART}/limit.ask.${n}.body" \
+    -w '%{http_code}' \
+    -X POST "http://127.0.0.1:${LIMIT_PORT}/ask" \
+    -H 'content-type: application/json' \
+    -d "${limit_payload}")"
+  write "limit.ask.${n}.http" "${code}"
+done
+if [[ "$(cat "${ART}/limit.ask.1.http")" == "429" || "$(cat "${ART}/limit.ask.2.http")" == "429" ]]; then
+  log "verify: ask rate limit tripped before the third request"
+  exit 1
+fi
+if [[ "$(cat "${ART}/limit.ask.3.http")" != "429" ]]; then
+  log "verify: third POST /ask was $(cat "${ART}/limit.ask.3.http"), expected 429"
+  exit 1
+fi
+code="$(curl -sS -D "${ART}/limit.stream.headers" -o "${ART}/limit.stream.body" \
+  -w '%{http_code}' \
+  -X POST "http://127.0.0.1:${LIMIT_PORT}/ask/stream" \
+  -H 'content-type: application/json' \
+  -d "${limit_payload}")"
+write limit.stream.http "${code}"
+if [[ "${code}" != "429" ]]; then
+  log "verify: POST /ask/stream was ${code}, expected 429"
+  exit 1
+fi
+uv run python - "${ART}/limit.ask.3.headers" "${ART}/limit.ask.3.body" \
+  "${ART}/limit.stream.headers" "${ART}/limit.stream.body" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+
+def header(path: str, name: str) -> str | None:
+    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.lower().startswith(name.lower() + ":"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+errors = []
+for label, headers, body in (
+    ("ask", sys.argv[1], sys.argv[2]),
+    ("stream", sys.argv[3], sys.argv[4]),
+):
+    retry = header(headers, "retry-after")
+    content_type = header(headers, "content-type") or ""
+    if retry is None or not retry.isdigit() or int(retry) < 1:
+        errors.append(f"{label} retry-after={retry!r}")
+    if "text/event-stream" in content_type.lower():
+        errors.append(f"{label} content-type={content_type!r}")
+    payload = json.loads(Path(body).read_text(encoding="utf-8"))
+    detail = payload.get("detail")
+    if not isinstance(detail, str) or not detail.strip():
+        errors.append(f"{label} detail={detail!r}")
+if errors:
+    sys.stderr.write("verify: rate limit failed: " + ", ".join(errors) + "\n")
+    sys.exit(1)
+print("rate limit 429 json ok")
+PY
+after="$(curl -sS -o "${ART}/limit.health.after.body" -w '%{http_code}' \
+  "http://127.0.0.1:${LIMIT_PORT}/health")"
+write limit.health.after.http "${after}"
+if [[ "${after}" != "200" ]]; then
+  log "verify: /health after the limit returned ${after}"
+  exit 1
+fi
+stop_pid "${LIMIT_PID}"
+LIMIT_PID=""
+log "verify: ask rate limit ok"
 
 log "verify: capitalcite version"
 set +e
@@ -1274,6 +1456,8 @@ if [[ "${SMALL}" -eq 1 ]]; then
     --embedder bge-small
   )
   printf '%s\n' "${INDEX_CMD[*]}" >"${ART}/index.cmd"
+  log "verify: stopping uvicorn so capitalcite index can write the embedded store"
+  stop_main_uvicorn
   log "verify: ${INDEX_CMD[*]} (--small fixture index)"
   set +e
   "${INDEX_CMD[@]}" >"${ART}/index.1.out" 2>"${ART}/index.1.err"
@@ -1286,6 +1470,8 @@ if [[ "${SMALL}" -eq 1 ]]; then
     cat "${ART}/index.1.err" >&2 || true
     exit 1
   fi
+  log "verify: restarting uvicorn on the indexed store"
+  start_main_uvicorn
   ASK_FIXTURE='{"question":"What CET1 ratio did JPMorgan disclose?","k":10,"ticker":"JPM","model":"fake"}'
   ASK_FIXTURE_REFUSE='{"question":"What CET1 ratio did Wells Fargo disclose for year-end 2026?","k":10,"ticker":"WFC","model":"fake"}'
   ASK_FIXTURE_AGENT='{"question":"What CET1 ratio did JPMorgan disclose for 2024?","k":10,"path":"agent","model":"fake"}'
@@ -1337,6 +1523,52 @@ PY
   log "verify: POST /ask cc-h-013 / cc-u-001 UNVERIFIED (--small fixture index)"
   log "verify: POST /ask path=agent cc-h-055 / cc-h-061 UNVERIFIED (--small fixture index)"
   log "verify: POST /ask/stream fixture path ok"
+  log "verify: concurrent /ask/stream burst"
+  set +e
+  uv run python - "${PORT}" "${ART}" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+port = sys.argv[1]
+art = Path(sys.argv[2])
+payload = json.dumps({"question": "What is the tier 1 capital buffer?", "model": "fake"}).encode()
+
+
+def one(index: int) -> tuple[int, int, bytes]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/ask/stream",
+        data=payload,
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return index, resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return index, exc.code, exc.read()
+
+
+with ThreadPoolExecutor(max_workers=6) as pool:
+    results = [future.result() for future in as_completed(pool.submit(one, i) for i in range(6))]
+codes = [status for _, status, _ in sorted(results)]
+(art / "concurrent.stream.codes").write_text(" ".join(str(code) for code in codes) + "\n", encoding="utf-8")
+if codes != [200] * 6:
+    sys.stderr.write(f"verify: concurrent /ask/stream codes={codes}\n")
+    sys.exit(1)
+print("concurrent_stream_http_200=6")
+PY
+  concurrent_rc=$?
+  set -e
+  write concurrent.stream.exit "${concurrent_rc}"
+  if [[ "${concurrent_rc}" -ne 0 ]]; then
+    log "verify: concurrent /ask/stream burst failed"
+    exit 1
+  fi
+  log "verify: concurrent /ask/stream burst ok"
   if [[ -f "${ART}/spans.jsonl" && -s "${ART}/spans.jsonl" ]]; then
     log "verify: span JSONL after fixture /ask"
     uv run python - "${ART}/spans.jsonl" <<'PY'
@@ -1388,6 +1620,8 @@ else
     --embedder bge-small
   )
   printf '%s\n' "${INDEX_CMD[*]}" >"${ART}/index.cmd"
+  log "verify: stopping uvicorn so capitalcite index can write the embedded store"
+  stop_main_uvicorn
   log "verify: ${INDEX_CMD[*]} (1/2)"
   set +e
   "${INDEX_CMD[@]}" >"${ART}/index.1.out" 2>"${ART}/index.1.err"
@@ -1400,10 +1634,14 @@ else
     cat "${ART}/index.1.err" >&2 || true
     exit 1
   fi
+  log "verify: restarting uvicorn on the indexed store"
+  start_main_uvicorn
 
   Q013='{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":5}'
   post_search search.repro.1 "${Q013}"
 
+  log "verify: stopping uvicorn so capitalcite index can write the embedded store"
+  stop_main_uvicorn
   log "verify: ${INDEX_CMD[*]} (2/2)"
   set +e
   "${INDEX_CMD[@]}" >"${ART}/index.2.out" 2>"${ART}/index.2.err"
@@ -1416,6 +1654,8 @@ else
     cat "${ART}/index.2.err" >&2 || true
     exit 1
   fi
+  log "verify: restarting uvicorn on the reindexed store"
+  start_main_uvicorn
 
   post_search search.repro.2 "${Q013}"
   post_search search.cc-h-013.hybrid "${Q013}"
@@ -2479,6 +2719,96 @@ else
   log "verify: Docker not available; skipped compose and Qdrant"
 fi
 
+if docker info >/dev/null 2>&1; then
+  DOCKER=(docker)
+elif sudo -n docker info >/dev/null 2>&1; then
+  DOCKER=(sudo -n docker)
+else
+  DOCKER=()
+fi
+if [[ ${#DOCKER[@]} -eq 0 ]]; then
+  write image.skipped "UNVERIFIED: docker is not installed or this user cannot talk to the daemon"
+  log "verify: image UNVERIFIED (no usable docker)"
+else
+  log "verify: make image IMAGE=capitalcite:verify"
+  set +e
+  make image IMAGE=capitalcite:verify >"${ART}/image.build.out" 2>"${ART}/image.build.err"
+  image_build_rc=$?
+  set -e
+  write image.build.exit "${image_build_rc}"
+  if [[ "${image_build_rc}" -ne 0 ]]; then
+    log "verify: make image failed"
+    cat "${ART}/image.build.err" >&2 || true
+    exit 1
+  fi
+  log "verify: CLI help from the image"
+  set +e
+  "${DOCKER[@]}" run --rm --entrypoint capitalcite capitalcite:verify --help \
+    >"${ART}/image.help.out" 2>"${ART}/image.help.err"
+  image_help_rc=$?
+  set -e
+  write image.help.exit "${image_help_rc}"
+  if [[ "${image_help_rc}" -ne 0 ]]; then
+    log "verify: image capitalcite --help failed"
+    cat "${ART}/image.help.err" >&2 || true
+    exit 1
+  fi
+  if ! plain "${ART}/image.help.out" | grep -q "ingest"; then
+    log "verify: image --help missing ingest"
+    exit 1
+  fi
+  IMAGE_PORT="$(uv run python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+  write image.port "${IMAGE_PORT}"
+  image_cid="$("${DOCKER[@]}" run -d --name "capitalcite-verify-${TS}" \
+    -e SEC_USER_AGENT='capitalcite-verify you@example.com' \
+    -p "127.0.0.1:${IMAGE_PORT}:8000" \
+    capitalcite:verify)"
+  image_cleanup() {
+    "${DOCKER[@]}" stop "${image_cid}" >/dev/null 2>&1 || true
+    "${DOCKER[@]}" rm -f "${image_cid}" >/dev/null 2>&1 || true
+  }
+  trap 'image_cleanup; cleanup' EXIT INT TERM
+  image_ready=0
+  for _ in $(seq 1 40); do
+    if body="$(curl -sf "http://127.0.0.1:${IMAGE_PORT}/health")"; then
+      printf '%s\n' "$body" >"${ART}/image.health.body"
+      image_ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [[ "${image_ready}" -ne 1 ]]; then
+    "${DOCKER[@]}" logs "${image_cid}" >"${ART}/image.health.log" 2>&1 || true
+    image_cleanup
+    trap cleanup EXIT INT TERM
+    log "verify: image /health did not return 200"
+    exit 1
+  fi
+  image_cleanup
+  trap cleanup EXIT INT TERM
+  uv run python - "${ART}/image.health.body" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+body = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+errors = []
+sha = body.get("git_sha")
+count = body.get("point_count")
+if body.get("status") != "ok":
+    errors.append(f"status={body.get('status')!r}")
+if not isinstance(sha, str) or not sha.strip():
+    errors.append(f"git_sha={sha!r}")
+if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+    errors.append(f"point_count={count!r}")
+if errors:
+    sys.stderr.write("verify: image /health failed: " + ", ".join(errors) + "\n")
+    sys.exit(1)
+print(json.dumps({"git_sha": sha, "point_count": count}))
+PY
+  log "verify: image /health ok"
+fi
+
 web_ask() {
   if [[ -f "${ART}/stream.unreachable" ]]; then
     write web.unreachable "POST /ask/stream was unverified"
@@ -2722,6 +3052,20 @@ web_ask
     echo "qdrant skipped ($(cat "${ART}/qdrant.skipped"))"
   else
     echo "qdrant.health.exit $(cat "${ART}/qdrant.health.exit")"
+  fi
+  echo "cors.allowed.exit $(cat "${ART}/cors.allowed.exit")"
+  echo "limit.ask.3.http $(cat "${ART}/limit.ask.3.http")"
+  echo "limit.stream.http $(cat "${ART}/limit.stream.http")"
+  echo "limit.health.after.http $(cat "${ART}/limit.health.after.http")"
+  if [[ -f "${ART}/concurrent.stream.codes" ]]; then
+    echo "concurrent.stream.codes $(cat "${ART}/concurrent.stream.codes")"
+    echo "concurrent.stream.exit $(cat "${ART}/concurrent.stream.exit")"
+  fi
+  if [[ -f "${ART}/image.skipped" ]]; then
+    echo "image skipped ($(cat "${ART}/image.skipped"))"
+  else
+    echo "image.help.exit $(cat "${ART}/image.help.exit")"
+    echo "image.health $(cat "${ART}/image.health.body")"
   fi
   echo "artifacts ${ART}"
 } | tee "${ART}/summary.txt"

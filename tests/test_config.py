@@ -93,6 +93,67 @@ def test_ask_model_openai_env_is_not_rewritten_to_fake(monkeypatch: pytest.Monke
         build_structured_model("openai", api_key=None, openai_model="gpt-4o-mini")
 
 
+def test_cors_origins_strip_blanks(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("CORS_ORIGINS", " https://example.com , , https://other.example ")
+    settings = Settings()
+    assert settings.cors_origins == ("https://example.com", "https://other.example")
+    monkeypatch.setenv("CORS_ORIGINS", " , ")
+    settings = Settings()
+    assert settings.cors_origins == ()
+
+
+def test_cors_origins_reject_star(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("CORS_ORIGINS", "*")
+    with pytest.raises(ValidationError):
+        Settings()
+    monkeypatch.setenv("CORS_ORIGINS", "https://example.com,*")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_ask_rate_window_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("ASK_RATE_WINDOW_S", "0")
+    with pytest.raises(ValidationError):
+        Settings()
+    monkeypatch.setenv("ASK_RATE_WINDOW_S", "-1")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_trusted_proxy_hops_rejects_negative(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "-1")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_ask_rate_limit_rejects_negative(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("ASK_RATE_LIMIT", "-1")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_blank_git_sha_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("GIT_SHA", "  ")
+    settings = Settings()
+    assert settings.git_sha is None
+
+
+def test_policy_defaults_are_closed() -> None:
+    settings = Settings.model_validate({"sec_user_agent": "capitalcite-tests tests@example.com"})
+    assert settings.cors_origins == ()
+    assert settings.ask_rate_limit == 0
+    assert settings.ask_rate_window_s == 60.0
+    assert settings.trusted_proxy_hops == 0
+    assert settings.embed_threads == 0
+    assert settings.git_sha is None
+
+
 def test_env_example_defaults_ask_model_to_fake() -> None:
     from pathlib import Path
 
@@ -100,3 +161,9 @@ def test_env_example_defaults_ask_model_to_fake() -> None:
     assert "\nASK_MODEL=fake\n" in text
     assert "\n# ASK_MODEL=openai\n" in text
     assert "\nASK_MODEL=openai\n" not in text
+    assert "\nCORS_ORIGINS=\n" in text
+    assert "\nASK_RATE_LIMIT=0\n" in text
+    assert "\nASK_RATE_WINDOW_S=60\n" in text
+    assert "\nTRUSTED_PROXY_HOPS=0\n" in text
+    assert "\nEMBED_THREADS=0\n" in text
+    assert "\nGIT_SHA=\n" in text

@@ -1,17 +1,20 @@
-"""Liveness probe. Does not talk to Qdrant or Langfuse.
+"""Liveness probe. HTTP 200 when the process is up.
 
-Readiness checks against those services belong on a later /ready route once
-retrieval is wired. /health staying process-local keeps CI and `uvicorn`
-honest without requiring docker compose.
+point_count is best-effort. A missing index, a down store, or any error
+becomes 0. This route does not talk to Langfuse and does not return 503.
 """
 
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
+
+from capitalcite.config import Settings, get_settings
+from capitalcite.retrieval import point_count
+from capitalcite.trace import git_sha as trace_git_sha
 
 router = APIRouter(tags=["health"])
 
@@ -20,6 +23,11 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     service: str = "capitalcite"
     version: str = Field(description="Installed package version.")
+    git_sha: str = Field(description="Build revision, or unknown when git is unavailable.")
+    point_count: int = Field(
+        ge=0,
+        description="Points in the configured index. 0 when the index cannot be read.",
+    )
 
 
 def _package_version() -> str:
@@ -29,7 +37,32 @@ def _package_version() -> str:
         return "0.0.0"
 
 
+def _reported_sha(settings: Settings) -> str:
+    if settings.git_sha is not None:
+        return settings.git_sha
+    return trace_git_sha()
+
+
+async def _point_count(request: Request) -> int:
+    from capitalcite.api.app import retrieval_setup
+
+    setup = retrieval_setup(request.app)
+    if setup is None:
+        return 0
+    try:
+        return await point_count(setup)
+    except Exception:
+        return 0
+
+
 @router.get("/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
+async def health(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HealthResponse:
     """Return 200 when the API process is up."""
-    return HealthResponse(version=_package_version())
+    return HealthResponse(
+        version=_package_version(),
+        git_sha=_reported_sha(settings),
+        point_count=await _point_count(request),
+    )
