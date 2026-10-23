@@ -1,5 +1,3 @@
-"""Trimmed companyfacts and call-report snapshots, plus the one writer for them."""
-
 from __future__ import annotations
 
 import hashlib
@@ -30,7 +28,7 @@ _CERT = re.compile(r"[1-9][0-9]{0,6}")
 
 
 class MetricsError(Exception):
-    """Base for extract failures."""
+    pass
 
 
 class MetricsInputError(MetricsError):
@@ -42,8 +40,6 @@ class MetricsUnavailable(MetricsError):
 
 
 class Cert(BaseModel):
-    """FDIC certificate as a decimal string. No leading zero."""
-
     model_config = ConfigDict(frozen=True, extra="forbid")
     value: str
 
@@ -65,8 +61,6 @@ class LeadBank(BaseModel):
 
 
 class LeadLink(BaseModel):
-    """The on-disk map. Ticker and certificate only."""
-
     model_config = ConfigDict(frozen=True, extra="forbid")
     ticker: str
     cert: str
@@ -100,8 +94,6 @@ class SnapshotMetadata(BaseModel):
 
 
 class CallReportRow(BaseModel):
-    """One call-report period. Every column is present. Missing numbers are null."""
-
     model_config = ConfigDict(frozen=True, extra="forbid")
     cert: Cert
     repdte: str
@@ -120,8 +112,6 @@ class CallReportRow(BaseModel):
 
 
 class Financials(BaseModel):
-    """A complete one-page call-report extract."""
-
     model_config = ConfigDict(frozen=True, extra="forbid")
     total: int = Field(ge=1)
     rows: tuple[CallReportRow, ...]
@@ -190,7 +180,6 @@ class ExtractReceipt:
 
 
 def require_companyfacts(body: bytes, company: HoldingCompany) -> None:
-    """JSON object whose facts object and numeric cik match this company."""
     payload = _object(body, "companyfacts")
     facts = payload.get("facts")
     if not isinstance(facts, dict):
@@ -200,7 +189,6 @@ def require_companyfacts(body: bytes, company: HoldingCompany) -> None:
 
 
 def require_financials(body: bytes, cert: Cert) -> Financials:
-    """One complete page of call-report rows for this certificate."""
     parsed = _parse_financials(body)
     for row in parsed.rows:
         if row.cert != cert:
@@ -258,17 +246,10 @@ def _ticker_ok(ticker: str) -> bool:
 
 
 class MetricsStore:
-    """Owner of raw/xbrl, raw/fdic/financials, and raw/metrics/lead_banks.json."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
     def write_run(self, loaded: LoadedSnapshots) -> ExtractReceipt:
-        """Project every body, then replace files. The link file is last.
-
-        sha256 covers the bytes written, which are the trim projection.
-        url stays the source URL.
-        """
         staged: list[_Staged] = []
         seen_tickers: set[str] = set()
         seen_certs: set[str] = set()

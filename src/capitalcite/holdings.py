@@ -1,13 +1,9 @@
-"""Holding companies whose lead bank we can name. Certificates are not stored here."""
-
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class HoldingCompany(BaseModel):
-    """One holding company. The lead bank's certificate is resolved later."""
-
     model_config = ConfigDict(frozen=True, extra="forbid")
     ticker: str
     cik: str
@@ -54,7 +50,6 @@ def holding_companies() -> tuple[HoldingCompany, ...]:
 
 
 def holding_company(ticker: str) -> HoldingCompany:
-    """Uppercase the ticker. Raise KeyError when it is not in the table."""
     symbol = ticker.strip().upper()
     for company in _COMPANIES:
         if company.ticker == symbol:

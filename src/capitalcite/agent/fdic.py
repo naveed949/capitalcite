@@ -55,12 +55,10 @@ class FakeFdicClient:
 
 
 def search_institutions_url(query: str) -> str:
-    """Tool search. NAME contains the query, limit 5, format=json."""
     return _institutions_url({"filters": f'NAME:"{query}"', "limit": "5", "format": "json"})
 
 
 def lead_institutions_url(legal_name: str) -> str:
-    """Exact NAME and ACTIVE:1, limit 10, format=json."""
     if '"' in legal_name:
         raise ValueError("lead bank name cannot contain a double quote")
     filters = f'NAME:"{legal_name}" AND ACTIVE:1'
@@ -68,7 +66,6 @@ def lead_institutions_url(legal_name: str) -> str:
 
 
 def institutions(payload: object) -> tuple[int | None, tuple[Institution, ...]]:
-    """Walk a BankFind page into Institution rows. A missing data list raises ValueError."""
     if not isinstance(payload, dict):
         raise ValueError("fdic_bankfind response was not an object")
     data = payload.get("data")

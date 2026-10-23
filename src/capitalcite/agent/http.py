@@ -32,17 +32,9 @@ class HttpxJsonClient:
         self._limiter = limiter
 
     async def get_bytes(self, url: str) -> bytes:
-        """Return response.content for a 200.
-
-        Acquire the limiter once when one is set. Map httpx.HTTPError to
-        ValueError('request failed for {url}'). Map any other status to
-        ValueError('HTTP {status} for {url}').
-        """
         try:
             if self._limiter is not None:
                 await self._limiter.acquire()
-            # Leave follow_redirects unset. A 301 must stay an error so a
-            # moved BankFind host cannot be swallowed as success.
             async with httpx.AsyncClient(
                 timeout=self._timeout,
                 transport=self._transport,

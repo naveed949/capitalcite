@@ -1,5 +1,3 @@
-"""Load companyfacts and lead-bank financials, then hand them to MetricsStore."""
-
 from __future__ import annotations
 
 import hashlib
@@ -43,7 +41,6 @@ class SnapshotBatch(Protocol):
 
 
 def financials_url(cert: Cert) -> str:
-    """GET {BANKFIND_ORIGIN}/financials for one certificate, one page."""
     params = {
         "filters": f"CERT:{cert}",
         "fields": ",".join(FINANCIAL_FIELDS),
@@ -56,7 +53,6 @@ def financials_url(cert: Cert) -> str:
 
 
 def format_fetched_at(moment: datetime) -> str:
-    """UTC YYYY-MM-DDTHH:MM:SSZ with no fraction."""
     if moment.tzinfo is None:
         raise MetricsInputError("fetched_at requires tzinfo")
     utc = moment.astimezone(UTC).replace(microsecond=0)
@@ -68,7 +64,6 @@ def utc_now() -> datetime:
 
 
 def one_lead(rows: tuple[Institution, ...], legal_name: str) -> str | None:
-    """Return the certificate when exactly one active row matches the legal name."""
     wanted = _collapse(legal_name)
     matched = [
         row.cert for row in rows if row.active and row.cert and _collapse(row.name) == wanted
@@ -79,8 +74,6 @@ def one_lead(rows: tuple[Institution, ...], legal_name: str) -> str | None:
 
 
 class LiveBatch:
-    """Resolve certificates, then fetch both bodies. Hold them until load returns."""
-
     def __init__(
         self,
         *,
@@ -156,8 +149,6 @@ class LiveBatch:
 
 
 class FixtureBatch:
-    """Offline batch. The manifest's only extra fact is the certificate."""
-
     def __init__(self, root: Path) -> None:
         self.root = root
 
@@ -183,7 +174,6 @@ async def run_extract(
     batch: SnapshotBatch,
     store: MetricsStore,
 ) -> ExtractReceipt:
-    """Load every company, check the pair, then write. A failed load writes nothing."""
     if not companies:
         raise MetricsInputError("metrics extract needs at least one ticker")
     tickers = [company.ticker for company in companies]
