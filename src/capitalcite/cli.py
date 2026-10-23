@@ -425,11 +425,12 @@ def metrics_extract(
         typer.echo(f"error: unknown ticker {exc.args[0]}", err=True)
         raise typer.Exit(code=1) from exc
 
-    settings = get_settings()
-    root = output_dir if output_dir is not None else settings.data_dir
     if fixtures:
+        root = output_dir if output_dir is not None else Path("data")
         batch: FixtureBatch | LiveBatch = FixtureBatch(FIXTURES)
     else:
+        settings = get_settings()
+        root = output_dir if output_dir is not None else settings.data_dir
         batch = LiveBatch(
             sec=HttpxJsonClient(
                 user_agent=settings.sec_user_agent,

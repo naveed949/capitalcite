@@ -27,8 +27,11 @@ send `SEC_USER_AGENT`. `ASK_MODEL=fake` still does not call either host.
 ## Write two series from one command
 
 A holding company has a ticker, a 10-digit CIK, and the lead bank's legal
-name. It has no certificate. Those legal names are the subsidiary names on
-the parent-to-child links in `evals/golden/graph_snapshot.json`. Production
+name. It has no certificate. The names for JPM, BAC, and WFC match the
+subsidiary names on the parent-to-child links in
+`evals/golden/graph_snapshot.json`. The name for C is the BankFind legal
+name `Citibank, National Association`. The graph abbreviation
+`CITIBANK, N.A.` returned zero active rows on 2026-10-23. Production
 extract does not read that file and does not read `fdic_cert`.
 
 The command looks up each legal name with an exact `NAME` filter and
@@ -67,26 +70,30 @@ JPM matched `JPMORGAN CHASE BANK, NATIONAL ASSOCIATION` at certificate 628.
 BAC matched `BANK OF AMERICA, NATIONAL ASSOCIATION` at 3510. WFC matched
 `WELLS FARGO BANK, NATIONAL ASSOCIATION` at 3511.
 
-`CITIBANK, N.A.` returned zero rows. A separate query for
+`CITIBANK, N.A.` returned zero rows. A query for
 `Citibank, National Association` returned certificate 7213. The holdings
-table keeps the graph subsidiary name, so this command exits 1 and creates
-no output directory:
+table stores that BankFind name. A four-ticker live extract on 2026-10-23
+exited 0 and printed:
 
 ```text
-capitalcite metrics extract --tickers JPM,BAC,WFC,C --output-dir /tmp/metrics-live-four
-error: lead bank name for C did not match one active institution
+lead ticker=JPM cert=628
+xbrl ticker=JPM bytes=7319235 sha256=ce6f78514efff0b86de7f1e08942dc7cb8944f318a90bdcded0ed85a43396dfd
+financials cert=628 rows=170 bytes=24396 sha256=10212f3e39209da5f7cd7607cf6710a115f849d9e2fd189578f64e8d1e8ad724
+lead ticker=BAC cert=3510
+xbrl ticker=BAC bytes=6285851 sha256=1f8b615b34a0e9cfadd2899f6a3722897c88e5953127e854a360eed9f6d7ebb9
+financials cert=3510 rows=170 bytes=24615 sha256=f537664564a64a9082f272c7e91cc3e597df91f0076a9f9add1b1530f1f77690
+lead ticker=WFC cert=3511
+xbrl ticker=WFC bytes=7126412 sha256=1cf414ac020eb8ee72d5870796c2ee4fe1eebdd31b15c4da250b011dd44ad934
+financials cert=3511 rows=170 bytes=24437 sha256=1080d7c25279b46e1ee2acff95a22f4636f77a36dfffd310b9e0d55525be8982
+lead ticker=C cert=7213
+xbrl ticker=C bytes=8368398 sha256=9d0035d4c4b7e43015584d9d3b5336d6a14d64e03744cc75afa90ffd0de94e3c
+financials cert=7213 rows=170 bytes=24601 sha256=ae755da8a0e81c6eb2c8e2daa23fa52c014b0ffbecf7e25ce059aac74efb45c2
+metrics extract xbrl=4 financials=4 output=/tmp/metrics-live-four
 ```
 
-The same command without `C` exited 0. It printed `rows=170` for
-certificates 628, 3510, and 3511. Trimmed companyfacts were 7319235 bytes
-for JPM, 6285851 bytes for BAC, and 7126412 bytes for WFC. The financials
-sha256 values matched the committed fixture files for those three
-certificates. Financials for certificate 7213, fetched directly in the same
-session, also had 170 rows. The fixture manifest records 7213 for `C`. The
-four-ticker command did not write that file.
-
 Those row counts are what BankFind returned. They are not a pass or fail
-check. Committed financials files are the trim of those pages. Committed
+check. The financials sha256 values matched the committed fixture files.
+Committed financials files are the trim of those pages. Committed
 companyfacts files keep two `Assets` observations so the git objects stay
 small. SEC companyfacts for CIK `0000070858` named the entity
 `BofA Finance LLC`.

@@ -44,7 +44,7 @@ _COMPANIES: tuple[HoldingCompany, ...] = (
     HoldingCompany(
         ticker="C",
         cik="0000831001",
-        lead_bank_name="CITIBANK, N.A.",
+        lead_bank_name="Citibank, National Association",
     ),
 )
 
