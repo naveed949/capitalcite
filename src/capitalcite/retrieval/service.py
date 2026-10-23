@@ -155,7 +155,11 @@ def open_qdrant_client(settings: Settings) -> AsyncQdrantClient:
 
 def create_retrieval_setup(settings: Settings) -> RetrievalSetup:
     """Production constructor. Does not load FastEmbed. Embedded stores open locally."""
-    embedder = build_embedder(EmbedderName(settings.embedder), settings.openai_api_key)
+    embedder = build_embedder(
+        EmbedderName(settings.embedder),
+        settings.openai_api_key,
+        threads=settings.embed_threads,
+    )
     return setup_retrieval(
         settings,
         client=open_qdrant_client(settings),

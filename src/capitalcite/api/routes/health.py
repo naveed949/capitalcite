@@ -9,11 +9,11 @@ from __future__ import annotations
 from importlib.metadata import PackageNotFoundError, version
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from capitalcite.config import Settings, get_settings
-from capitalcite.retrieval import RetrievalSetup, create_retrieval_setup, point_count
+from capitalcite.retrieval import point_count
 from capitalcite.trace import git_sha as trace_git_sha
 
 router = APIRouter(tags=["health"])
@@ -43,23 +43,26 @@ def _reported_sha(settings: Settings) -> str:
     return trace_git_sha()
 
 
-async def _point_count(settings: Settings) -> int:
-    setup: RetrievalSetup | None = None
+async def _point_count(request: Request) -> int:
+    from capitalcite.api.app import retrieval_setup
+
+    setup = retrieval_setup(request.app)
+    if setup is None:
+        return 0
     try:
-        setup = create_retrieval_setup(settings)
         return await point_count(setup)
     except Exception:
         return 0
-    finally:
-        if setup is not None:
-            await setup.aclose()
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthResponse:
+async def health(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HealthResponse:
     """Return 200 when the API process is up."""
     return HealthResponse(
         version=_package_version(),
         git_sha=_reported_sha(settings),
-        point_count=await _point_count(settings),
+        point_count=await _point_count(request),
     )

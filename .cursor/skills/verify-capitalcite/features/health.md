@@ -32,6 +32,7 @@ Preconditions:
 
 - Settings load at process start. A `SEC_USER_AGENT` without `@` means uvicorn never becomes ready; curl will hang or get connection refused. That is a launch failure, not a health-handler bug.
 - `/health` is not a readiness check. A 200 does not mean Qdrant, MinIO, or Langfuse are up. `point_count` 0 means the count could not be read. Prove Qdrant on [local-stack](./local-stack.md).
+- The process lifespan opens one store client. `/health` and `POST /ask` reuse it. Do not expect a second embedded client on the same `QDRANT_PATH` to succeed.
 - `TestClient(app).get("/health")` in pytest is not this feature. Proof requires a live uvicorn.
 - `make health` assumes port 8000. Verification uses a free port so it does not collide with a developer's server.
 - Default uvicorn bind is `127.0.0.1` in the helper. Curling `0.0.0.0` is wrong.

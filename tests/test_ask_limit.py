@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from capitalcite.api.app import create_app
-from capitalcite.api.ask_limit import AskLimiter
+from capitalcite.api.ask_limit import AskLimiter, forwarded_client
 from capitalcite.config import get_settings
 
 _BODY = {"question": "What is the tier 1 capital buffer?", "model": "fake"}
@@ -26,6 +26,73 @@ async def test_sliding_window_blocks_then_expires() -> None:
     assert blocked.retry_after_s == 8
     assert other.allowed is True
     assert later.allowed is True
+
+
+def test_forwarded_client_uses_rightmost_trusted_hop() -> None:
+    peer = "198.51.100.1"
+    assert forwarded_client(peer, "203.0.113.9, 192.0.2.10", 0) == peer
+    assert forwarded_client(peer, "203.0.113.9, 192.0.2.10", 1) == "192.0.2.10"
+    assert forwarded_client(peer, "198.51.100.8, 203.0.113.9, 192.0.2.10", 2) == "203.0.113.9"
+
+
+def test_forwarded_client_ignores_forged_leftmost_and_short_headers() -> None:
+    peer = "198.51.100.1"
+    assert forwarded_client(peer, "203.0.113.9", 1) == peer
+    assert forwarded_client(peer, "   ,  , ", 1) == peer
+    assert forwarded_client(peer, None, 1) == peer
+    assert forwarded_client(peer, "203.0.113.9, 192.0.2.10", 1) == "192.0.2.10"
+    assert forwarded_client(peer, "198.51.100.8, 192.0.2.10", 1) == "192.0.2.10"
+
+
+async def test_max_keys_evicts_the_oldest_address() -> None:
+    limiter = AskLimiter(limit=1, window_s=100, max_keys=2)
+    assert (await limiter.hit("203.0.113.1", 1.0)).allowed is True
+    assert (await limiter.hit("203.0.113.1", 2.0)).allowed is False
+    assert (await limiter.hit("203.0.113.2", 3.0)).allowed is True
+    assert (await limiter.hit("203.0.113.3", 4.0)).allowed is True
+    assert (await limiter.hit("203.0.113.1", 5.0)).allowed is True
+
+
+def test_trusted_hops_key_on_proxy_appended_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prepare(monkeypatch, tmp_path, limit="1")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    get_settings.cache_clear()
+    with TestClient(create_app()) as client:
+        first = client.post(
+            "/ask",
+            json=_BODY,
+            headers={"X-Forwarded-For": "203.0.113.9, 192.0.2.10"},
+        )
+        forged = client.post(
+            "/ask",
+            json=_BODY,
+            headers={"X-Forwarded-For": "198.51.100.8, 192.0.2.10"},
+        )
+        other = client.post(
+            "/ask",
+            json=_BODY,
+            headers={"X-Forwarded-For": "203.0.113.9, 192.0.2.11"},
+        )
+
+    assert first.status_code != 429
+    assert forged.status_code == 429
+    assert other.status_code != 429
+
+
+def test_malformed_forwarded_for_falls_back_to_peer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prepare(monkeypatch, tmp_path, limit="1")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    get_settings.cache_clear()
+    with TestClient(create_app()) as client:
+        first = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "   ,"})
+        second = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "203.0.113.9"})
+
+    assert first.status_code != 429
+    assert second.status_code == 429
 
 
 async def test_zero_limit_does_not_count() -> None:

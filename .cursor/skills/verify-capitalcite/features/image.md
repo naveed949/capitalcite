@@ -19,7 +19,7 @@
 
 Preconditions:
 
-- Docker can run `docker info`, or `sudo docker info` when the user is not in the docker group.
+- Docker can run `docker info`, or `sudo -n docker info` when the user is not in the docker group.
 - If neither works, write `image.skipped` with that reason and do not fail the rest of `./scripts/verify.sh`.
 - Do not copy `.env` into the image. Pass `SEC_USER_AGENT` at `docker run`.
 
@@ -32,7 +32,8 @@ Preconditions:
 ## Gotchas
 
 - The image sets `ASK_RATE_LIMIT=60`. Local Settings stay at 0 unless the environment sets the variable.
-- `HF_HUB_OFFLINE=1` is set in the runtime image so a missing cache file fails instead of downloading. The builder is the step that downloads `BAAI/bge-small-en-v1.5` and `Qdrant/bm25`.
+- `HF_HUB_OFFLINE=1` is set in the runtime image so a missing cache file fails instead of downloading. The builder pins `Qdrant/bge-small-en-v1.5-onnx-Q` and `Qdrant/bm25` by revision and checks the ONNX and tokenizer hashes.
+- `EMBED_THREADS` is 1 in the image so a 0.1 CPU host is not oversubscribed.
+- `scripts/measure_image.sh` records sequential asks and a concurrent `/ask/stream` burst under `--memory 512m`. `inspect_size_bytes` is the uncompressed layer size. `save_bytes` is `docker save`. `unpacked_root_bytes` is `du -sb /`. `cold_start_s` is first `/health` 200. `first_answer_s` is the first `/ask/stream`. An OOM is recorded. It is not rewritten into a success.
 - `QDRANT_PATH` in the image is `/app/qdrant`. That directory is owned by uid 65532.
-- `scripts/measure_image.sh` is the memory run. An OOM under `--memory 512m` is recorded. It is not rewritten into a success.
 - Without docker, `make image` prints `UNVERIFIED` and exits 0.

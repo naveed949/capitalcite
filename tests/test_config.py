@@ -123,6 +123,13 @@ def test_ask_rate_window_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> No
         Settings()
 
 
+def test_trusted_proxy_hops_rejects_negative(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "-1")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 def test_ask_rate_limit_rejects_negative(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
     monkeypatch.setenv("ASK_RATE_LIMIT", "-1")
@@ -142,6 +149,8 @@ def test_policy_defaults_are_closed() -> None:
     assert settings.cors_origins == ()
     assert settings.ask_rate_limit == 0
     assert settings.ask_rate_window_s == 60.0
+    assert settings.trusted_proxy_hops == 0
+    assert settings.embed_threads == 0
     assert settings.git_sha is None
 
 
@@ -155,4 +164,6 @@ def test_env_example_defaults_ask_model_to_fake() -> None:
     assert "\nCORS_ORIGINS=\n" in text
     assert "\nASK_RATE_LIMIT=0\n" in text
     assert "\nASK_RATE_WINDOW_S=60\n" in text
+    assert "\nTRUSTED_PROXY_HOPS=0\n" in text
+    assert "\nEMBED_THREADS=0\n" in text
     assert "\nGIT_SHA=\n" in text

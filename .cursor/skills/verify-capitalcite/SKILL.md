@@ -82,7 +82,8 @@ Stable handles (do not invent others):
 |---|---|---|
 | HTTP | `GET /health` | 200 + JSON body with `git_sha` and `point_count` |
 | HTTP | `GET /health` with `Origin` | `Access-Control-Allow-Origin` only for an origin in `CORS_ORIGINS` |
-| HTTP | `POST /ask` and `POST /ask/stream` with `ASK_RATE_LIMIT` | the request after the limit is 429 JSON with `Retry-After`. A second uvicorn keeps the main process unlimited |
+| HTTP | `POST /ask` and `POST /ask/stream` with `ASK_RATE_LIMIT` | the request after the limit is 429 JSON with `Retry-After`. A second uvicorn keeps the main process unlimited. `TRUSTED_PROXY_HOPS` is documented in `.env.example` |
+| HTTP | concurrent `POST /ask/stream` on the fixture index | six parallel streams return 200 |
 | Image | `make image` then `capitalcite --help` and `GET /health` | CLI help exit 0 and `/health` 200 with `point_count` at least 1. UNVERIFIED when docker cannot run |
 | CLI | `capitalcite version` | exit 0 + version string |
 | CLI | `capitalcite --help` | exit 0; lists `version` and `ingest` |
@@ -138,6 +139,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `health.body.json` | Raw `/health` body, including `git_sha` and `point_count` |
 | `cors.allowed.headers` / `cors.denied.headers` | Allowed origin echoes `Access-Control-Allow-Origin`. Denied origin has none |
 | `limit.ask.3.http` / `limit.stream.http` / `limit.stream.body` | Second uvicorn with `ASK_RATE_LIMIT=2`. Third `/ask` and the following `/ask/stream` are 429 JSON with `Retry-After` |
+| `concurrent.stream.codes` | Six parallel `/ask/stream` calls on the fixture index, all 200 |
 | `image.help.out` / `image.health.body` **or** `image.skipped` | `make image` then CLI help and `/health` inside the image, or UNVERIFIED when docker cannot run |
 | `health.exit` | curl exit code |
 | `health.headers` | HTTP status line |

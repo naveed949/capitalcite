@@ -77,8 +77,8 @@ GIT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 image:
 	@if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
 		docker build --build-arg GIT_SHA="$(GIT_SHA)" -t "$(IMAGE)" .; \
-	elif command -v docker >/dev/null 2>&1 && sudo docker info >/dev/null 2>&1; then \
-		sudo docker build --build-arg GIT_SHA="$(GIT_SHA)" -t "$(IMAGE)" .; \
+	elif command -v docker >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then \
+		sudo -n docker build --build-arg GIT_SHA="$(GIT_SHA)" -t "$(IMAGE)" .; \
 	elif command -v docker >/dev/null 2>&1; then \
 		echo "UNVERIFIED: docker is installed but this user cannot talk to the daemon"; \
 	else \

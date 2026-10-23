@@ -17,21 +17,26 @@ A fetch at boot would need Hugging Face for `BAAI/bge-small-en-v1.5` and
 image. The demo image has no `.git` and no network requirement at start.
 The builder copies `tests/fixtures/chunking/corpus`, runs
 `capitalcite chunk` and `capitalcite index --embedder bge-small`, and
-constructs both FastEmbed models so `FASTEMBED_CACHE_PATH=/app/fastembed`
-is populated. The runtime stage copies that cache and `/app/qdrant`, sets
+writes a pinned FastEmbed cache so `FASTEMBED_CACHE_PATH=/app/fastembed`
+is populated. `prefetch_fastembed_cache` calls
+`huggingface_hub.snapshot_download` with
+`Qdrant/bge-small-en-v1.5-onnx-Q@aa8f8b060edb00e03bfdd08813a2949946c8ba55`
+and `Qdrant/bm25@22b8d2af71a76161e18dd432d2cee0eefa66e412`, then checks
+the sha256 of `model_optimized.onnx`, `tokenizer.json`, and `english.txt`.
+The runtime stage copies that cache and `/app/qdrant`, sets
 `HF_HUB_OFFLINE=1`, and sets `GIT_SHA` from the build arg. `make image`
-passes `git rev-parse HEAD`.
+passes `git rev-parse HEAD`. Base images are pinned by digest.
 
 FastEmbed's offline check looks for `mock.file` and `tamil.txt` next to the
-`Qdrant/bm25` snapshot. That snapshot does not ship those names. Without
-them, `POST /ask` returned 422 with `Could not load model Qdrant/bm25 from
-any source.` The builder adds empty files and loads both models again with
-the hub offline. English stopwords still come from `english.txt`.
+`Qdrant/bm25` snapshot. That snapshot does not ship those names. The
+prefetch step adds empty files. English stopwords still come from
+`english.txt`.
 
-`/health` reads `point_count` with the same client the ask route uses, and
-turns any error into 0. It does not return 503 and it does not open
-Langfuse. verify.sh calls `/health` before an index exists, so a missing
-collection has to stay a 200.
+The lifespan opens one `RetrievalSetup` and stores it on `app.state`.
+`get_setup` and `/health` reuse that object. Shutdown closes it. A
+per-request client on an embedded `QDRANT_PATH` fails under concurrent
+`/ask` because the folder lock is exclusive. `/health` stays 200. A
+missing store or a count error is `point_count` 0.
 
 ## What one memory run showed
 
@@ -98,12 +103,16 @@ things. The record keeps both.
 
 ## One process, one counter
 
-`AskLimiter` keeps `dict[str, deque[float]]` of monotonic timestamps and
+`AskLimiter` keeps an `OrderedDict` of deques of monotonic timestamps and
 one `asyncio.Lock`. `ASK_RATE_LIMIT=0` does not count. The image sets `60`.
-Local Settings stay at `0`. The address is `request.client.host`, or
-`unknown` when the peer is missing. `X-Forwarded-For` is not read, because
-this process is not behind a proxy it trusts. A second replica has its own
-map. The cap is not a global quota.
+Local Settings stay at `0`. `TRUSTED_PROXY_HOPS` defaults to 0, so the
+address is the TCP peer. When it is N>0, the key is the X-Forwarded-For
+entry N positions from the right. The leftmost entry is never the key. A
+short or empty header falls back to the peer. Set the variable to the
+number of trusted reverse proxies in front of the app. The map evicts the
+oldest key once it holds 10_000 addresses. Expired timestamps on the
+current key drop on each hit. A short sweep of the oldest keys runs every
+32 hits. A second replica has its own map. The cap is not a global quota.
 
 The dependency sits on the ask router, so it runs before the handler.
 A 429 is JSON with `Retry-After`, including `POST /ask/stream`.
@@ -131,8 +140,17 @@ A shared store for the limiter would count across replicas. The demo image
 is one process. The record says the map does not cross a process boundary
 instead of adding another service.
 
-Trusting `X-Forwarded-For` would let a caller pick a fresh key. The peer
-address is the key.
+Trusting the leftmost `X-Forwarded-For` entry would let a caller pick a
+fresh key. hops=0 keeps the peer. hops=N uses only the hop the trusted
+proxy appended.
+
+Per-request Qdrant clients on one embedded path serialize behind a folder
+lock and fail under overlap. One lifespan client is the owner of that
+path.
+
+Resolving FastEmbed `revision/main` at build time would move when the hub
+moves. The builder pins the revisions CI already resolved and checks the
+file hashes.
 
 A sidecar Qdrant would keep the vector store out of the API image. The
 baked directory is `94877` bytes. A second container is not worth that.

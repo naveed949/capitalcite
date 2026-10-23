@@ -34,4 +34,5 @@ Preconditions:
 - The counter is not shared across processes. Two replicas each allow `ASK_RATE_LIMIT` requests.
 - The helper must give the limited uvicorn its own `QDRANT_PATH`. Embedded Qdrant allows one open at a time on a directory.
 - `ASK_RATE_LIMIT=0` is the local default. The image sets `60`.
-- Do not trust `X-Forwarded-For`. Two different forwarded values from the same TCP peer share one window.
+- `TRUSTED_PROXY_HOPS` defaults to 0. That uses the TCP peer. Set it to the number of trusted reverse proxies in front of the app. The key is then the X-Forwarded-For entry N positions from the right. A short header falls back to the peer.
+- The limiter drops the oldest address once it holds about 10_000 keys.

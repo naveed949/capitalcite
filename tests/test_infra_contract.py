@@ -26,11 +26,31 @@ def test_dockerfile_does_not_copy_env() -> None:
     assert "GIT_SHA" in text
     assert "BAAI/bge-small-en-v1.5" in text
     assert "Qdrant/bm25" in text
-    assert "mock.file" in text
-    assert "tamil.txt" in text
+    assert "prefetch_fastembed_cache" in text
+    pins = (ROOT / "src" / "capitalcite" / "retrieval" / "fastembed_pins.py").read_text(
+        encoding="utf-8"
+    )
+    assert "mock.file" in pins
+    assert "tamil.txt" in pins
     assert "HF_HUB_OFFLINE=1" in text
     assert "ASK_RATE_LIMIT" in text
+    assert "EMBED_THREADS=1" in text
     assert "UV_PROJECT_ENVIRONMENT=/app/.venv" in text
+    assert (
+        "ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:"
+        "e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58"
+    ) in text
+    assert (
+        "python:3.12-slim-bookworm@sha256:"
+        "6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70"
+    ) in text
+    assert "prefetch_fastembed_cache" in text
+    assert "aa8f8b060edb00e03bfdd08813a2949946c8ba55" in (
+        ROOT / "src" / "capitalcite" / "retrieval" / "fastembed_pins.py"
+    ).read_text(encoding="utf-8")
+    assert "22b8d2af71a76161e18dd432d2cee0eefa66e412" in (
+        ROOT / "src" / "capitalcite" / "retrieval" / "fastembed_pins.py"
+    ).read_text(encoding="utf-8")
 
 
 def test_dockerignore_keeps_secrets_out_of_build_context() -> None:
@@ -44,6 +64,7 @@ def test_make_image_passes_git_sha() -> None:
     text = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "IMAGE ?=" in text
     assert "--build-arg GIT_SHA=" in text
+    assert "sudo -n docker" in text
     assert "UNVERIFIED: docker is not installed" in text
 
 
@@ -99,6 +120,14 @@ def test_deploy_workflow_skips_without_secrets() -> None:
     image_at = text.index("docker build")
     deploy_at = text.index("--template-file infra/main.bicep")
     assert image_at < deploy_at
+
+
+def test_measure_workflow_is_dispatch_only() -> None:
+    text = (ROOT / ".github" / "workflows" / "measure.yml").read_text(encoding="utf-8")
+    assert "workflow_dispatch" in text
+    assert "measure_image.sh" in text
+    assert "pull_request:" not in text
+    assert "image-measure" in text
 
 
 def test_infra_workflow_does_not_login_to_azure() -> None:

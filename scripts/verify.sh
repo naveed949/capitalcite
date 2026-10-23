@@ -1474,6 +1474,52 @@ PY
   log "verify: POST /ask cc-h-013 / cc-u-001 UNVERIFIED (--small fixture index)"
   log "verify: POST /ask path=agent cc-h-055 / cc-h-061 UNVERIFIED (--small fixture index)"
   log "verify: POST /ask/stream fixture path ok"
+  log "verify: concurrent /ask/stream burst"
+  set +e
+  uv run python - "${PORT}" "${ART}" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+port = sys.argv[1]
+art = Path(sys.argv[2])
+payload = json.dumps({"question": "What is the tier 1 capital buffer?", "model": "fake"}).encode()
+
+
+def one(index: int) -> tuple[int, int, bytes]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/ask/stream",
+        data=payload,
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return index, resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return index, exc.code, exc.read()
+
+
+with ThreadPoolExecutor(max_workers=6) as pool:
+    results = [future.result() for future in as_completed(pool.submit(one, i) for i in range(6))]
+codes = [status for _, status, _ in sorted(results)]
+(art / "concurrent.stream.codes").write_text(" ".join(str(code) for code in codes) + "\n", encoding="utf-8")
+if codes != [200] * 6:
+    sys.stderr.write(f"verify: concurrent /ask/stream codes={codes}\n")
+    sys.exit(1)
+print("concurrent_stream_http_200=6")
+PY
+  concurrent_rc=$?
+  set -e
+  write concurrent.stream.exit "${concurrent_rc}"
+  if [[ "${concurrent_rc}" -ne 0 ]]; then
+    log "verify: concurrent /ask/stream burst failed"
+    exit 1
+  fi
+  log "verify: concurrent /ask/stream burst ok"
   if [[ -f "${ART}/spans.jsonl" && -s "${ART}/spans.jsonl" ]]; then
     log "verify: span JSONL after fixture /ask"
     uv run python - "${ART}/spans.jsonl" <<'PY'
@@ -2618,8 +2664,8 @@ fi
 
 if docker info >/dev/null 2>&1; then
   DOCKER=(docker)
-elif sudo docker info >/dev/null 2>&1; then
-  DOCKER=(sudo docker)
+elif sudo -n docker info >/dev/null 2>&1; then
+  DOCKER=(sudo -n docker)
 else
   DOCKER=()
 fi
@@ -2844,6 +2890,10 @@ fi
   echo "limit.ask.3.http $(cat "${ART}/limit.ask.3.http")"
   echo "limit.stream.http $(cat "${ART}/limit.stream.http")"
   echo "limit.health.after.http $(cat "${ART}/limit.health.after.http")"
+  if [[ -f "${ART}/concurrent.stream.codes" ]]; then
+    echo "concurrent.stream.codes $(cat "${ART}/concurrent.stream.codes")"
+    echo "concurrent.stream.exit $(cat "${ART}/concurrent.stream.exit")"
+  fi
   if [[ -f "${ART}/image.skipped" ]]; then
     echo "image skipped ($(cat "${ART}/image.skipped"))"
   else

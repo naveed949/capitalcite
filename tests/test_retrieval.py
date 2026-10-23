@@ -216,7 +216,7 @@ def test_openai_embedder_requires_key() -> None:
 
 
 async def test_fastembed_does_not_run_under_pytest() -> None:
-    embedder = FastEmbedEmbedder(spec_for(EmbedderName.BGE_SMALL))
+    embedder = FastEmbedEmbedder(spec_for(EmbedderName.BGE_SMALL), threads=1)
     with pytest.raises(RuntimeError, match="FastEmbed must not run"):
         await embedder.embed_query("cet1")
 

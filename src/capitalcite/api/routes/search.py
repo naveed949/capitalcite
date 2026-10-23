@@ -1,16 +1,14 @@
-"""Ranked citation search. The process lifespan does not open Qdrant."""
+"""Ranked citation search. The process lifespan opens one RetrievalSetup."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from capitalcite.config import Settings, get_settings
 from capitalcite.retrieval import (
-    EmbedderNotConfigured,
     Hit,
     IndexNotBuilt,
     IndexUnavailable,
@@ -18,7 +16,6 @@ from capitalcite.retrieval import (
     RetrievalSetup,
     collection_name,
     config_hash,
-    create_retrieval_setup,
     parse_filters,
     point_count,
     retrieve,
@@ -43,18 +40,14 @@ class SearchResponse(BaseModel):
     hits: list[Hit]
 
 
-async def get_setup(
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> AsyncIterator[RetrievalSetup]:
-    """Build a setup for this request. Lifespan does not call this."""
-    try:
-        setup = create_retrieval_setup(settings)
-    except EmbedderNotConfigured as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    try:
-        yield setup
-    finally:
-        await setup.aclose()
+async def get_setup(request: Request) -> AsyncIterator[RetrievalSetup]:
+    """Yield the lifespan setup. Do not close it. Shutdown owns that."""
+    from capitalcite.api.app import retrieval_setup
+
+    setup = retrieval_setup(request.app)
+    if setup is None:
+        raise HTTPException(status_code=503, detail="index unavailable")
+    yield setup
 
 
 @router.post("/search", response_model=SearchResponse)

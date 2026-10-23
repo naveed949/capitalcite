@@ -169,6 +169,20 @@ class Settings(BaseSettings):
         gt=0,
         description="Length of the ask rate window, in seconds.",
     )
+    trusted_proxy_hops: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Number of trusted reverse proxies in front of the app. "
+            "0 keys the ask limiter on the TCP peer. "
+            "N>0 keys on the X-Forwarded-For entry N positions from the right."
+        ),
+    )
+    embed_threads: int = Field(
+        default=0,
+        ge=0,
+        description=("ONNX threads for FastEmbed. 0 uses os.cpu_count() or 4. The image sets 1."),
+    )
     git_sha: str | None = Field(
         default=None,
         description=(

@@ -31,8 +31,8 @@ log() {
 
 if docker info >/dev/null 2>&1; then
   DOCKER=(docker)
-elif sudo docker info >/dev/null 2>&1; then
-  DOCKER=(sudo docker)
+elif sudo -n docker info >/dev/null 2>&1; then
+  DOCKER=(sudo -n docker)
 else
   DOCKER=()
 fi
@@ -50,10 +50,15 @@ for line in raw.splitlines():
         line.startswith(
             (
                 "Size=",
+                "inspect_size_bytes=",
+                "save_bytes=",
+                "unpacked_",
                 "cold_start",
+                "first_answer",
                 "health_json=",
                 "ask ",
                 "ask_http_",
+                "concurrent_",
                 "OOMKilled=",
                 "peak_",
                 "vmrss_kb_samples=",
@@ -87,7 +92,7 @@ docker run -d --memory 512m --memory-swap 512m -p 127.0.0.1::8000 -e SEC_USER_AG
 
 `--memory-swap 512m` is set equal to `--memory` so the cgroup cannot add swap past 512m. On this machine the script uses `sudo docker` when `docker info` is denied.
 
-`nproc` and `uptime` are in the raw log. Stats samples are `image-measure.stats.txt`. Container logs are `image-measure.container.log`. The `/health` body is `image-measure.health.json`. The first `/ask/stream` body is `image-measure.ask1.body`.
+`nproc` and `uptime` are in the raw log. This host reported `nproc=4`. `cold_start_s` is container start until the first `/health` 200, before FastEmbed loads. `first_answer_s` is that same start until the first `POST /ask/stream` finishes. `inspect_size_bytes` is `docker image inspect .Size` (uncompressed layers). `save_bytes` is `docker save | wc -c`. `unpacked_root_bytes` is `du -sb /` inside the running container. Stats samples are `image-measure.stats.txt`. Container logs are `image-measure.container.log`. The `/health` body is `image-measure.health.json`. The first `/ask/stream` body is `image-measure.ask1.body`.
 
 ## Raw lines
 
@@ -121,6 +126,11 @@ if ! "${DOCKER[@]}" image inspect "$IMAGE" --format 'Size={{.Size}}' | tee -a "$
   write_method
   exit 1
 fi
+inspect_size="$("${DOCKER[@]}" image inspect "$IMAGE" --format '{{.Size}}')"
+log "inspect_size_bytes=${inspect_size}"
+log "command: ${DOCKER[*]} save ${IMAGE} | wc -c"
+save_bytes="$("${DOCKER[@]}" save "$IMAGE" | wc -c | tr -d ' ')"
+log "save_bytes=${save_bytes}"
 
 # memory-swap equals --memory so the cgroup cannot add swap past 512m.
 RUN_CMD=(
@@ -227,6 +237,18 @@ if [[ "$health_ok" -eq 1 && -n "$port" ]]; then
       -d "$payload" || true)"
     if [[ "$i" -eq 1 ]]; then
       cp "$body_file" "$ASK1"
+      first_end_ns="$(date +%s%N)"
+      python3 - "$start_ns" "$first_end_ns" "$code" <<'PY' | tee -a "$RAW"
+import sys
+
+start = int(sys.argv[1])
+end = int(sys.argv[2])
+code = sys.argv[3]
+delta = end - start
+print(f"first_answer_http={code}")
+print(f"first_answer_ns={delta}")
+print(f"first_answer_s={delta / 1_000_000_000}")
+PY
     fi
     bytes="$(wc -c <"$body_file" | tr -d ' ')"
     log "ask ${i} http=${code:-none} bytes=${bytes}"
@@ -242,14 +264,62 @@ else
 fi
 log "ask_http_200=${ask_ok} ask_not_200=${ask_fail} codes=${ask_codes}"
 
+if [[ "$health_ok" -eq 1 && -n "$port" ]]; then
+  log "command: 6 parallel POST /ask/stream"
+  python3 - "$port" "$OUT" <<'PY' | tee -a "$RAW"
+import json
+import sys
+import urllib.error
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+port = sys.argv[1]
+out = Path(sys.argv[2])
+payload = json.dumps({"question": "What buffer did the filing describe?", "model": "fake"}).encode()
+
+
+def one(index: int) -> tuple[int, str, int]:
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/ask/stream",
+        data=payload,
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            body = resp.read()
+            return index, str(resp.status), len(body)
+    except urllib.error.HTTPError as exc:
+        return index, str(exc.code), len(exc.read())
+    except Exception as exc:
+        return index, f"err:{exc}", 0
+
+
+with ThreadPoolExecutor(max_workers=6) as pool:
+    rows = [future.result() for future in as_completed(pool.submit(one, i) for i in range(6))]
+rows.sort()
+ok = sum(1 for _, status, _ in rows if status == "200")
+codes = " ".join(status for _, status, _ in rows)
+(out / "image-measure.concurrent.codes").write_text(codes + "\n", encoding="utf-8")
+print(f"concurrent_http_200={ok} concurrent_not_200={6 - ok} concurrent_codes={codes}")
+for index, status, nbytes in rows:
+    print(f"concurrent {index + 1} http={status} bytes={nbytes}")
+PY
+else
+  log "concurrent_http_200=UNVERIFIED sequential asks did not run"
+fi
+
 log "command: ${DOCKER[*]} inspect State"
 "${DOCKER[@]}" inspect "$NAME" --format 'OOMKilled={{.State.OOMKilled}} Status={{.State.Status}} ExitCode={{.State.ExitCode}} Error={{.State.Error}}' | tee -a "$RAW" || true
 
 if "${DOCKER[@]}" inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q true; then
-  log "command: du -sb /app/fastembed /app/qdrant /app/.venv"
+  log "command: du -sb /app/fastembed /app/qdrant /app/.venv /"
   while IFS= read -r line; do
     log "disk ${line}"
-  done < <("${DOCKER[@]}" exec "$NAME" du -sb /app/fastembed /app/qdrant /app/.venv || true)
+  done < <("${DOCKER[@]}" exec "$NAME" du -sb /app/fastembed /app/qdrant /app/.venv / || true)
+  root_bytes="$("${DOCKER[@]}" exec "$NAME" du -sb / | awk '{print $1}')"
+  log "unpacked_root_bytes=${root_bytes}"
   log "command: /proc/1/status"
   "${DOCKER[@]}" exec "$NAME" cat /proc/1/status | tee -a "$RAW" || true
   if "${DOCKER[@]}" exec "$NAME" test -r /proc/1/smaps_rollup; then
