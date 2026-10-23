@@ -1,3 +1,5 @@
+"""Ranked citation search. The process lifespan opens one RetrievalSetup."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -38,6 +40,7 @@ class SearchResponse(BaseModel):
 
 
 async def get_setup(request: Request) -> RetrievalSetup:
+    """Return the lifespan setup. Shutdown closes it."""
     from capitalcite.api.app import retrieval_setup
 
     setup = retrieval_setup(request.app)

@@ -58,6 +58,7 @@ for line in raw.splitlines():
                 "health_json=",
                 "ask ",
                 "ask_http_",
+                "concurrent_kinds=",
                 "concurrent_",
                 "OOMKilled=",
                 "peak_",
@@ -92,7 +93,7 @@ docker run -d --memory 512m --memory-swap 512m -p 127.0.0.1::8000 -e SEC_USER_AG
 
 `--memory-swap 512m` is set equal to `--memory` so the cgroup cannot add swap past 512m. On this machine the script uses `sudo -n docker` when `docker info` is denied.
 
-`nproc` and `uptime` are in the raw log. This host reported `nproc=4`. `cold_start_s` is container start until the first `/health` 200, before FastEmbed loads. `first_answer_s` is that same start until the first `POST /ask/stream` finishes. `inspect_size_bytes` is `docker image inspect .Size` (uncompressed layers). `save_bytes` is `docker save | wc -c`. `unpacked_root_bytes` is `du -sb /` inside the running container. Stats samples are `image-measure.stats.txt`. Container logs are `image-measure.container.log`. The `/health` body is `image-measure.health.json`. The first `/ask/stream` body is `image-measure.ask1.body`.
+`nproc` and `uptime` are in the raw log. This host reported `nproc=4`. Timings came from that 4-CPU machine and will be slower on a fractional-CPU instance. `cold_start_s` is container start until the first `/health` 200, before FastEmbed loads. `first_answer_s` is that same start until the first `POST /ask/stream` finishes. `inspect_size_bytes` is the stored image size from `docker image inspect .Size`. `save_bytes` is the compressed `docker save | wc -c` stream. `unpacked_root_bytes` is the uncompressed root from `du -sb /` inside the running container. Stats samples are `image-measure.stats.txt`. Container logs are `image-measure.container.log`. The `/health` body is `image-measure.health.json`. The first `/ask/stream` body is `image-measure.ask1.body`.
 
 ## Raw lines
 
@@ -265,7 +266,7 @@ fi
 log "ask_http_200=${ask_ok} ask_not_200=${ask_fail} codes=${ask_codes}"
 
 if [[ "$health_ok" -eq 1 && -n "$port" ]]; then
-  log "command: 6 parallel POST /ask/stream"
+  log "command: 6 parallel mixed POST /ask, POST /ask/stream, GET /health"
   python3 - "$port" "$OUT" <<'PY' | tee -a "$RAW"
 import json
 import sys
@@ -277,34 +278,44 @@ from pathlib import Path
 port = sys.argv[1]
 out = Path(sys.argv[2])
 payload = json.dumps({"question": "What buffer did the filing describe?", "model": "fake"}).encode()
+jobs = ("ask", "stream", "health", "ask", "stream", "health")
 
 
-def one(index: int) -> tuple[int, str, int]:
-    req = urllib.request.Request(
-        f"http://127.0.0.1:{port}/ask/stream",
-        data=payload,
-        headers={"content-type": "application/json"},
-        method="POST",
-    )
+def one(index: int, kind: str) -> tuple[int, str, str, int]:
+    if kind == "health":
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/health", method="GET")
+    else:
+        path = "/ask" if kind == "ask" else "/ask/stream"
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}{path}",
+            data=payload,
+            headers={"content-type": "application/json"},
+            method="POST",
+        )
     try:
         with urllib.request.urlopen(req, timeout=180) as resp:
             body = resp.read()
-            return index, str(resp.status), len(body)
+            return index, kind, str(resp.status), len(body)
     except urllib.error.HTTPError as exc:
-        return index, str(exc.code), len(exc.read())
+        return index, kind, str(exc.code), len(exc.read())
     except Exception as exc:
-        return index, f"err:{exc}", 0
+        return index, kind, f"err:{exc}", 0
 
 
 with ThreadPoolExecutor(max_workers=6) as pool:
-    rows = [future.result() for future in as_completed(pool.submit(one, i) for i in range(6))]
+    rows = [
+        future.result()
+        for future in as_completed(pool.submit(one, i, jobs[i]) for i in range(6))
+    ]
 rows.sort()
-ok = sum(1 for _, status, _ in rows if status == "200")
-codes = " ".join(status for _, status, _ in rows)
+ok = sum(1 for _, _, status, _ in rows if status == "200")
+codes = " ".join(status for _, _, status, _ in rows)
+kinds = " ".join(kind for _, kind, _, _ in rows)
 (out / "image-measure.concurrent.codes").write_text(codes + "\n", encoding="utf-8")
+print(f"concurrent_kinds={kinds}")
 print(f"concurrent_http_200={ok} concurrent_not_200={6 - ok} concurrent_codes={codes}")
-for index, status, nbytes in rows:
-    print(f"concurrent {index + 1} http={status} bytes={nbytes}")
+for index, kind, status, nbytes in rows:
+    print(f"concurrent {index + 1} kind={kind} http={status} bytes={nbytes}")
 PY
 else
   log "concurrent_http_200=UNVERIFIED sequential asks did not run"

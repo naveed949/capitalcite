@@ -8,7 +8,7 @@ The API image answers from a fixture index and a FastEmbed cache that the
 build writes. Boot does not call EDGAR and does not download a model.
 `GET /health` stays HTTP 200 and adds `git_sha` plus a best-effort
 `point_count`. Browser origins are fail-closed. `POST /ask` and
-`POST /ask/stream` share one in-process limit per TCP peer.
+`POST /ask/stream` share one in-process limit per client address.
 
 ## Bake the index and the models
 
@@ -111,8 +111,9 @@ loads, not the Qdrant files.
 one `asyncio.Lock`. `ASK_RATE_LIMIT=0` does not count. The image sets `60`.
 Local Settings stay at `0`. `TRUSTED_PROXY_HOPS` defaults to 0, so the
 address is the TCP peer. When it is N>0, the key is the X-Forwarded-For
-entry N positions from the right. The leftmost entry is never the key. A
-short or empty header falls back to the peer. Set the variable to the
+entry N positions from the right. One trusted proxy and one client
+address is a one-entry header. A header shorter than N, or an empty
+header, falls back to the peer. Set the variable to the
 number of trusted reverse proxies in front of the app. The map evicts the
 oldest key once it holds 10_000 addresses. Expired timestamps on the
 current key drop on each hit. A short sweep of the oldest keys runs every
@@ -145,16 +146,19 @@ is one process. The record says the map does not cross a process boundary
 instead of adding another service.
 
 Trusting the leftmost `X-Forwarded-For` entry would let a caller pick a
-fresh key. hops=0 keeps the peer. hops=N uses only the hop the trusted
-proxy appended.
+fresh key. hops=0 keeps the peer. hops=N uses the entry N from the
+right. One proxy in front of the app is hops=1. The proxy's single
+appended client address is then the key. A header shorter than N falls
+back to the peer.
 
 Per-request Qdrant clients on one embedded path serialize behind a folder
 lock and fail under overlap. One lifespan client is the owner of that
 path.
 
-Resolving FastEmbed `revision/main` at build time would move when the hub
-moves. The builder pins the revisions CI already resolved and checks the
-file hashes.
+Writing `refs/main` with a trailing newline makes huggingface_hub look
+for `snapshots/<sha>\n`. The builder writes the SHA only. `capitalcite
+index` and the FastEmbed load check then run with `HF_HUB_OFFLINE=1`, so
+a miss fails the build instead of fetching `revision/main`.
 
 A sidecar Qdrant would keep the vector store out of the API image. The
 baked directory is `94877` bytes. A second container is not worth that.

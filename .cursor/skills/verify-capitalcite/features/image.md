@@ -32,8 +32,8 @@ Preconditions:
 ## Gotchas
 
 - The image sets `ASK_RATE_LIMIT=60`. Local Settings stay at 0 unless the environment sets the variable.
-- `HF_HUB_OFFLINE=1` is set in the runtime image so a missing cache file fails instead of downloading. The builder pins `Qdrant/bge-small-en-v1.5-onnx-Q` and `Qdrant/bm25` by revision and checks the ONNX and tokenizer hashes.
+- `HF_HUB_OFFLINE=1` is set after prefetch so index and the model-load check fail instead of fetching `revision/main`. The builder pins `Qdrant/bge-small-en-v1.5-onnx-Q` and `Qdrant/bm25` by revision and checks the ONNX, tokenizer, and config hashes.
 - `EMBED_THREADS` is 1 in the image so a 0.1 CPU host is not oversubscribed.
-- `scripts/measure_image.sh` records sequential asks and a concurrent `/ask/stream` burst under `--memory 512m`. `inspect_size_bytes` is the uncompressed layer size. `save_bytes` is `docker save`. `unpacked_root_bytes` is `du -sb /`. `cold_start_s` is first `/health` 200. `first_answer_s` is the first `/ask/stream`. An OOM is recorded. It is not rewritten into a success.
+- `scripts/measure_image.sh` records sequential asks and a mixed concurrent `/ask`, `/ask/stream`, and `/health` burst under `--memory 512m`. `inspect_size_bytes` is the stored image size from `docker image inspect`. `save_bytes` is the compressed `docker save` stream. `unpacked_root_bytes` is the uncompressed `du -sb /`. Timings came from a 4-CPU host and will be slower on a fractional-CPU instance. `cold_start_s` is first `/health` 200. `first_answer_s` is the first `/ask/stream`. An OOM is recorded. It is not rewritten into a success.
 - `QDRANT_PATH` in the image is `/app/qdrant`. That directory is owned by uid 65532.
 - Without docker, `make image` prints `UNVERIFIED` and exits 0.

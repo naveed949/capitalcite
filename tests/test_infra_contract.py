@@ -33,6 +33,9 @@ def test_dockerfile_does_not_copy_env() -> None:
     assert "mock.file" in pins
     assert "tamil.txt" in pins
     assert "HF_HUB_OFFLINE=1" in text
+    assert "export HF_HUB_OFFLINE=1" in text
+    assert "tokenizer_config.json" in pins
+    assert "special_tokens_map.json" in pins
     assert "ASK_RATE_LIMIT" in text
     assert "EMBED_THREADS=1" in text
     assert "UV_PROJECT_ENVIRONMENT=/app/.venv" in text

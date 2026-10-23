@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
 import pytest
@@ -37,11 +38,12 @@ def test_forwarded_client_uses_rightmost_trusted_hop() -> None:
 
 def test_forwarded_client_ignores_forged_leftmost_and_short_headers() -> None:
     peer = "198.51.100.1"
-    assert forwarded_client(peer, "203.0.113.9", 1) == peer
+    assert forwarded_client(peer, "203.0.113.9", 1) == "203.0.113.9"
     assert forwarded_client(peer, "   ,  , ", 1) == peer
     assert forwarded_client(peer, None, 1) == peer
     assert forwarded_client(peer, "203.0.113.9, 192.0.2.10", 1) == "192.0.2.10"
     assert forwarded_client(peer, "198.51.100.8, 192.0.2.10", 1) == "192.0.2.10"
+    assert forwarded_client(peer, "203.0.113.9", 2) == peer
 
 
 async def test_max_keys_evicts_the_oldest_address() -> None:
@@ -89,10 +91,37 @@ def test_malformed_forwarded_for_falls_back_to_peer(
     get_settings.cache_clear()
     with TestClient(create_app()) as client:
         first = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "   ,"})
-        second = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "203.0.113.9"})
+        second = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "   ,"})
+        single = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "203.0.113.9"})
 
     assert first.status_code != 429
     assert second.status_code == 429
+    assert single.status_code != 429
+
+
+def test_two_honest_single_entry_clients_get_separate_buckets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prepare(monkeypatch, tmp_path, limit="1")
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    get_settings.cache_clear()
+    with TestClient(create_app()) as client:
+        first = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "203.0.113.9"})
+        other = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "203.0.113.10"})
+        again = client.post("/ask", json=_BODY, headers={"X-Forwarded-For": "203.0.113.9"})
+
+    assert first.status_code != 429
+    assert other.status_code != 429
+    assert again.status_code == 429
+
+
+def test_sweep_oldest_drops_expired_keys() -> None:
+    limiter = AskLimiter(limit=2, window_s=10)
+    limiter._hits["203.0.113.1"] = deque([1.0])
+    limiter._hits["203.0.113.2"] = deque([50.0])
+    limiter._sweep_oldest(40.0, limit=8)
+    assert "203.0.113.1" not in limiter._hits
+    assert list(limiter._hits["203.0.113.2"]) == [50.0]
 
 
 async def test_zero_limit_does_not_count() -> None:

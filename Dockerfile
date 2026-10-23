@@ -15,7 +15,7 @@ RUN uv sync --frozen --no-dev --no-editable
 COPY tests/fixtures/chunking/corpus /tmp/corpus
 
 # The builder writes a pinned FastEmbed cache and the fixture index. It does
-# not call EDGAR. HF_HUB_OFFLINE is set only on the runtime stage, below.
+# not call EDGAR. Index and the model-load check run with HF_HUB_OFFLINE=1.
 ENV SEC_USER_AGENT="capitalcite-image build@example.com" \
     ASK_MODEL=fake \
     EMBEDDER=bge-small \
@@ -26,9 +26,11 @@ ENV SEC_USER_AGENT="capitalcite-image build@example.com" \
 
 RUN mkdir -p /app/fastembed /app/qdrant \
     && python -c 'from capitalcite.retrieval.fastembed_pins import prefetch_fastembed_cache; prefetch_fastembed_cache()' \
+    && export HF_HUB_OFFLINE=1 \
     && capitalcite chunk --input-dir /tmp/corpus --chunker section --output-dir /tmp/demo \
     && capitalcite index --input-dir /tmp/demo --embedder bge-small \
-    && python -c 'import os; os.environ["HF_HUB_OFFLINE"]="1"; from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
+    && python -c 'from pathlib import Path; from capitalcite.retrieval.fastembed_pins import verify_pinned_files; verify_pinned_files(Path("/app/fastembed"))' \
+    && python -c 'from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
 
 FROM python:3.12-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70 AS runtime
 
