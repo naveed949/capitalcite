@@ -61,6 +61,8 @@ def test_dockerignore_keeps_secrets_out_of_build_context() -> None:
     assert ".env" in text
     assert ".git" in text
     assert "!tests/fixtures/chunking/corpus" in text
+    assert "!tests/fixtures/metrics" in text
+    assert "!tests/fixtures/metrics/**" in text
 
 
 def test_make_image_passes_git_sha() -> None:

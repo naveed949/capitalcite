@@ -14,9 +14,11 @@ tests/*
 !tests/fixtures
 tests/fixtures/*
 !tests/fixtures/chunking
+!tests/fixtures/metrics
 tests/fixtures/chunking/*
 !tests/fixtures/chunking/corpus
 !tests/fixtures/chunking/corpus/**
+!tests/fixtures/metrics/**
 infra
 .env
 .env.*
