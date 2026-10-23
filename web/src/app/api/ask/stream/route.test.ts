@@ -81,6 +81,92 @@ describe("ask stream route", () => {
     expect(await response.json()).toEqual({ detail: "payload too large" });
   });
 
+  it("returns 413 from Content-Length without reading the body", async () => {
+    let pulled = 0;
+    let cancelled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1024;
+        controller.enqueue(new Uint8Array(1024).fill(0x61));
+      },
+      cancel() {
+        cancelled += 1;
+      },
+    });
+    const response = await POST(
+      new Request("http://127.0.0.1:3001/api/ask/stream", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(300 * 1024 * 1024),
+        },
+        duplex: "half",
+        body: stream,
+      } as RequestInit),
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ detail: "payload too large" });
+    expect(pulled).toBe(0);
+    expect(cancelled).toBe(1);
+  });
+
+  it("returns 413 without draining a chunked body past 16 KiB", async () => {
+    const chunk = new Uint8Array(4 * 1024).fill(0x61);
+    let pulled = 0;
+    let cancelled = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled += 1;
+      },
+    });
+    const response = await POST(
+      new Request("http://127.0.0.1:3001/api/ask/stream", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        duplex: "half",
+        body: stream,
+      } as RequestInit),
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ detail: "payload too large" });
+    expect(cancelled).toBe(1);
+    expect(pulled).toBeGreaterThan(16 * 1024);
+    expect(pulled).toBeLessThanOrEqual(20 * 1024);
+  });
+
+  it.each(['{"question":"What CET1 ratio did JPMorgan disclose?","model":"openai","x":NaN}', "[]", '"x"', "null"])(
+    "returns 400 and does not call upstream for %s",
+    async (body) => {
+      let called = 0;
+      server = createServer((_req, res) => {
+        called += 1;
+        res.writeHead(200);
+        res.end();
+      });
+      await new Promise<void>((resolve) => {
+        server?.listen(0, "127.0.0.1", resolve);
+      });
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("missing port");
+      process.env.CAPITALCITE_API_ORIGIN = `http://127.0.0.1:${address.port}`;
+
+      const response = await POST(
+        new Request("http://127.0.0.1:3001/api/ask/stream", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ detail: "invalid body" });
+      expect(called).toBe(0);
+    },
+  );
+
   it("returns 502 with a generic body when the API is unreachable", async () => {
     process.env.CAPITALCITE_API_ORIGIN = "http://127.0.0.1:1";
     const response = await POST(

@@ -43,9 +43,9 @@ test("gate denial appears on the agent timeline", async ({ page }) => {
 });
 
 test("cancel stops the UI and the API run", async ({ page }) => {
-  const logPath = process.env.CAPITALCITE_API_LOG;
-  if (logPath === undefined || logPath.length === 0) {
-    throw new Error("CAPITALCITE_API_LOG must point at the API log");
+  const markerPath = process.env.CAPITALCITE_CANCEL_MARKER;
+  if (markerPath === undefined || markerPath.length === 0) {
+    throw new Error("CAPITALCITE_CANCEL_MARKER must point at the cancel marker");
   }
   await page.goto("/");
   await page.getByLabel("Question").fill(cancelQuestion);
@@ -62,11 +62,11 @@ test("cancel stops the UI and the API run", async ({ page }) => {
   await expect
     .poll(() => {
       try {
-        return readFileSync(logPath, "utf8");
+        return readFileSync(markerPath, "utf8");
       } catch {
         return "";
       }
     }, { timeout: 15000 })
-    .toContain("ask stream cancelled by client");
+    .toContain("cancelled");
   await page.screenshot({ path: "test-results/cancelled.png", fullPage: true });
 });

@@ -6,7 +6,9 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 from collections.abc import AsyncGenerator, AsyncIterator, Sequence
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -90,6 +92,20 @@ SLOW_RETRIEVE_QUESTION = "Hold this retrieve so cancel can land"
 
 _INTERNAL_ERROR = ErrorEvent(status=500, detail="internal error")
 
+
+def _note_client_cancel() -> None:
+    logger.info("ask stream cancelled by client")
+    raw = os.environ.get("CAPITALCITE_CANCEL_MARKER", "").strip()
+    if not raw:
+        return
+    path = Path(raw)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("cancelled\n", encoding="utf-8")
+    except OSError:
+        logger.exception("could not write cancel marker")
+
+
 _SSE_START_HEADERS = [
     (b"cache-control", b"no-cache"),
     (b"content-type", b"text/event-stream"),
@@ -147,7 +163,7 @@ class _AskSSEResponse(Response):
                 if cancelled_by_client:
                     if current is not None:
                         current.uncancel()
-                    logger.info("ask stream cancelled by client")
+                    _note_client_cancel()
                     return
                 raise
             except ValueError as exc:
@@ -185,7 +201,7 @@ class _AskSSEResponse(Response):
                 raise
             if current is not None:
                 current.uncancel()
-            logger.info("ask stream cancelled by client")
+            _note_client_cancel()
         except Exception:
             if not started:
                 raise

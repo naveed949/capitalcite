@@ -262,6 +262,8 @@ async def test_disconnect_cancels_rag_retrieve_before_first_event(
             cancelled += 1
             raise
 
+    marker = tmp_path / "cancel.marker"
+    monkeypatch.setenv("CAPITALCITE_CANCEL_MARKER", str(marker))
     monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", _ORIGINAL_ASYNC_HTTP)
     monkeypatch.setattr(httpx.HTTPTransport, "handle_request", _ORIGINAL_SYNC_HTTP)
     monkeypatch.setattr("capitalcite.api.routes.ask.retrieve", slow_retrieve)
@@ -302,6 +304,7 @@ async def test_disconnect_cancels_rag_retrieve_before_first_event(
         assert finished == 0
         assert cancelled == 1
         assert "ask stream cancelled by client" in caplog.text
+        assert marker.read_text(encoding="utf-8") == "cancelled\n"
     finally:
         ask_logger.removeHandler(caplog.handler)
         server.should_exit = True
@@ -343,6 +346,7 @@ async def test_slow_retrieve_sleeps_only_for_the_cancel_question(
         settings = Settings.model_validate(
             {
                 "sec_user_agent": "capitalcite-tests tests@example.com",
+                "app_env": "test",
                 "CAPITALCITE_TEST_SLOW_RETRIEVE_MS": ms,
             }
         )

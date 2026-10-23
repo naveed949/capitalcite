@@ -129,6 +129,7 @@ jobs:
       APP_ENV: test
       ASK_MODEL: fake
       LANGFUSE_TRACING_ENABLED: "false"
+      LOG_LEVEL: INFO
     steps:
       - uses: actions/checkout@v4
 
@@ -151,13 +152,19 @@ jobs:
         run: pnpm --dir web install --frozen-lockfile
 
       - name: Cache Playwright browsers
+        id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
 
       - name: Install Chromium
-        run: pnpm --dir web exec playwright install chromium --with-deps
+        run: |
+          if [[ "${{ steps.playwright-cache.outputs.cache-hit }}" == "true" ]]; then
+            pnpm --dir web exec playwright install chromium
+          else
+            pnpm --dir web exec playwright install chromium --with-deps
+          fi
 
       - name: Index fixture filings
         run: |
@@ -182,6 +189,7 @@ jobs:
           GATE_POLICY: ${{ github.workspace }}/web/e2e/fixtures/deny-search.json
           CAPITALCITE_TEST_SLOW_RETRIEVE_MS: "4000"
           CAPITALCITE_API_LOG: ${{ runner.temp }}/e2e/uvicorn.log
+          CAPITALCITE_CANCEL_MARKER: ${{ runner.temp }}/e2e/cancel.marker
           CAPITALCITE_API_ORIGIN: http://127.0.0.1:8000
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:3001
           ASK_MODEL: fake
