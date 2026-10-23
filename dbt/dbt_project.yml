@@ -16,9 +16,6 @@ clean-targets:
   - "dbt_packages"
   - "logs"
 
-on-run-start:
-  - "{{ ensure_warehouse_dir() }}"
-
 seeds:
   capitalcite_warehouse:
     int_bank_entity_map:

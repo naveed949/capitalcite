@@ -43,7 +43,7 @@ Preconditions:
 - Duration, restatement, 8-K, later-DEF-14A, missing-prior-quarter, and Q4 derivation cases live in dbt `unit_tests` on `int_bank_financials_long` with synthetic given rows. They do not rewrite the committed companyfacts or Call Report snapshots.
 - Holding-company Q4 quarterly net income is FY minus the Q3 10-Q nine-month YTD when no three-month Q4 duration was filed. A 10-K reports the annual figure only. The fact stores `net_income_method` as `reported_3m` or `fy_minus_9m` and stores the nine-month accession on derived rows.
 - Collapse ranks 10-K/10-Q before other forms, then latest filed, for instants and durations. A later DEF 14A rounded FY does not beat the 10-K.
-- `on-run-start` creates `data/warehouse`. A fresh clone can extract and then run `--target dev` without a manual mkdir.
+- `data/warehouse` is in the tree. `metrics extract` also creates it if it is missing. A fresh clone can extract and then run `--target dev` without a manual mkdir.
 - FDIC `ASSET`, `DEP`, and `NETINC` stay in thousands of USD. Do not multiply by 1,000 and do not add them to holding-company whole-USD columns.
 - Profile paths default `DBT_PROJECT_DIR` to `dbt`. Snapshot globs fall back to the repo root. Set `DBT_PROJECT_DIR` only when the working directory is not the repo root.
 - `POST /ask` does not read the warehouse.

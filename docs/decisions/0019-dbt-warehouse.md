@@ -178,8 +178,9 @@ The `ci` build is the contract check. `dev` uses the same models on
 `data/raw`. Profile paths default `DBT_PROJECT_DIR` to `dbt`. Snapshot
 globs fall back to the repo root. The documented command from the repo
 root does not need the env var. CI runs that command once with
-`DBT_PROJECT_DIR` unset. `on-run-start` creates `data/warehouse` so a
-fresh clone can run `--target dev` after extract without a manual mkdir.
+`DBT_PROJECT_DIR` unset. `data/warehouse` is in the tree so DuckDB can
+open the file on a fresh clone. `metrics extract` also creates that
+directory if it is missing.
 
 ## Alternatives that lost
 
