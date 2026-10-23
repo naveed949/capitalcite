@@ -176,6 +176,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
+    { name = "duckdb" },
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx" },
     { name = "langfuse" },
@@ -205,6 +206,7 @@ metrics = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
+    { name = "duckdb", specifier = "==2.0.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115,<1" },
     { name = "httpx", specifier = ">=0.27,<1" },
     { name = "langfuse", specifier = ">=5,<6" },

@@ -6,14 +6,31 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+import duckdb
 import yaml
 
+from capitalcite.chunking.models import ChunkerName
+from capitalcite.chunking.tokens import count_tokens
 from capitalcite.gate.policy import BrokenPolicy, load_policy
-from capitalcite.metric_query import MetricCell, cells_equal, parse_metric_query
-from capitalcite.metric_query.cite import CiteKind, cite_kind
+from capitalcite.ingest.client import filing_index_url
+from capitalcite.metric_query import (
+    MetricCell,
+    cells_equal,
+    parse_metric_query,
+    run_metric_query,
+)
+from capitalcite.metric_query.cite import (
+    CitationBundle,
+    CitationResolver,
+    CiteKind,
+    SourceRef,
+    cite_kind,
+    hits_for,
+)
 from capitalcite.metric_query.query import (
     EntityLevel,
     MetricName,
+    MetricQuery,
     locked_level,
     render_figure,
 )
@@ -174,3 +191,241 @@ def test_cells_equal_uses_relative_tolerance_and_treats_null_as_a_cell() -> None
     assert cells_equal(empty, MetricCell(query=query, value=None))
     assert not cells_equal(empty, base)
     assert not cells_equal(base, MetricCell(query=other, value=Decimal("1")))
+
+
+_FDIC_URL = "https://banks.data.fdic.gov/api/financials?filters=REPDTE:20241231"
+_TEN_K = "0000019617-25-000270"
+_NINE_MONTH = "0000019617-24-000890"
+_CIK = "0000019617"
+
+
+class _FixedBackend:
+    def __init__(self, cell: MetricCell) -> None:
+        self._cell = cell
+
+    def execute(self, query: MetricQuery) -> MetricCell:
+        assert query == self._cell.query
+        return self._cell
+
+
+def _cell(metric: str, ticker: str, period: str, value: Decimal | None) -> MetricCell:
+    return MetricCell(
+        query=parse_metric_query(_wire(metric=metric, ticker=ticker, period=period)),
+        value=value,
+    )
+
+
+def _warehouse(path: Path) -> None:
+    connection = duckdb.connect(str(path))
+    connection.execute(
+        """
+        create table dim_bank (bank_key varchar, cik varchar);
+        create table fct_bank_financials_quarterly (
+            bank_key varchar,
+            ticker varchar,
+            quarter_id date,
+            entity_level varchar,
+            assets_sec_accn varchar,
+            deposits_sec_accn varchar,
+            net_income_sec_accn varchar,
+            net_income_method varchar,
+            net_income_nine_month_sec_accn varchar,
+            fdic_repdte varchar,
+            fdic_source_url varchar
+        );
+        """
+    )
+    connection.execute(
+        "insert into dim_bank values (?, ?), (?, ?)",
+        [
+            "JPM|holding_company",
+            _CIK,
+            "JPM|bank_subsidiary",
+            None,
+        ],
+    )
+    connection.execute(
+        """
+        insert into fct_bank_financials_quarterly values
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?),
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            "JPM|holding_company",
+            "JPM",
+            date(2024, 12, 31),
+            "holding_company",
+            None,
+            None,
+            _TEN_K,
+            "fy_minus_9m",
+            _NINE_MONTH,
+            None,
+            None,
+            "JPM|bank_subsidiary",
+            "JPM",
+            date(2024, 12, 31),
+            "bank_subsidiary",
+            None,
+            None,
+            None,
+            None,
+            None,
+            "20241231",
+            _FDIC_URL,
+        ],
+    )
+    connection.close()
+
+
+def test_fdic_quote_ends_the_first_sentence_on_the_figure(tmp_path: Path) -> None:
+    warehouse = tmp_path / "facts.duckdb"
+    _warehouse(warehouse)
+    cell = _cell("total_deposits", "JPM", "2024-12-31", Decimal("1234.50"))
+    result = run_metric_query(
+        _wire(),
+        backend=_FixedBackend(cell),
+        citations=CitationResolver(warehouse),
+    )
+    assert result.ok is True
+    assert result.hits and len(result.hits) == 1
+    assert result.value == "1234.5"
+    assert result.detail == "1234.5"
+    assert result.args["ticker"] == "jpm"
+    hit = result.hits[0]
+    first, rest = hit.chunk.text.split(". ", 1)
+    assert first == "total_deposits for JPM at 2024-12-31 is 1234.5"
+    assert "thousand" not in first
+    assert rest == (f"Unit is thousands of USD. FDIC REPDTE 20241231. Source {_FDIC_URL}")
+    assert hit.chunk.text.count("1234.5") == 1
+    assert hit.chunk.ticker == "JPM"
+    assert hit.chunk.period == "2024-12-31"
+    assert hit.chunk.section == "total_deposits"
+    assert hit.chunk.doc_id == "fdic:20241231"
+    assert hit.chunk.source_url == _FDIC_URL
+    assert hit.chunk.accession == ""
+    assert hit.chunk.start == 0
+    assert hit.chunk.end == len(hit.chunk.text)
+    assert hit.chunk.offset == 0
+    assert hit.chunk.header_prefix == ""
+    assert hit.chunk.chunker is ChunkerName.FIXED
+    assert hit.chunk.token_count == count_tokens(hit.chunk.text)
+    assert hit.chunk.token_count >= 1
+    assert hit.score == 1.0
+
+
+def test_percent_quote_repeats_the_figure_with_a_percent_sign() -> None:
+    cell = _cell("nim", "BAC", "2024-09-30", Decimal("2.450"))
+    source = SourceRef(
+        kind="fdic",
+        doc_id="fdic:20240930",
+        source_url="https://example.test/nim",
+        label="REPDTE 20240930",
+    )
+    hit = hits_for(cell, CitationBundle(sources=(source,)))[0]
+    first, rest = hit.chunk.text.split(". ", 1)
+    assert first == "nim for BAC at 2024-09-30 is 2.45"
+    assert rest.startswith("Unit is percent. The figure is 2.45%.")
+    assert "FDIC REPDTE 20240930. Source https://example.test/nim" in hit.chunk.text
+    assert hit.chunk.section == "nim"
+
+
+def test_fy_minus_9m_returns_two_hits_with_the_same_figure(tmp_path: Path) -> None:
+    warehouse = tmp_path / "facts.duckdb"
+    _warehouse(warehouse)
+    cell = _cell("holding_company_net_income", "JPM", "2024-12-31", Decimal("49000000000"))
+    result = run_metric_query(
+        _wire(metric="holding_company_net_income"),
+        backend=_FixedBackend(cell),
+        citations=CitationResolver(warehouse),
+    )
+    assert result.ok is True
+    assert len(result.hits) == 2
+    figure = "49000000000"
+    assert result.value == figure
+    accessions = []
+    for hit in result.hits:
+        assert figure in hit.chunk.text
+        assert hit.chunk.period == "2024-12-31"
+        assert hit.chunk.section == "holding_company_net_income"
+        assert hit.chunk.source_url == filing_index_url(_CIK, hit.chunk.accession)
+        first = hit.chunk.text.split(". ", 1)[0]
+        assert first.endswith(f"is {figure}")
+        assert "Unit is whole USD." in hit.chunk.text
+        accessions.append(hit.chunk.accession)
+    assert accessions == [_TEN_K, _NINE_MONTH]
+
+
+def test_growth_cites_only_the_current_fdic_row(tmp_path: Path) -> None:
+    warehouse = tmp_path / "facts.duckdb"
+    _warehouse(warehouse)
+    cell = _cell("deposits_qoq_growth", "JPM", "2024-12-31", Decimal("0.05"))
+    result = run_metric_query(
+        _wire(metric="deposits_qoq_growth"),
+        backend=_FixedBackend(cell),
+        citations=CitationResolver(warehouse),
+    )
+    assert result.ok is True
+    assert len(result.hits) == 1
+    assert result.hits[0].chunk.doc_id == "fdic:20241231"
+    assert "Unit is a ratio." in result.hits[0].chunk.text
+    assert result.hits[0].chunk.text.count("0.05") == 1
+
+
+def test_null_cell_returns_no_hit_and_no_figure() -> None:
+    cell = _cell("total_deposits", "JPM", "2024-12-31", None)
+
+    class _NullBackend:
+        def execute(self, query: MetricQuery) -> MetricCell:
+            return cell
+
+    result = run_metric_query(
+        _wire(),
+        backend=_NullBackend(),
+        citations=CitationResolver(Path("/no/such/warehouse.duckdb")),
+    )
+    assert result.ok is False
+    assert result.hits == ()
+    assert result.detail == "metric cell is null"
+    assert not any(character.isdigit() for character in result.detail)
+
+
+def test_missing_accession_hides_the_figure(tmp_path: Path) -> None:
+    warehouse = tmp_path / "facts.duckdb"
+    _warehouse(warehouse)
+    connection = duckdb.connect(str(warehouse))
+    connection.execute(
+        """
+        insert into dim_bank values (?, ?)
+        """,
+        ["BAC|holding_company", _CIK],
+    )
+    connection.execute(
+        """
+        insert into fct_bank_financials_quarterly values
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            "BAC|holding_company",
+            "BAC",
+            date(2024, 12, 31),
+            "holding_company",
+            None,
+            None,
+            _TEN_K,
+            "fy_minus_9m",
+            None,
+            None,
+            None,
+        ],
+    )
+    connection.close()
+    cell = _cell("holding_company_net_income", "BAC", "2024-12-31", Decimal("99.5"))
+    result = run_metric_query(
+        _wire(metric="holding_company_net_income", ticker="BAC"),
+        backend=_FixedBackend(cell),
+        citations=CitationResolver(warehouse),
+    )
+    assert result.ok is False
+    assert result.hits == ()
+    assert "99.5" not in result.detail
