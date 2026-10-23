@@ -1946,6 +1946,76 @@ fi
 log "verify: capitalcite eval --suite graph --small ok"
 cat "${ART}/eval-graph-small.out"
 
+log "verify: capitalcite metrics extract --help"
+set +e
+uv run capitalcite metrics extract --help >"${ART}/metrics.help.out" 2>"${ART}/metrics.help.err"
+metrics_help_rc=$?
+set -e
+write metrics.help.exit "${metrics_help_rc}"
+if [[ "${metrics_help_rc}" -ne 0 ]]; then
+  log "verify: capitalcite metrics extract --help failed"
+  cat "${ART}/metrics.help.err" >&2 || true
+  exit 1
+fi
+if ! plain "${ART}/metrics.help.out" | grep -q -- "--fixtures" \
+  || ! plain "${ART}/metrics.help.out" | grep -q -- "--tickers"; then
+  log "verify: metrics extract --help missing --fixtures or --tickers"
+  cat "${ART}/metrics.help.out" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite metrics extract --help ok"
+
+log "verify: capitalcite metrics extract --fixtures"
+set +e
+uv run capitalcite metrics extract --tickers JPM,BAC,WFC,C --fixtures \
+  --output-dir "${ART}/metrics" \
+  >"${ART}/metrics.out" 2>"${ART}/metrics.err"
+metrics_rc=$?
+set -e
+write metrics.exit "${metrics_rc}"
+if [[ "${metrics_rc}" -ne 0 ]] \
+  || ! grep -q "metrics extract xbrl=4 financials=4" "${ART}/metrics.out"; then
+  log "verify: metrics extract --fixtures failed"
+  cat "${ART}/metrics.out" >&2 || true
+  cat "${ART}/metrics.err" >&2 || true
+  exit 1
+fi
+find "${ART}/metrics" -type f | sort >"${ART}/metrics.files.txt"
+uv run python - "${ART}/metrics" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+leads_path = root / "raw" / "metrics" / "lead_banks.json"
+if not leads_path.is_file():
+    sys.stderr.write("verify: lead_banks.json missing\n")
+    sys.exit(1)
+leads = json.loads(leads_path.read_text(encoding="utf-8"))
+if len(leads) != 4:
+    sys.stderr.write("verify: lead_banks.json does not list four tickers\n")
+    sys.exit(1)
+for link in leads:
+    payloads = (
+        root / "raw" / "xbrl" / f"{link['ticker']}.json",
+        root / "raw" / "fdic" / "financials" / f"{link['cert']}.json",
+    )
+    for payload in payloads:
+        meta_path = payload.with_name(f"{payload.stem}.metadata.json")
+        if not payload.is_file() or not meta_path.is_file():
+            sys.stderr.write(f"verify: missing snapshot for {payload.name}\n")
+            sys.exit(1)
+        body = payload.read_bytes()
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        digest = hashlib.sha256(body).hexdigest()
+        if meta.get("sha256") != digest or meta.get("bytes") != len(body):
+            sys.stderr.write(f"verify: sha256 does not match {payload.name}\n")
+            sys.exit(1)
+PY
+log "verify: capitalcite metrics extract --fixtures ok"
+cat "${ART}/metrics.out"
+
 log "verify: eval tags on span JSONL"
 uv run python - "${ART}/spans.jsonl" <<'PY'
 import json
@@ -2221,6 +2291,8 @@ fi
   echo "graph.load.exit $(cat "${ART}/graph.load.exit")"
   echo "graph.query.exit $(cat "${ART}/graph.query.exit")"
   echo "eval-graph-small.exit $(cat "${ART}/eval-graph-small.exit")"
+  echo "metrics.help.exit $(cat "${ART}/metrics.help.exit")"
+  echo "metrics.exit $(cat "${ART}/metrics.exit")"
   if [[ -f "${ART}/eval.skipped" ]]; then
     echo "eval skipped ($(cat "${ART}/eval.skipped"))"
   else
