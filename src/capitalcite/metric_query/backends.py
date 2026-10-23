@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import json
 import re
 import subprocess
+import tempfile
 from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -41,15 +44,21 @@ def where_clause(query: MetricQuery) -> str:
 
     Jinja Dimension and TimeDimension calls are fixed text. The ticker
     pattern excludes quotes. entity_level is the enum value.
+
+    deposits_qoq_growth keeps the quarter literal behind OR 1 = 1.
+    MetricFlow applies where before the offset, so a real time equality
+    removes the prior quarter and the growth cell is null. Execute keeps
+    the row whose metric_time__quarter is quarter_start.
     """
     ticker = query.ticker
     quarter = query.quarter_start().isoformat()
     level = query.entity_level.value
-    return (
-        "{{ Dimension('bank__ticker') }} = '" + ticker + "' AND "
-        "{{ TimeDimension('metric_time', 'quarter') }} = '" + quarter + "' AND "
-        "{{ Dimension('bank__entity_level') }} = '" + level + "'"
-    )
+    ticker_eq = "{{ Dimension('bank__ticker') }} = '" + ticker + "'"
+    time_eq = "{{ TimeDimension('metric_time', 'quarter') }} = '" + quarter + "'"
+    level_eq = "{{ Dimension('bank__entity_level') }} = '" + level + "'"
+    if query.metric is MetricName.DEPOSITS_QOQ_GROWTH:
+        return f"{ticker_eq} AND ({time_eq} OR 1 = 1) AND {level_eq}"
+    return f"{ticker_eq} AND {time_eq} AND {level_eq}"
 
 
 def mf_argv(
@@ -117,6 +126,39 @@ class Catalog(BaseModel):
         return found
 
 
+class LiveMetricFlow:
+    """Shells mf at execute time. This class does not import metricflow.
+
+    open_metric_query(backend_name="catalog") constructs CatalogSql only.
+    The image never constructs LiveMetricFlow.
+    """
+
+    def __init__(self, *, cwd: Path, env: Mapping[str, str]) -> None:
+        self._cwd = cwd
+        self._env = dict(env)
+
+    def execute(self, query: MetricQuery) -> MetricCell:
+        with tempfile.NamedTemporaryFile(
+            prefix="metric-query-", suffix=".csv", delete=False
+        ) as handle:
+            csv_path = Path(handle.name)
+        try:
+            completed = subprocess.run(
+                mf_argv(query, mode="csv", csv_path=csv_path),
+                cwd=self._cwd,
+                env=dict(self._env),
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if completed.returncode != 0:
+                raise MetricQueryError("metric query failed")
+            raw = csv_path.read_text(encoding="utf-8")
+        finally:
+            csv_path.unlink(missing_ok=True)
+        return _cell_from_rows(_csv_rows(raw), query)
+
+
 class CatalogSql:
     """Executes one precompiled statement. Opens DuckDB read_only per execute and closes it."""
 
@@ -138,14 +180,20 @@ class CatalogSql:
         connection = duckdb.connect(str(self._warehouse), read_only=True)
         try:
             try:
-                rows = connection.execute(statement, params).fetchall()
+                fetched = connection.execute(statement, params).fetchall()
             except duckdb.Error as exc:
                 raise MetricQueryError("metric query failed") from exc
         finally:
             connection.close()
-        if len(rows) != 1 or len(rows[0]) != 1:
-            raise MetricQueryError("metric query did not return one row")
-        return MetricCell(query=query, value=_decimal_or_none(rows[0][0]))
+        rows = [
+            {
+                "bank__ticker": "" if row[0] is None else str(row[0]),
+                "metric_time__quarter": "" if row[1] is None else str(row[1]),
+                query.metric.value: "" if row[2] is None else str(row[2]),
+            }
+            for row in fetched
+        ]
+        return _cell_from_rows(rows, query)
 
 
 def compile_catalog(path: Path, *, cwd: Path, env: Mapping[str, str]) -> None:
@@ -288,7 +336,43 @@ def _cast_metric(sql: str, metric: MetricName) -> str:
     if _METRIC_IDENT.fullmatch(metric.value) is None:
         raise MetricQueryError("metric query failed")
     inner = sql.strip().rstrip(";").strip()
-    return f"select cast({metric.value} as varchar) from ({inner}) as metric_cell"
+    return (
+        "select cast(bank__ticker as varchar), "
+        "cast(metric_time__quarter as varchar), "
+        f"cast({metric.value} as varchar) from ({inner}) as metric_cell"
+    )
+
+
+def _csv_rows(text: str) -> list[dict[str, str]]:
+    reader = csv.DictReader(io.StringIO(_ANSI.sub("", text).replace("\r\n", "\n")))
+    return list(reader)
+
+
+def _cell_from_rows(rows: list[dict[str, str]], query: MetricQuery) -> MetricCell:
+    """Keep the one row for query.quarter_start.
+
+    Growth SQL also returns other quarters, because the time predicate cannot
+    filter inputs without erasing the prior quarter.
+    """
+    matched: list[str | None] = []
+    for row in rows:
+        ticker = (row.get("bank__ticker") or "").strip()
+        quarter_raw = (row.get("metric_time__quarter") or "").strip()
+        if not quarter_raw:
+            raise MetricQueryError("metric query returned an unexpected quarter")
+        try:
+            quarter = date.fromisoformat(quarter_raw[:10])
+        except ValueError as exc:
+            raise MetricQueryError("metric query returned an unexpected quarter") from exc
+        if quarter != query.quarter_start():
+            continue
+        if ticker != query.ticker:
+            raise MetricQueryError("metric query returned an unexpected ticker")
+        raw_value = row.get(query.metric.value)
+        matched.append(None if raw_value is None else str(raw_value))
+    if len(matched) != 1:
+        raise MetricQueryError("metric query did not return one row")
+    return MetricCell(query=query, value=_decimal_or_none(matched[0]))
 
 
 def _decimal_or_none(raw: object) -> Decimal | None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import calendar
 import csv
 import io
+import math
 import os
 import re
 import subprocess
@@ -101,6 +102,17 @@ def test_rate_saved_queries_group_by_ticker() -> None:
         groups = [str(item) for item in query["query_params"]["group_by"]]
         assert any("bank__ticker" in item for item in groups), query["name"]
     assert rate_queries, "no saved query includes nim or efficiency_ratio"
+
+
+def test_rate_measures_aggregate_with_max() -> None:
+    catalog = _load_catalog()
+    measures = {
+        str(measure["name"]): measure
+        for model in _mapping_list(catalog, "semantic_models")
+        for measure in _mapping_list(model, "measures")
+    }
+    assert measures["fdic_nimy"]["agg"] == "max"
+    assert measures["fdic_eeffr"]["agg"] == "max"
 
 
 def _csv_without_null_deposits(text: str) -> str:
@@ -218,5 +230,9 @@ def test_mf_growth_cell_matches_adjacent_deposits(mf_query_stdout: str) -> None:
     prior_amount = float(rows[0][1])
     this_amount = float(rows[1][1])
     assert prior_amount != 0
-    assert float(printed_deposits) == this_amount
-    assert float(printed_growth) == (this_amount - prior_amount) / prior_amount
+    assert math.isclose(float(printed_deposits), this_amount, rel_tol=1e-12)
+    assert math.isclose(
+        float(printed_growth),
+        (this_amount - prior_amount) / prior_amount,
+        rel_tol=1e-12,
+    )

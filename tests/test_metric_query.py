@@ -30,6 +30,7 @@ from capitalcite.metric_query.backends import (
     Catalog,
     CatalogEntry,
     CatalogSql,
+    LiveMetricFlow,
     compile_catalog,
     load_catalog,
     mf_argv,
@@ -647,7 +648,10 @@ def test_catalog_sql_treats_null_and_blank_as_a_null_cell(tmp_path: Path) -> Non
         metric=MetricName.NIM,
         group_by=GroupBy.QUARTER_AND_TICKER,
         entity_level=EntityLevel.BANK_SUBSIDIARY,
-        sql=("select nim from figures where ticker = ? and quarter_start = ?"),
+        sql=(
+            "select ticker as bank__ticker, quarter_start as metric_time__quarter, "
+            "nim from figures where ticker = ? and quarter_start = ?"
+        ),
         param_order=("ticker", "quarter_start"),
     )
     catalog = Catalog(
@@ -719,3 +723,136 @@ def test_catalog_sql_rejects_a_level_mismatch_and_a_duplicate(tmp_path: Path) ->
 
 def _wire_query(metric: str) -> MetricQuery:
     return parse_metric_query(_wire(metric=metric))
+
+
+def test_growth_where_keeps_the_quarter_literal_without_filtering_inputs() -> None:
+    query = MetricQuery(
+        metric=MetricName.DEPOSITS_QOQ_GROWTH,
+        group_by=GroupBy.QUARTER_AND_TICKER,
+        ticker=SENTINEL_TICKER,
+        period=SENTINEL_QUARTER_END,
+        entity_level=locked_level(MetricName.DEPOSITS_QOQ_GROWTH),
+    )
+    text = where_clause(query)
+    assert text.index("ZZQZZQ") < text.index("1999-10-01") < text.index("bank_subsidiary")
+    assert "({{ TimeDimension('metric_time', 'quarter') }} = '1999-10-01' OR 1 = 1)" in text
+
+
+def test_catalog_sql_keeps_the_requested_quarter(tmp_path: Path) -> None:
+    warehouse = tmp_path / "warehouse.duckdb"
+    connection = duckdb.connect(str(warehouse))
+    connection.execute(
+        """
+        create table figures (
+            ticker varchar,
+            quarter_start varchar,
+            deposits_qoq_growth varchar
+        )
+        """
+    )
+    connection.execute(
+        "insert into figures values ('JPM', '2024-07-01', '0.10'), ('JPM', '2024-10-01', '0.25')"
+    )
+    connection.close()
+    entry = CatalogEntry(
+        metric=MetricName.DEPOSITS_QOQ_GROWTH,
+        group_by=GroupBy.QUARTER_AND_TICKER,
+        entity_level=EntityLevel.BANK_SUBSIDIARY,
+        sql=(
+            "select ticker as bank__ticker, quarter_start as metric_time__quarter, "
+            "deposits_qoq_growth from figures where ticker = ?"
+        ),
+        param_order=("ticker",),
+    )
+    catalog = Catalog(
+        version=1,
+        semantic_sha256="e" * 64,
+        duckdb="2.0.0",
+        entries=(entry,),
+    )
+    cell = CatalogSql(catalog, warehouse).execute(
+        parse_metric_query(_wire(metric="deposits_qoq_growth", period="2024-12-31"))
+    )
+    assert cell.value == Decimal("0.25")
+
+
+def _mf_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env["DBT_TARGET"] = "ci"
+    env["DBT_PROJECT_DIR"] = str(ROOT / "dbt")
+    env["DBT_PROFILES_DIR"] = str(ROOT / "dbt")
+    return env
+
+
+@pytest.mark.mf
+def test_committed_catalog_matches_compile_and_stale_bytes_differ(tmp_path: Path) -> None:
+    if os.environ.get("DBT_TARGET") != "ci":
+        raise AssertionError("DBT_TARGET must be ci before mf query")
+    compiled = tmp_path / "catalog.json"
+    compile_catalog(compiled, cwd=ROOT, env=_mf_env())
+    fresh = compiled.read_bytes()
+    assert fresh == QUERY_CATALOG.read_bytes()
+    payload = json.loads(fresh)
+    payload["semantic_sha256"] = "0" * 64
+    mutated_hash = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    assert mutated_hash.encode() != fresh
+    payload = json.loads(fresh)
+    payload["entries"][0]["sql"] = payload["entries"][0]["sql"] + " "
+    mutated_sql = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    assert mutated_sql.encode() != fresh
+
+
+_NULL_ON_FIXTURES = {
+    MetricName.HOLDING_COMPANY_DEPOSITS,
+    MetricName.HOLDING_COMPANY_NET_INCOME,
+}
+
+
+@pytest.mark.mf
+def test_catalog_matches_live_metricflow_on_golden_tickers() -> None:
+    if os.environ.get("DBT_TARGET") != "ci":
+        raise AssertionError("DBT_TARGET must be ci before mf query")
+    warehouse = ROOT / "dbt" / "target" / "ci.duckdb"
+    assert warehouse.is_file()
+    catalog = CatalogSql(load_catalog(QUERY_CATALOG), warehouse)
+    live = LiveMetricFlow(cwd=ROOT, env=_mf_env())
+    cases: list[tuple[str, str, MetricName]] = []
+    for ticker in ("JPM", "BAC", "WFC", "C"):
+        for metric in MetricName:
+            if metric in {
+                MetricName.HOLDING_COMPANY_ASSETS,
+                MetricName.HOLDING_COMPANY_DEPOSITS,
+                MetricName.HOLDING_COMPANY_NET_INCOME,
+            }:
+                continue
+            cases.append((ticker, "2026-06-30", metric))
+    for ticker in ("JPM", "BAC", "WFC"):
+        for metric in (
+            MetricName.HOLDING_COMPANY_ASSETS,
+            MetricName.HOLDING_COMPANY_DEPOSITS,
+            MetricName.HOLDING_COMPANY_NET_INCOME,
+        ):
+            cases.append((ticker, "2026-06-30", metric))
+    for metric in (
+        MetricName.HOLDING_COMPANY_ASSETS,
+        MetricName.HOLDING_COMPANY_DEPOSITS,
+        MetricName.HOLDING_COMPANY_NET_INCOME,
+    ):
+        cases.append(("C", "2025-12-31", metric))
+    for ticker, period, metric in cases:
+        query = parse_metric_query(_wire(metric=metric.value, ticker=ticker, period=period))
+        catalog_cell = catalog.execute(query)
+        live_cell = live.execute(query)
+        assert cells_equal(live_cell, catalog_cell), (
+            ticker,
+            period,
+            metric.value,
+            live_cell.value,
+            catalog_cell.value,
+        )
+        if metric in _NULL_ON_FIXTURES:
+            assert live_cell.value is None
+            assert catalog_cell.value is None
+        else:
+            assert live_cell.value is not None
+            assert catalog_cell.value is not None
