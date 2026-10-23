@@ -248,6 +248,8 @@ curl -s localhost:8000/search -H 'content-type: application/json' \
   -d '{"query":"What CET1 ratio did JPMorgan disclose?","mode":"hybrid","k":3,"ticker":"JPM"}'
 curl -s localhost:8000/ask -H 'content-type: application/json' \
   -d '{"question":"What CET1 ratio did JPMorgan disclose?","ticker":"JPM","model":"fake"}'
+curl -sN localhost:8000/ask/stream -H 'content-type: application/json' \
+  -d '{"question":"What CET1 ratio did JPMorgan disclose?","ticker":"JPM","model":"fake"}'
 curl -s localhost:8000/ask -H 'content-type: application/json' \
   -d '{"question":"What CET1 ratio did JPMorgan disclose for 2024?","path":"agent","model":"fake"}'
 uv run capitalcite gate decide --tool shell --args '{"cmd":"ls"}'
@@ -290,6 +292,8 @@ MCP server: [ADR 0015](docs/decisions/0015-mcp-server.md).
 This README: [ADR 0016](docs/decisions/0016-readme-demo.md).
 Write-up number check: [ADR 0017](docs/decisions/0017-writeup.md).
 Eval report pick and the fake-model default: [ADR 0018](docs/decisions/0018-eval-report-and-ask-default.md).
+Streaming answers: [ADR 0021](docs/decisions/0021-ask-stream.md).
+BankFind host and metrics extract: [ADR 0022](docs/decisions/0022-bankfind-host-and-metrics-extract.md).
 
 The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -302,6 +306,7 @@ The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 | Embedding | Local FastEmbed `bge-small` (default) and `minilm`, plus `openai-small` when `OPENAI_API_KEY` is set | `bge-small` measured; minilm UNVERIFIED |
 | Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with RRF. `POST /search` returns scores and citations | `capitalcite index`, `POST /search` |
 | Structured answers | `POST /ask` returns a citation copied from a retrieved chunk, or a refusal. `ASK_MODEL=fake` does not read `OPENAI_API_KEY` | `POST /ask` |
+| Streaming answers | `POST /ask/stream` is SSE of the same run. Frames reuse `PlanStep`, `TraceStep`, `Citation`, and `AskResponse` | `POST /ask/stream` |
 | Agent | `POST /ask` `path=agent` runs LangGraph plan → tools → the same `ask()` / `ground()` / `guard` | `POST /ask` `path=agent` |
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, `calculator`, `graph_query`. Unknown names are denied | agent tools |
 | Fail-closed gate | JSON allow-list. Unknown names, extra keys, and a policy-load failure are denies | `capitalcite gate` |

@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from capitalcite.api.ask_models import hoist_openapi_defs
 from capitalcite.api.routes.ask import router as ask_router
 from capitalcite.api.routes.health import router as health_router
 from capitalcite.api.routes.search import router as search_router
@@ -37,6 +38,27 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(search_router)
     application.include_router(ask_router)
+    generate = application.openapi
+
+    def openapi() -> dict[str, object]:
+        schema = generate()
+        hoist_openapi_defs(schema)
+        paths = schema.get("paths")
+        if isinstance(paths, dict):
+            stream = paths.get("/ask/stream")
+            if isinstance(stream, dict):
+                post = stream.get("post")
+                if isinstance(post, dict):
+                    responses = post.get("responses")
+                    if isinstance(responses, dict):
+                        ok = responses.get("200")
+                        if isinstance(ok, dict):
+                            content = ok.get("content")
+                            if isinstance(content, dict):
+                                content.pop("application/json", None)
+        return schema
+
+    application.openapi = openapi  # type: ignore[method-assign]
     return application
 
 
