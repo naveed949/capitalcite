@@ -1,5 +1,3 @@
-"""Companyfacts and lead-bank call-report snapshots."""
-
 from capitalcite.metrics.extract import FixtureBatch, LiveBatch, SnapshotBatch, run_extract
 from capitalcite.metrics.snapshot import (
     ExtractReceipt,
