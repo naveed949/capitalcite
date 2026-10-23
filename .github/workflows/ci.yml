@@ -69,7 +69,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Enable pnpm
         run: corepack enable && corepack prepare pnpm@10.33.4 --activate
@@ -120,3 +120,133 @@ jobs:
         env:
           DBT_PROJECT_DIR: ${{ github.workspace }}/dbt
         run: uv run --group metrics dbt docs generate --project-dir dbt --profiles-dir dbt --target ci
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+      ASK_MODEL: fake
+      LANGFUSE_TRACING_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package
+        run: uv sync --frozen
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.33.4 --activate
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}
+
+      - name: Install Chromium
+        run: pnpm --dir web exec playwright install chromium --with-deps
+
+      - name: Index fixture filings
+        run: |
+          mkdir -p "${RUNNER_TEMP}/e2e/chunk" "${RUNNER_TEMP}/e2e/qdrant"
+          uv run capitalcite chunk \
+            --input-dir tests/fixtures/chunking/corpus \
+            --output-dir "${RUNNER_TEMP}/e2e/chunk" \
+            --chunker section
+          QDRANT_PATH="${RUNNER_TEMP}/e2e/qdrant" uv run capitalcite index \
+            --input-dir "${RUNNER_TEMP}/e2e/chunk" \
+            --chunker section \
+            --embedder bge-small
+
+      - name: Build web
+        run: pnpm --dir web build
+        env:
+          ASK_MODEL: fake
+
+      - name: Run Playwright
+        env:
+          QDRANT_PATH: ${{ runner.temp }}/e2e/qdrant
+          GATE_POLICY: ${{ github.workspace }}/web/e2e/fixtures/deny-search.json
+          CAPITALCITE_TEST_SLOW_RETRIEVE_MS: "4000"
+          CAPITALCITE_API_LOG: ${{ runner.temp }}/e2e/uvicorn.log
+          CAPITALCITE_API_ORIGIN: http://127.0.0.1:8000
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3001
+          ASK_MODEL: fake
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/e2e"
+          cleanup() {
+            if [[ -f "${RUNNER_TEMP}/e2e/web.pid" ]]; then
+              kill "$(cat "${RUNNER_TEMP}/e2e/web.pid")" 2>/dev/null || true
+            fi
+            if [[ -f "${RUNNER_TEMP}/e2e/api.pid" ]]; then
+              kill "$(cat "${RUNNER_TEMP}/e2e/api.pid")" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+          uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port 8000 \
+            >"${CAPITALCITE_API_LOG}" 2>&1 &
+          echo $! > "${RUNNER_TEMP}/e2e/api.pid"
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -sf "http://127.0.0.1:8000/health" >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 0.5
+          done
+          if [[ "${ready}" -ne 1 ]]; then
+            echo "API did not become ready"
+            cat "${CAPITALCITE_API_LOG}" >&2 || true
+            exit 1
+          fi
+          pnpm --dir web exec next start --hostname 127.0.0.1 --port 3001 \
+            >"${RUNNER_TEMP}/e2e/next.log" 2>&1 &
+          echo $! > "${RUNNER_TEMP}/e2e/web.pid"
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -sf "http://127.0.0.1:3001/" >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 0.5
+          done
+          if [[ "${ready}" -ne 1 ]]; then
+            echo "Next did not become ready"
+            cat "${RUNNER_TEMP}/e2e/next.log" >&2 || true
+            exit 1
+          fi
+          pnpm --dir web exec playwright test
+
+      - name: Stop API and Next
+        if: always()
+        run: |
+          if [[ -f "${RUNNER_TEMP}/e2e/web.pid" ]]; then
+            kill "$(cat "${RUNNER_TEMP}/e2e/web.pid")" 2>/dev/null || true
+          fi
+          if [[ -f "${RUNNER_TEMP}/e2e/api.pid" ]]; then
+            kill "$(cat "${RUNNER_TEMP}/e2e/api.pid")" 2>/dev/null || true
+          fi
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-playwright
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore

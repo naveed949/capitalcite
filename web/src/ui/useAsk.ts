@@ -47,7 +47,7 @@ export function useAsk(model: AskModelName): AskController {
         period: draft.period,
         model,
       };
-      void pump(runId, input, controller.signal, run, mounted, setSession);
+      void pump(runId, input, controller, run, mounted, setSession);
     },
     [model],
   );
@@ -62,7 +62,7 @@ export function useAsk(model: AskModelName): AskController {
 async function pump(
   runId: number,
   input: AskInput,
-  signal: AbortSignal,
+  controller: AbortController,
   run: { current: number },
   mounted: { current: boolean },
   setSession: (session: Session) => void,
@@ -73,9 +73,16 @@ async function pump(
   };
   let current = reduceSession(initialSession, { type: "submit", input });
   publish(current);
-  for await (const event of askStream(input, { signal })) {
-    if (runId !== run.current) return;
+  for await (const event of askStream(input, { signal: controller.signal })) {
+    if (runId !== run.current) {
+      controller.abort();
+      return;
+    }
     current = reduceSession(current, event);
     publish(current);
+    if (event.type === "fault") {
+      controller.abort();
+      return;
+    }
   }
 }

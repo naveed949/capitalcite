@@ -1,9 +1,19 @@
+import type { Ref } from "react";
 import type { FilingSpan } from "../session/session";
 
-export function SpanViewer(props: { span: FilingSpan; onClose: () => void }) {
+export function SpanViewer(props: {
+  span: FilingSpan;
+  onClose: () => void;
+  viewerRef?: Ref<HTMLElement>;
+}) {
   const href = httpUrl(props.span.sourceUrl);
   return (
-    <aside data-testid="span-viewer" className="w-full rounded border border-zinc-300 p-4">
+    <aside
+      ref={props.viewerRef}
+      tabIndex={-1}
+      data-testid="span-viewer"
+      className="w-full rounded border border-zinc-300 p-4"
+    >
       <p data-testid="span-doc" className="font-mono text-sm">
         {props.span.docId}
       </p>

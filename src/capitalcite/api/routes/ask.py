@@ -86,6 +86,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["AskRequest", "AskResponse", "iter_ask", "router"]
 
+SLOW_RETRIEVE_QUESTION = "Hold this retrieve so cancel can land"
+
 _INTERNAL_ERROR = ErrorEvent(status=500, detail="internal error")
 
 _SSE_START_HEADERS = [
@@ -113,7 +115,7 @@ class _QueueObserve(Observe):
 
 
 class _AskSSEResponse(Response):
-    """Peek the first event in the same task that writes the body."""
+    """Watch disconnect before the first event so retrieve can be cancelled."""
 
     media_type = "text/event-stream"
 
@@ -123,27 +125,9 @@ class _AskSSEResponse(Response):
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         events = self._events
-        try:
-            first = await anext(events)
-        except ValueError as exc:
-            await events.aclose()
-            await _send_json_error(send, 422, str(exc))
-            return
-        except _STREAM_FAULTS as exc:
-            await events.aclose()
-            await _send_json_error(send, 503, str(exc))
-            return
-        except Exception:
-            await events.aclose()
-            raise
-        if isinstance(first, ErrorEvent):
-            await events.aclose()
-            await _send_json_error(send, first.status, first.detail)
-            return
-
-        await send({"type": "http.response.start", "status": 200, "headers": _SSE_START_HEADERS})
         current = asyncio.current_task()
         cancelled_by_client = False
+        started = False
 
         async def watch_disconnect() -> None:
             nonlocal cancelled_by_client
@@ -157,6 +141,29 @@ class _AskSSEResponse(Response):
 
         watcher = asyncio.create_task(watch_disconnect())
         try:
+            try:
+                first = await anext(events)
+            except asyncio.CancelledError:
+                if cancelled_by_client:
+                    if current is not None:
+                        current.uncancel()
+                    logger.info("ask stream cancelled by client")
+                    return
+                raise
+            except ValueError as exc:
+                await _send_json_error(send, 422, str(exc))
+                return
+            except _STREAM_FAULTS as exc:
+                await _send_json_error(send, 503, str(exc))
+                return
+            if isinstance(first, ErrorEvent):
+                await _send_json_error(send, first.status, first.detail)
+                return
+
+            started = True
+            await send(
+                {"type": "http.response.start", "status": 200, "headers": _SSE_START_HEADERS}
+            )
             await send(
                 {
                     "type": "http.response.body",
@@ -178,7 +185,10 @@ class _AskSSEResponse(Response):
                 raise
             if current is not None:
                 current.uncancel()
+            logger.info("ask stream cancelled by client")
         except Exception:
+            if not started:
+                raise
             logger.exception("ask stream failed")
             await send(
                 {
@@ -315,6 +325,12 @@ async def iter_ask(
         yield DoneEvent()
 
 
+async def _maybe_slow_retrieve(settings: Settings, question: str) -> None:
+    ms = settings.capitalcite_test_slow_retrieve_ms
+    if ms > 0 and question == SLOW_RETRIEVE_QUESTION:
+        await asyncio.sleep(ms / 1000)
+
+
 async def _rag_events(
     body: AskRequest,
     setup: RetrievalSetup,
@@ -323,6 +339,7 @@ async def _rag_events(
 ) -> AsyncIterator[AskEvent]:
     filters = parse_filters(ticker=body.ticker, form=body.form, period=body.period)
     limit = body.k if body.k is not None else setup.search_k
+    await _maybe_slow_retrieve(settings, body.question)
     hits = await retrieve(setup, body.question, mode=RetrievalMode.HYBRID, k=limit, filters=filters)
     answer = await ask(
         hits,

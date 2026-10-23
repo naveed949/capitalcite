@@ -2919,10 +2919,18 @@ while True:
 PY
   )"
   write web.port "${web_port}"
+  log "verify: pnpm --dir web build"
+  if ! CAPITALCITE_API_ORIGIN="http://127.0.0.1:${PORT}" ASK_MODEL=fake \
+    pnpm --dir web build >"${ART}/web.build.log" 2>&1; then
+    log "verify: web build failed"
+    cat "${ART}/web.build.log" >&2 || true
+    exit 1
+  fi
+
   log "verify: launching Next on 127.0.0.1:${web_port}"
   CAPITALCITE_API_ORIGIN="http://127.0.0.1:${PORT}" ASK_MODEL=fake \
-    pnpm --dir web exec next dev --hostname 127.0.0.1 --port "${web_port}" \
-    >"${ART}/web.dev.log" 2>&1 &
+    pnpm --dir web exec next start --hostname 127.0.0.1 --port "${web_port}" \
+    >"${ART}/web.start.log" 2>&1 &
   NEXT_PID=$!
 
   local ready=0
@@ -2939,7 +2947,7 @@ PY
   done
   if [[ "${ready}" -ne 1 ]]; then
     log "verify: Next did not answer on 127.0.0.1:${web_port}"
-    cat "${ART}/web.dev.log" >&2 || true
+    cat "${ART}/web.start.log" >&2 || true
     stop_next
     exit 1
   fi
