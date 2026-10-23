@@ -110,6 +110,7 @@ metrics_app = typer.Typer(
 )
 app.add_typer(metrics_app, name="metrics")
 
+
 def _repo_root() -> Path:
     here = Path(__file__).resolve()
     for parent in here.parents:
