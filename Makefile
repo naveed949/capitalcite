@@ -18,7 +18,7 @@ help:
 	@echo "health     GET /health against a running local API"
 	@echo "eval-report  Rewrite the README retrieval table from RESULTS"
 	@echo "infra-validate  bicep format + build of bootstrap and main (+ docker build if Docker exists)"
-	@echo "image      docker build of the API image (UNVERIFIED without Docker)"
+	@echo "image      docker build of the API image (tag IMAGE, GIT_SHA build-arg; UNVERIFIED without Docker)"
 	@echo "bootstrap  what-if of infra/bootstrap.bicep; UNVERIFIED without az login"
 	@echo "deploy     what-if of infra/main.bicep; UNVERIFIED without az login or bootstrap"
 
@@ -71,8 +71,19 @@ eval-report:
 infra-validate:
 	./scripts/infra-validate.sh
 
+IMAGE ?= capitalcite:local
+GIT_SHA ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+
 image:
-	@if command -v docker >/dev/null 2>&1; then docker build -t capitalcite:local .; else echo "UNVERIFIED: docker is not installed"; fi
+	@if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then \
+		docker build --build-arg GIT_SHA="$(GIT_SHA)" -t "$(IMAGE)" .; \
+	elif command -v docker >/dev/null 2>&1 && sudo docker info >/dev/null 2>&1; then \
+		sudo docker build --build-arg GIT_SHA="$(GIT_SHA)" -t "$(IMAGE)" .; \
+	elif command -v docker >/dev/null 2>&1; then \
+		echo "UNVERIFIED: docker is installed but this user cannot talk to the daemon"; \
+	else \
+		echo "UNVERIFIED: docker is not installed"; \
+	fi
 
 bootstrap:
 	./scripts/bootstrap.sh

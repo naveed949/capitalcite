@@ -17,12 +17,31 @@ def test_dockerfile_does_not_copy_env() -> None:
     assert "ASK_MODEL=fake" in text
     assert "uvicorn" in text
     assert "0.0.0.0" in text
+    assert "tests/fixtures/chunking/corpus" in text
+    assert "capitalcite chunk" in text
+    assert "capitalcite index" in text
+    assert "capitalcite ingest" not in text
+    assert "FASTEMBED_CACHE_PATH" in text
+    assert "QDRANT_PATH" in text
+    assert "GIT_SHA" in text
+    assert "BAAI/bge-small-en-v1.5" in text
+    assert "Qdrant/bm25" in text
+    assert "ASK_RATE_LIMIT" in text
+    assert "UV_PROJECT_ENVIRONMENT=/app/.venv" in text
 
 
 def test_dockerignore_keeps_secrets_out_of_build_context() -> None:
     text = (ROOT / ".dockerignore").read_text(encoding="utf-8")
     assert ".env" in text
     assert ".git" in text
+    assert "!tests/fixtures/chunking/corpus" in text
+
+
+def test_make_image_passes_git_sha() -> None:
+    text = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "IMAGE ?=" in text
+    assert "--build-arg GIT_SHA=" in text
+    assert "UNVERIFIED: docker is not installed" in text
 
 
 def test_bicep_keeps_qdrant_private_and_api_https() -> None:
@@ -81,7 +100,9 @@ def test_infra_workflow_does_not_login_to_azure() -> None:
     assert "azure/login" not in text
     assert "bicep" in text
     assert "gitleaks" in text
-    assert "docker build" in text
+    assert "make image" in text
+    assert "IMAGE=capitalcite:ci" in text
+    assert "docker build -t capitalcite:ci" not in text
     assert "v0.48.1" in text
     assert "releases/latest" not in text
 
