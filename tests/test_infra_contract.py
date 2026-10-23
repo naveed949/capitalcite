@@ -52,6 +52,9 @@ def test_bicep_keeps_qdrant_private_and_api_https() -> None:
     bootstrap = (ROOT / "infra" / "bootstrap.bicep").read_text(encoding="utf-8")
     assert "external: false" in text
     assert "allowInsecure: false" in text
+    assert "name: 'QDRANT_PATH'" in text
+    assert "value: ''" in text
+    assert text.index("name: 'QDRANT_URL'") < text.index("name: 'QDRANT_PATH'")
     assert "param apiMinReplicas int = 0" in text
     assert "adminUserEnabled: false" in bootstrap
     assert "enableRbacAuthorization: true" in bootstrap

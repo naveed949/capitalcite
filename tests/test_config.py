@@ -103,6 +103,16 @@ def test_cors_origins_strip_blanks(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.cors_origins == ()
 
 
+def test_cors_origins_reject_star(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("CORS_ORIGINS", "*")
+    with pytest.raises(ValidationError):
+        Settings()
+    monkeypatch.setenv("CORS_ORIGINS", "https://example.com,*")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 def test_ask_rate_window_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
     monkeypatch.setenv("ASK_RATE_WINDOW_S", "0")

@@ -30,6 +30,7 @@ Preconditions:
 ## Gotchas
 
 - An empty `CORS_ORIGINS` adds no middleware. A browser then sees no allow-origin header. That is the local default in `.env.example`.
+- `CORS_ORIGINS=*` fails at process start. The list is an allow-list, not a wildcard.
 - The helper overwrites `CORS_ORIGINS` for the uvicorn it starts. It does not read a developer shell value.
 - `Access-Control-Allow-Origin` is the origin string, not `*`. Credentials are not allowed.
 - The address check for the rate limit is separate. CORS does not read `X-Forwarded-For`.

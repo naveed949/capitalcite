@@ -113,8 +113,13 @@ A 429 is JSON with `Retry-After`, including `POST /ask/stream`.
 
 `CORS_ORIGINS` is a comma-separated tuple. Blank entries are dropped.
 An empty tuple adds no `CORSMiddleware`. A request `Origin` is echoed only
-when it is in the tuple. `allow_credentials` is false. The local example
-file leaves the variable empty.
+when it is in the tuple. `*` is rejected at Settings load so the list
+cannot become an open allow-all. `allow_credentials` is false. The local
+example file leaves the variable empty.
+
+The image sets `QDRANT_PATH=/app/qdrant`. A process that should use a
+remote store must blank that path. `infra/main.bicep` sets `QDRANT_PATH`
+to an empty string so `QDRANT_URL` wins.
 
 ## Alternatives
 

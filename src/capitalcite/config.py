@@ -218,7 +218,10 @@ class Settings(BaseSettings):
         if value is None:
             return ()
         if isinstance(value, str):
-            return tuple(part.strip() for part in value.split(",") if part.strip())
+            origins = tuple(part.strip() for part in value.split(",") if part.strip())
+            if "*" in origins:
+                raise ValueError("CORS_ORIGINS cannot include '*'")
+            return origins
         if isinstance(value, (list, tuple)):
             origins: list[str] = []
             for item in value:
@@ -227,6 +230,8 @@ class Settings(BaseSettings):
                 stripped = item.strip()
                 if stripped:
                     origins.append(stripped)
+            if "*" in origins:
+                raise ValueError("CORS_ORIGINS cannot include '*'")
             return tuple(origins)
         return value
 
