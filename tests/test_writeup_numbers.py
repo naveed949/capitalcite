@@ -41,7 +41,6 @@ def _write_tree(
     *,
     readme: str,
     writeup: str,
-    resume: str,
     results: dict[str, object] | None = None,
     result_name: str = "abcabcabcabc.json",
     git_sha: str = "abcabcabcabcdeadbeef",
@@ -50,7 +49,6 @@ def _write_tree(
     (tree / "evals" / "results").mkdir(parents=True, exist_ok=True)
     (tree / "README.md").write_text(readme, encoding="utf-8")
     (tree / "docs" / "writeup.md").write_text(writeup, encoding="utf-8")
-    (tree / "docs" / "resume-bullets.md").write_text(resume, encoding="utf-8")
     if results is not None:
         payload = {"git_sha": git_sha, "small": False, **results}
         (tree / "evals" / "results" / result_name).write_text(
@@ -64,35 +62,32 @@ def test_allowed_tokens_exit_zero(tmp_path: Path) -> None:
         tmp_path,
         readme="Recall@5 is 0.169 on n=77. Gate 5/5. Latency 14 ms.\n",
         writeup="section/hybrid Recall@5 is 0.169 on 77 items.\n",
-        resume="- Hit 0.169 Recall@5 ([run](evals/results/abcabcabcabc.json)).\n",
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 0, proc.stdout
-    assert "writeup-numbers ok files=2 cited=" in proc.stdout
+    assert "writeup-numbers ok files=1 cited=" in proc.stdout
 
 
 def test_missing_writeup_exits_one(tmp_path: Path) -> None:
     (tmp_path / "docs").mkdir()
     (tmp_path / "README.md").write_text("0.169\n", encoding="utf-8")
-    (tmp_path / "docs" / "resume-bullets.md").write_text("0.169\n", encoding="utf-8")
     proc = run_check(tmp_path)
     assert proc.returncode == 1
     assert "docs/writeup.md:0:0: missing file" in proc.stdout
 
 
-def test_resume_rejects_json_only_number(tmp_path: Path) -> None:
+def test_writeup_rejects_json_only_number(tmp_path: Path) -> None:
     name = "abcabcabcabc.json"
     _write_tree(
         tmp_path,
         readme=f"Recall@5 is 0.169. See [{name}](evals/results/{name}).\n",
-        writeup=f"Recall@5 is 0.169 ([src](evals/results/{name})).\n",
-        resume="- Indexed 12431 points.\n",
+        writeup="- Indexed 12431 points.\n",
         results={"point_count": 12431, "arms": []},
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 1
     assert "12431" in proc.stdout
-    assert "docs/resume-bullets.md" in proc.stdout
+    assert "docs/writeup.md" in proc.stdout
 
 
 def test_writeup_ratio_from_linked_json(tmp_path: Path) -> None:
@@ -102,7 +97,6 @@ def test_writeup_ratio_from_linked_json(tmp_path: Path) -> None:
         tmp_path,
         readme=f"Recall@5 is 0.169 on n=77. Source {link}.\n",
         writeup=f"Section hybrid is 13/77 {link}.\n",
-        resume="- Recall@5 0.169.\n",
         results={"arms": [_arm(77, 64, [6, 7])]},
     )
     proc = run_check(tmp_path)
@@ -115,7 +109,6 @@ def test_writeup_ratio_without_link_fails(tmp_path: Path) -> None:
         tmp_path,
         readme=f"Recall@5 is 0.169. See [src](evals/results/{name}).\n",
         writeup="Section hybrid is 13/77.\n",
-        resume="- Recall@5 0.169.\n",
         results={"arms": [_arm(77, 64, [])]},
     )
     proc = run_check(tmp_path)
@@ -128,7 +121,6 @@ def test_twelve_not_allowed_by_one_twelve(tmp_path: Path) -> None:
         tmp_path,
         readme="Golden set: 112 questions.\n",
         writeup="We indexed 12 filings.\n",
-        resume="- 112 questions.\n",
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 1
@@ -140,7 +132,6 @@ def test_ratio_is_atomic(tmp_path: Path) -> None:
         tmp_path,
         readme="n=77 and one item is 0.013. Hits were 13 in a probe.\n",
         writeup="The cell is 13/77.\n",
-        resume="- n=77.\n",
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 1
@@ -155,7 +146,6 @@ def test_structural_nonclaims_do_not_fail(tmp_path: Path) -> None:
             "Issue #17. ADR 0017. Date 2026-10-17. Year-end 2024. "
             "Run 7388ac3eea43. Line L199. Path evals/results/run.json. 0.169.\n"
         ),
-        resume="- 0.169 at L79.\n",
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 0, proc.stdout
@@ -166,7 +156,6 @@ def test_unverified_cost_zero_not_in_readme_set(tmp_path: Path) -> None:
         tmp_path,
         readme="Cost / query is [0](evals/results/run-unverified.json). Recall 0.169.\n",
         writeup="The OpenAI cost is 0 per query.\n",
-        resume="- 0.169.\n",
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 1
@@ -178,7 +167,6 @@ def test_hyphenated_point_does_not_publish_twelve(tmp_path: Path) -> None:
         tmp_path,
         readme="Timed on the 12-point fixture. Recall 0.169.\n",
         writeup="We used 12 shards.\n",
-        resume="- 0.169.\n",
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 1
@@ -196,7 +184,6 @@ def test_diagnose_markdown_is_not_harvested(tmp_path: Path) -> None:
         tmp_path,
         readme=f"Recall 0.169. [src](evals/results/{name}).\n",
         writeup="Gold sat at rank 113 ([note](evals/results/abcabcabcabc-bm25-diagnose.md)).\n",
-        resume="- 0.169.\n",
         results={"arms": [_arm(77, 64, [])]},
     )
     proc = run_check(tmp_path)
@@ -209,7 +196,6 @@ def test_missing_linked_json_fails(tmp_path: Path) -> None:
         tmp_path,
         readme="Recall 0.169. [src](evals/results/abcabcabcabc.json).\n",
         writeup="Recall 0.169 [src](evals/results/abcabcabcabc.json).\n",
-        resume="- 0.169.\n",
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 1
@@ -232,4 +218,4 @@ def test_repo_writeup_numbers_pass() -> None:
         text=True,
     )
     assert proc.returncode == 0, proc.stdout
-    assert "writeup-numbers ok files=2 cited=" in proc.stdout
+    assert "writeup-numbers ok files=1 cited=" in proc.stdout
