@@ -88,8 +88,10 @@ builder on the image Python. The builder now sets
 `UV_PROJECT_ENVIRONMENT` to `/app/.venv` so shebangs name
 `/app/.venv/bin/python`, which is the same interpreter the runtime PATH
 uses. Changing the image entrypoint to `python -m` would hide the next
-broken console script. Infra runs `capitalcite --help` and
-`python -c "import capitalcite.api"` in the built image.
+broken console script. Infra runs `capitalcite --help` in the built image,
+then starts the image CMD with `SEC_USER_AGENT` and curls `/health` until
+it returns 200. That exercises the `uvicorn` shebang. Settings still
+require `sec_user_agent`.
 
 ## What BankFind and EDGAR returned on 2026-10-23
 
