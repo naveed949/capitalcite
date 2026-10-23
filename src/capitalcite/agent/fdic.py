@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from typing import Protocol
 from urllib.parse import urlencode
 
@@ -15,7 +15,10 @@ _BANKFIND = f"{BANKFIND_ORIGIN}/institutions"
 
 
 def bankfind_user_agent() -> str:
-    return f"capitalcite/{version('capitalcite')}"
+    try:
+        return f"capitalcite/{version('capitalcite')}"
+    except PackageNotFoundError:
+        return "capitalcite"
 
 
 class JsonClient(Protocol):

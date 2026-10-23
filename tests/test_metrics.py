@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 from capitalcite.agent.fdic import lead_institutions_url, search_institutions_url
 from capitalcite.agent.http import HttpTransportError, HttpxJsonClient
 from capitalcite.agent.xbrl import companyfacts_url
-from capitalcite.cli import FIXTURES, app
+from capitalcite.cli import app, metrics_fixtures
 from capitalcite.holdings import HoldingCompany, holding_companies, holding_company
 from capitalcite.ingest.rate_limit import shared_limiter
 from capitalcite.kg.types import Bank
@@ -35,7 +35,7 @@ from capitalcite.metrics.snapshot import (
 )
 
 runner = CliRunner()
-ROOT = FIXTURES
+ROOT = metrics_fixtures()
 
 
 def test_bankfind_urls_use_api_fdic_gov() -> None:
@@ -673,7 +673,7 @@ def _copy_fixtures(dest: Path) -> Path:
 
 
 def _invoke_fixtures(monkeypatch: pytest.MonkeyPatch, fixtures: Path, output: Path) -> None:
-    monkeypatch.setattr("capitalcite.cli.FIXTURES", fixtures)
+    monkeypatch.setattr("capitalcite.cli.metrics_fixtures", lambda: fixtures)
     result = runner.invoke(
         app,
         [
@@ -692,7 +692,7 @@ def _invoke_fixtures(monkeypatch: pytest.MonkeyPatch, fixtures: Path, output: Pa
 
 
 def test_fixture_batch_accepts_the_committed_tree() -> None:
-    loaded = asyncio.run(FixtureBatch(FIXTURES).load(holding_companies()))
+    loaded = asyncio.run(FixtureBatch(ROOT).load(holding_companies()))
     assert [item.lead.company.ticker for item in loaded.companies] == [
         company.ticker for company in holding_companies()
     ]

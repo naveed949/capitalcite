@@ -111,16 +111,22 @@ metrics_app = typer.Typer(
 app.add_typer(metrics_app, name="metrics")
 
 
-def _repo_root() -> Path:
+def _repo_root() -> Path | None:
     here = Path(__file__).resolve()
     for parent in here.parents:
         markers = (parent / "pyproject.toml", parent / "tests" / "fixtures" / "metrics")
         if all(path.exists() for path in markers):
             return parent
-    raise RuntimeError("cannot locate tests/fixtures/metrics from the package")
+    return None
 
 
-FIXTURES = _repo_root() / "tests" / "fixtures" / "metrics"
+def metrics_fixtures() -> Path:
+    root = _repo_root()
+    if root is None:
+        raise FileNotFoundError(
+            "cannot locate tests/fixtures/metrics. --fixtures needs a source checkout"
+        )
+    return root / "tests" / "fixtures" / "metrics"
 
 
 @audit_app.command("verify")
@@ -437,8 +443,13 @@ def metrics_extract(
         raise typer.Exit(code=1) from exc
 
     if fixtures:
+        try:
+            fixture_root = metrics_fixtures()
+        except FileNotFoundError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
         root = output_dir if output_dir is not None else Path("data")
-        batch: FixtureBatch | LiveBatch = FixtureBatch(FIXTURES)
+        batch: FixtureBatch | LiveBatch = FixtureBatch(fixture_root)
     else:
         settings = get_settings()
         root = output_dir if output_dir is not None else settings.data_dir
