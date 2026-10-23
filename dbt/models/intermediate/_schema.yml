@@ -27,3 +27,5 @@ models:
           - accepted_values:
               arguments:
                 values: ['usd', 'thousands_usd', 'percent']
+      - name: amount_method
+        description: reported_3m or fy_minus_9m for holding-company NetIncomeLoss.

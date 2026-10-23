@@ -23,6 +23,8 @@ select
     max(case when long_rows.concept_key = 'us-gaap.Assets|USD' then long_rows.accession end) as assets_sec_accn,
     max(case when long_rows.concept_key = 'us-gaap.Deposits|USD' then long_rows.accession end) as deposits_sec_accn,
     max(case when long_rows.concept_key = 'us-gaap.NetIncomeLoss|USD' then long_rows.accession end) as net_income_sec_accn,
+    max(case when long_rows.concept_key = 'us-gaap.NetIncomeLoss|USD' then long_rows.amount_method end) as net_income_method,
+    max(case when long_rows.concept_key = 'us-gaap.NetIncomeLoss|USD' then long_rows.nine_month_accession end) as net_income_nine_month_sec_accn,
     max(case when long_rows.concept_key = 'fdic.ASSET' then long_rows.amount end) as assets_usd_thousands,
     max(case when long_rows.concept_key = 'fdic.DEP' then long_rows.amount end) as deposits_usd_thousands,
     max(case when long_rows.concept_key = 'fdic.NETINC' then long_rows.amount end) as net_income_ytd_usd_thousands,

@@ -7,6 +7,8 @@ where (
     or assets_sec_accn is not null
     or deposits_sec_accn is not null
     or net_income_sec_accn is not null
+    or net_income_method is not null
+    or net_income_nine_month_sec_accn is not null
 )
 and (
     assets_usd_thousands is not null

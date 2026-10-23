@@ -58,6 +58,8 @@ sec_balances as (
         amount,
         reported_unit,
         accession,
+        cast(null as varchar) as amount_method,
+        cast(null as varchar) as nine_month_accession,
         repdte,
         source_url
     from sec_latest
@@ -72,6 +74,8 @@ sec_three_month as (
         amount,
         reported_unit,
         accession,
+        'reported_3m' as amount_method,
+        cast(null as varchar) as nine_month_accession,
         repdte,
         source_url
     from sec_latest
@@ -106,6 +110,8 @@ sec_q4_derived as (
         annual.amount - nine.amount as amount,
         annual.reported_unit,
         annual.accession,
+        'fy_minus_9m' as amount_method,
+        nine.accession as nine_month_accession,
         annual.repdte,
         annual.source_url
     from sec_annual as annual
@@ -175,17 +181,17 @@ fdic_with_quarter as (
 ),
 
 fdic_long as (
-    select bank_key, quarter_id, 'fdic.ASSET' as concept_key, asset as amount, 'thousands_usd' as reported_unit, cast(null as varchar) as accession, repdte, source_url from fdic_with_quarter
+    select bank_key, quarter_id, 'fdic.ASSET' as concept_key, asset as amount, 'thousands_usd' as reported_unit, cast(null as varchar) as accession, cast(null as varchar) as amount_method, cast(null as varchar) as nine_month_accession, repdte, source_url from fdic_with_quarter
     union all
-    select bank_key, quarter_id, 'fdic.DEP', dep, 'thousands_usd', null, repdte, source_url from fdic_with_quarter
+    select bank_key, quarter_id, 'fdic.DEP', dep, 'thousands_usd', null, null, null, repdte, source_url from fdic_with_quarter
     union all
-    select bank_key, quarter_id, 'fdic.NETINC', netinc, 'thousands_usd', null, repdte, source_url from fdic_with_quarter
+    select bank_key, quarter_id, 'fdic.NETINC', netinc, 'thousands_usd', null, null, null, repdte, source_url from fdic_with_quarter
     union all
-    select bank_key, quarter_id, 'fdic.NETINC_QUARTER', netinc_quarter, 'thousands_usd', null, repdte, source_url from fdic_with_quarter
+    select bank_key, quarter_id, 'fdic.NETINC_QUARTER', netinc_quarter, 'thousands_usd', null, null, null, repdte, source_url from fdic_with_quarter
     union all
-    select bank_key, quarter_id, 'fdic.NIMY', nimy, 'percent', null, repdte, source_url from fdic_with_quarter
+    select bank_key, quarter_id, 'fdic.NIMY', nimy, 'percent', null, null, null, repdte, source_url from fdic_with_quarter
     union all
-    select bank_key, quarter_id, 'fdic.EEFFR', eeffr, 'percent', null, repdte, source_url from fdic_with_quarter
+    select bank_key, quarter_id, 'fdic.EEFFR', eeffr, 'percent', null, null, null, repdte, source_url from fdic_with_quarter
 )
 
 select
@@ -196,6 +202,8 @@ select
     amount,
     reported_unit,
     accession,
+    amount_method,
+    nine_month_accession,
     repdte,
     source_url
 from (

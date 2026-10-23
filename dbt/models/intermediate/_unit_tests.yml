@@ -18,11 +18,12 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {bank_key: "JPM|holding_company", quarter_id: "2026-06-30", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 130.0, accession: SYNTH-NIL-Q}
+        - {bank_key: "JPM|holding_company", quarter_id: "2026-06-30", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 130.0, accession: SYNTH-NIL-Q, amount_method: reported_3m}
 
   - name: picks_latest_filed_deposits
     description: >
-      Two Deposits instants share an end date. The mart keeps the later filed value.
+      Two Deposits instants share an end date and the same form rank.
+      The mart then keeps the later filed value.
     model: int_bank_financials_long
     given:
       - input: ref('int_bank_entity_map')
@@ -101,7 +102,7 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {bank_key: "JPM|holding_company", quarter_id: "2025-12-31", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 100.0, accession: SYNTH-FY}
+        - {bank_key: "JPM|holding_company", quarter_id: "2025-12-31", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 100.0, accession: SYNTH-FY, amount_method: fy_minus_9m, nine_month_accession: SYNTH-9M}
 
   - name: reported_q4_beats_derived
     description: >
@@ -120,4 +121,24 @@ unit_tests:
         rows: []
     expect:
       rows:
-        - {bank_key: "JPM|holding_company", quarter_id: "2025-12-31", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 90.0, accession: SYNTH-Q4}
+        - {bank_key: "JPM|holding_company", quarter_id: "2025-12-31", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 90.0, accession: SYNTH-Q4, amount_method: reported_3m}
+
+  - name: prefers_10k_over_later_def14a
+    description: >
+      A later DEF 14A carries a rounded full-year value. The 10-K must win
+      so Q4 is FY minus nine-month, not the rounded proxy figure.
+    model: int_bank_financials_long
+    given:
+      - input: ref('int_bank_entity_map')
+        rows:
+          - {ticker: JPM, cik: "0000019617", lead_bank_name: SYNTH, cert: "628", source_note: unit}
+      - input: ref('stg_sec__facts')
+        rows:
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2025-01-01", period_end: "2025-09-30", form: 10-Q, accession: SYNTH-9M, filed: "2025-11-04", val: 300, source_url: synth://sec}
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2025-01-01", period_end: "2025-12-31", form: 10-K, accession: SYNTH-FY, filed: "2026-02-13", val: 400, source_url: synth://sec}
+          - {ticker: JPM, cik: "0000019617", taxonomy: us-gaap, concept: NetIncomeLoss, unit: USD, period_start: "2025-01-01", period_end: "2025-12-31", form: "DEF 14A", accession: SYNTH-DEF, filed: "2026-04-06", val: 390, source_url: synth://sec}
+      - input: ref('stg_fdic__financials')
+        rows: []
+    expect:
+      rows:
+        - {bank_key: "JPM|holding_company", quarter_id: "2025-12-31", concept_key: "us-gaap.NetIncomeLoss|USD", amount: 100.0, accession: SYNTH-FY, amount_method: fy_minus_9m, nine_month_accession: SYNTH-9M}

@@ -288,6 +288,7 @@ class MetricsStore:
             )
         written: list[WrittenCompany] = []
         links: list[LeadLink] = []
+        (self.root / "warehouse").mkdir(parents=True, exist_ok=True)
         for item in staged:
             ticker = item.company.lead.company.ticker
             cert = item.company.lead.cert

@@ -120,14 +120,27 @@ different facts. The staging grain includes a null-safe `period_start` so
 they do not collide. Some 8-K and DEF 14A rows omit `fp`. `fiscal_period`
 is null-safe in the same key. The mart keeps the three-month row when it
 exists. Instant facts such as Assets and Deposits have a null start. When
-two instants share an end date, the mart keeps the latest `filed` value.
+two observations share an end date and a start, the mart ranks 10-K/10-Q
+before other forms, then latest filed. That ranking applies to instants
+and durations. A later DEF 14A or 8-K does not beat a 10-K. JPM DEF 14A
+`0000019617-26-000096` files a rounded FY2025 `NetIncomeLoss` of
+57,000,000,000. Filed-first would make 2025 Q4 12,977,000,000 instead of
+the 10-K 13,025,000,000.
 
 A 10-K reports only the annual figure. Holding-company Q4 is therefore
 FY minus the nine-month YTD from the Q3 10-Q, and only when no
-three-month Q4 duration was filed. dbt `unit_tests` on
-`int_bank_financials_long` own those duration, restatement, 8-K, gap, and
-Q4 cases with synthetic given rows. The committed companyfacts and Call
-Report snapshots stay the extracted files.
+three-month Q4 duration was filed. The fact stores `net_income_method`
+as `reported_3m` or `fy_minus_9m`, and stores the nine-month accession
+when the quarter is derived. The 10-K accession is not a three-month
+fact in that filing. The four quarters may not sum to FY when
+restatements mix vintages. Four of 68 bank-years do not. WFC 2020 is
+one. The warehouse keeps the selected vintage for each quarter. It does
+not force the annual identity.
+
+dbt `unit_tests` on `int_bank_financials_long` own those duration,
+restatement, 8-K, gap, Q4, and later-DEF-14A cases with synthetic given
+rows. The committed companyfacts and Call Report snapshots stay the
+extracted files.
 
 ## Why reported ratios stay as reported
 
@@ -154,9 +167,9 @@ Singular tests name identities the generic tests cannot.
   cell. A year with a missing prior quarter is outside that test.
 - Unit tests on `int_bank_financials_long` fail when a quarter-plus-YTD
   pair keeps the YTD amount, when a restated instant keeps the earlier
-  `filed` value, when an 8-K beats a later 10-Q, when a missing prior
-  Call Report quarter is subtracted, or when Q4 is not FY minus the
-  nine-month YTD.
+  `filed` value, when an 8-K beats a later 10-Q, when a later DEF 14A
+  rounded FY beats a 10-K, when a missing prior Call Report quarter is
+  subtracted, or when Q4 is not FY minus the nine-month YTD.
 
 `assert_level_columns_exclusive` fails when one fact row fills both unit
 families, or when a `dim_bank` holding row carries a CERT.
@@ -164,7 +177,9 @@ families, or when a `dim_bank` holding row carries a CERT.
 The `ci` build is the contract check. `dev` uses the same models on
 `data/raw`. Profile paths default `DBT_PROJECT_DIR` to `dbt`. Snapshot
 globs fall back to the repo root. The documented command from the repo
-root does not need the env var.
+root does not need the env var. CI runs that command once with
+`DBT_PROJECT_DIR` unset. `on-run-start` creates `data/warehouse` so a
+fresh clone can run `--target dev` after extract without a manual mkdir.
 
 ## Alternatives that lost
 
