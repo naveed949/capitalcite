@@ -12,7 +12,7 @@ import httpx
 from pydantic import ValidationError
 
 from capitalcite.agent.types import PlannerDecision, ToolCall, TraceStep
-from capitalcite.ask.guard import tickers_named, years_named
+from capitalcite.ask.guard import invalid_period_reason, tickers_named, years_named
 from capitalcite.ask.models import OpenAIStructuredModel, StructuredModel, _usage_tokens
 from capitalcite.ask.types import (
     AskModelName,
@@ -256,7 +256,6 @@ _METRIC_PHRASES: tuple[tuple[str, MetricName], ...] = (
 _QUARTER_END = re.compile(r"\b(\d{4})-(03-31|06-30|09-30|12-31)\b")
 _QUARTER_NAME = re.compile(r"\bQ([1-4])\s+(\d{4})\b", re.IGNORECASE)
 _COMPACT_QUARTER = re.compile(r"\b(\d{4})Q([1-4])\b", re.IGNORECASE)
-_LOOSE_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _NUMERIC_ASK = re.compile(r"\b(?:what\s+(?:was|were)|how\s+much|value\s+of)\b", re.IGNORECASE)
 _NARRATIVE_ASK = re.compile(r"\b(?:describe|discuss|explain|strategy|risk)\b", re.IGNORECASE)
 _HOLDING_ASK = re.compile(r"\b(?:holding\s+company|parent)\b", re.IGNORECASE)
@@ -293,17 +292,12 @@ def _metric_phrase(question: str) -> MetricName | None:
 
 
 def _metric_periods(question: str) -> _PeriodAsk:
+    reason = invalid_period_reason(question)
+    if reason:
+        return _PeriodAsk((), False, reason)
     found: list[date] = []
     covered: set[int] = set()
     named_quarter = False
-    for match in _LOOSE_DATE.finditer(question):
-        year, month, day_number = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-        try:
-            day = date(year, month, day_number)
-        except ValueError:
-            return _PeriodAsk((), False, "period is not a valid date")
-        if (day.month, day.day) not in set(_NAMED_QUARTER_END.values()):
-            return _PeriodAsk((), False, "period is not a quarter-end")
     for match in _QUARTER_END.finditer(question):
         day = date.fromisoformat(match.group(0))
         if day not in found:

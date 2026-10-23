@@ -537,6 +537,13 @@ def test_retrieval_refusal_allows_matching_hits() -> None:
     assert retrieval_refusal([_hit()], "What buffer did JPM describe?", min_score=0.0) is None
 
 
+def test_retrieval_refusal_rejects_an_invalid_calendar_date() -> None:
+    assert (
+        retrieval_refusal([], "What were JPM's total deposits at 2026-06-31?", min_score=0.0)
+        == "period is not a valid date"
+    )
+
+
 def _write_chunks(root: Path, chunks: list[Chunk]) -> None:
     if not chunks:
         return
