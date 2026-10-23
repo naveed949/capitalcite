@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -113,6 +113,20 @@ class Settings(BaseSettings):
         description=(
             "JSON allow-list for agent tool calls. Empty uses the shipped policy. "
             "A missing or invalid file denies every tool."
+        ),
+    )
+    warehouse_path: Path | None = Field(
+        default=None,
+        description=(
+            "DuckDB file for metric_query. Empty leaves the tool unconfigured. "
+            "The image sets this path."
+        ),
+    )
+    metric_query_backend: Literal["catalog", "live"] = Field(
+        default="live",
+        description=(
+            "catalog runs the precompiled SQL. live shells mf. "
+            "The image sets catalog. Local and CI use live."
         ),
     )
     search_k: int = Field(default=8, ge=1, le=50, description="Default number of hits for search.")
@@ -224,6 +238,7 @@ class Settings(BaseSettings):
     @field_validator(
         "qdrant_path",
         "gate_policy",
+        "warehouse_path",
         "capitalcite_trace_file",
         "neo4j_uri",
         "neo4j_password",
@@ -292,3 +307,27 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return the process-wide settings instance."""
     return Settings()
+
+
+def metric_backends(settings: Settings) -> tuple[Any, Any]:
+    """Open the metric backend when WAREHOUSE_PATH is set. Otherwise both are None.
+
+    A set path with a missing file raises, so process start fails closed.
+    """
+    if settings.warehouse_path is None:
+        return None, None
+    import os
+    from importlib.resources import files
+
+    from capitalcite.metric_query import open_metric_query
+
+    catalog_path = None
+    if settings.metric_query_backend == "catalog":
+        catalog_path = Path(str(files("capitalcite.metric_query").joinpath("catalog.json")))
+    return open_metric_query(
+        backend_name=settings.metric_query_backend,
+        warehouse=settings.warehouse_path,
+        catalog_path=catalog_path,
+        cwd=Path.cwd(),
+        env=os.environ,
+    )

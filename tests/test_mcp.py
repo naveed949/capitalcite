@@ -27,18 +27,18 @@ def test_cli_help_lists_mcp() -> None:
     assert "stdio" in result.stdout.lower() or "MCP" in result.stdout or "mcp" in result.stdout
 
 
-def test_mcp_names_are_search_and_ask() -> None:
-    assert {"search_filings", "ask"} == MCP_TOOL_NAMES
+def test_mcp_names_are_search_ask_and_metric_query() -> None:
+    assert {"search_filings", "ask", "metric_query"} == MCP_TOOL_NAMES
     assert {"ask"} == MCP_ONLY_TOOLS
 
 
-async def test_mcp_lists_only_search_and_ask(tmp_path: Path) -> None:
+async def test_mcp_lists_search_ask_and_metric_query(tmp_path: Path) -> None:
     session, _setup = await _indexed_session(tmp_path)
     async with Client(build_server(session)) as client:
         listed = await client.list_tools()
-    assert {tool.name for tool in listed.tools} == {"ask", "search_filings"}
+    assert {tool.name for tool in listed.tools} == {"ask", "metric_query", "search_filings"}
     by_name = {tool.name: tool for tool in listed.tools}
-    for name in ("ask", "search_filings"):
+    for name in ("ask", "metric_query", "search_filings"):
         schema = by_name[name].input_schema
         assert schema.get("additionalProperties") is False
     assert isinstance(session.policy, Policy)

@@ -1,8 +1,11 @@
 """metric_query shell. Siblings do not import this module."""
 
 from collections.abc import Mapping
+from pathlib import Path
+from typing import Literal
 
 from capitalcite.agent.types import ToolResult
+from capitalcite.metric_query.backends import CatalogSql, LiveMetricFlow, load_catalog
 from capitalcite.metric_query.cite import CitationResolver, hits_for
 from capitalcite.metric_query.query import (
     MetricCell,
@@ -19,6 +22,7 @@ __all__ = [
     "MetricQuery",
     "QueryBackend",
     "cells_equal",
+    "open_metric_query",
     "parse_metric_query",
     "run_metric_query",
 ]
@@ -63,3 +67,35 @@ def run_metric_query(
 
 def _failed(args: dict[str, object], detail: str) -> ToolResult:
     return ToolResult(ok=False, tool="metric_query", args=args, detail=detail, hits=())
+
+
+def open_metric_query(
+    *,
+    backend_name: Literal["catalog", "live"],
+    warehouse: Path,
+    catalog_path: Path | None = None,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> tuple[QueryBackend, CitationResolver]:
+    """Process start. catalog requires catalog_path and warehouse.
+
+    live requires cwd, env with DBT_TARGET, and warehouse for citations.
+    Missing files raise MetricQueryError. Does not open a shared connection.
+    """
+    if not warehouse.is_file():
+        raise MetricQueryError("warehouse is missing")
+    citations = CitationResolver(warehouse)
+    if backend_name == "catalog":
+        if catalog_path is None or not catalog_path.is_file():
+            raise MetricQueryError("catalog is missing")
+        return CatalogSql(load_catalog(catalog_path), warehouse), citations
+    if backend_name == "live":
+        if (
+            cwd is None
+            or not cwd.is_dir()
+            or env is None
+            or not str(env.get("DBT_TARGET") or "").strip()
+        ):
+            raise MetricQueryError("live metric query is not configured")
+        return LiveMetricFlow(cwd=cwd, env=env), citations
+    raise MetricQueryError("unknown metric backend")

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from capitalcite.agent.calculator import calculate
 from capitalcite.agent.types import TOOL_NAMES, ToolResult
 from capitalcite.kg.types import GraphQuery, GraphStore
+from capitalcite.metric_query import QueryBackend, run_metric_query
 from capitalcite.retrieval.types import Hit, SearchFilters, parse_filters
 from capitalcite.trace import ObservationKind, observation, tool_attrs
 
@@ -123,12 +124,21 @@ def make_search_filings(search: SearchFn) -> ToolFn:
     return search_filings
 
 
+def make_metric_query(backend: QueryBackend, citations: Any) -> ToolFn:
+    async def metric_query(args: Mapping[str, object]) -> ToolResult:
+        return run_metric_query(args, backend=backend, citations=citations)
+
+    return metric_query
+
+
 def default_registry(
     *,
     search: SearchFn,
     xbrl: XbrlFn,
     fdic: FdicFn,
     graph: GraphStore | None = None,
+    metric_backend: QueryBackend | None = None,
+    metric_citations: Any = None,
 ) -> ToolRegistry:
     search_filings = make_search_filings(search)
 
@@ -212,6 +222,12 @@ def default_registry(
             value=result.detail,
         )
 
+    metric_query: ToolFn
+    if metric_backend is None or metric_citations is None:
+        metric_query = unconfigured_metric_query
+    else:
+        metric_query = make_metric_query(metric_backend, metric_citations)
+
     return ToolRegistry(
         {
             "search_filings": search_filings,
@@ -219,7 +235,17 @@ def default_registry(
             "fdic_bankfind": fdic_bankfind,
             "calculator": calculator,
             "graph_query": graph_query,
+            "metric_query": metric_query,
         }
+    )
+
+
+async def unconfigured_metric_query(args: Mapping[str, object]) -> ToolResult:
+    return ToolResult(
+        ok=False,
+        tool="metric_query",
+        args=dict(args),
+        detail="metric query is not configured",
     )
 
 

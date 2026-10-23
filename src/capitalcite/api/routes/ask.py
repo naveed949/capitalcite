@@ -64,7 +64,7 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.audit import AuditLog
-from capitalcite.config import TEST_HOOK_ENVS, Settings, get_settings
+from capitalcite.config import TEST_HOOK_ENVS, Settings, get_settings, metric_backends
 from capitalcite.gate import Gate, load_policy
 from capitalcite.ingest.rate_limit import shared_limiter
 from capitalcite.kg import open_store
@@ -468,11 +468,19 @@ async def _run_agent(
         xbrl = XbrlClient(sec_client).fact
         fdic = FdicClient(fdic_client).lookup
     graph = open_store(settings)
+    metric_backend, metric_citations = metric_backends(settings)
     try:
         tools = AuditingTools(
             Gate(
                 load_policy(settings.gate_policy),
-                default_registry(search=search, xbrl=xbrl, fdic=fdic, graph=graph),
+                default_registry(
+                    search=search,
+                    xbrl=xbrl,
+                    fdic=fdic,
+                    graph=graph,
+                    metric_backend=metric_backend,
+                    metric_citations=metric_citations,
+                ),
             ),
             AuditLog(settings.audit_log_path),
             request_trace_id(),

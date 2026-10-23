@@ -299,13 +299,16 @@ async def test_validate_args_raise_is_gate_error(monkeypatch: pytest.MonkeyPatch
 async def test_redteam_suite_passes() -> None:
     report = await run_redteam()
     assert report.failed == 0
-    assert report.passed == 5
+    assert report.passed == len(report.cases) == 8
     assert {case.id for case in report.cases} == {
         "deny-unknown-does-not-run",
         "injection-shell",
         "injection-extra-args",
         "policy-load-failure",
         "fake-planner-ignores-doc-injection",
+        "metric-query-extra-sql",
+        "metric-query-oversized",
+        "metric-query-unknown-group-by",
     }
 
 
@@ -378,7 +381,7 @@ def test_cli_redteam() -> None:
     assert result.exit_code == 0
     body = json.loads(result.stdout)
     assert body["failed"] == 0
-    assert body["passed"] == 5
+    assert body["passed"] == 8
 
 
 def test_cli_bench() -> None:

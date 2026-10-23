@@ -37,6 +37,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         application.state.retrieval = create_retrieval_setup(settings)
     except Exception:
         application.state.retrieval = None
+    if settings.warehouse_path is not None:
+        from capitalcite.config import metric_backends
+
+        application.state.metric_backend, application.state.metric_citations = metric_backends(
+            settings
+        )
     try:
         yield
     finally:

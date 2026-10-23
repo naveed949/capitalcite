@@ -14,13 +14,18 @@ import duckdb
 import pytest
 import yaml
 
-from capitalcite.chunking.models import ChunkerName
+from capitalcite.agent.models import _METRIC_PHRASES, FakeAgentModel, _plan_system_prompt
+from capitalcite.agent.tools import default_registry
+from capitalcite.agent.types import TraceStep
+from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.chunking.tokens import count_tokens
+from capitalcite.gate.gate import Gate
 from capitalcite.gate.policy import BrokenPolicy, load_policy
 from capitalcite.ingest.client import filing_index_url
 from capitalcite.metric_query import (
     MetricCell,
     cells_equal,
+    open_metric_query,
     parse_metric_query,
     run_metric_query,
 )
@@ -55,6 +60,7 @@ from capitalcite.metric_query.query import (
     locked_level,
     render_figure,
 )
+from capitalcite.retrieval.types import Hit
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "dbt" / "models" / "semantic" / "bank_financials.yml"
@@ -856,3 +862,185 @@ def test_catalog_matches_live_metricflow_on_golden_tickers() -> None:
         else:
             assert live_cell.value is not None
             assert catalog_cell.value is not None
+
+
+def test_phrase_values_cover_every_metric_name() -> None:
+    assert {metric for _phrase, metric in _METRIC_PHRASES} == set(MetricName)
+    assert "metric_query" in _plan_system_prompt()
+
+
+async def test_fake_plan_routes_a_named_metric_and_year() -> None:
+    decision = await FakeAgentModel().plan("What were JPM total deposits in 2024?", [], [])
+    assert [call.name for call in decision.calls] == ["metric_query"]
+    assert decision.calls[0].args == {
+        "metric": "total_deposits",
+        "group_by": _GROUP,
+        "ticker": "JPM",
+        "period": "2024-12-31",
+    }
+
+
+async def test_fake_plan_maps_each_metric_phrase() -> None:
+    questions = {
+        MetricName.TOTAL_DEPOSITS: "JPM total deposits in 2024",
+        MetricName.TOTAL_ASSETS: "JPM total assets in 2024",
+        MetricName.NET_INCOME: "JPM net income in 2024",
+        MetricName.NIM: "JPM nim in Q2 2024",
+        MetricName.EFFICIENCY_RATIO: "JPM efficiency ratio in 2024",
+        MetricName.HOLDING_COMPANY_ASSETS: "JPM holding company assets in 2024",
+        MetricName.HOLDING_COMPANY_DEPOSITS: "JPM holding company deposits in 2024",
+        MetricName.HOLDING_COMPANY_NET_INCOME: "JPM holding company net income in 2024",
+        MetricName.DEPOSITS_QOQ_GROWTH: "JPM deposit growth in 2023 and 2024",
+    }
+    assert set(questions) == set(MetricName)
+    nim = await FakeAgentModel().plan(questions[MetricName.NIM], [], [])
+    assert nim.calls[0].args["period"] == "2024-06-30"
+    assert nim.calls[0].args["metric"] == "nim"
+    growth = await FakeAgentModel().plan(questions[MetricName.DEPOSITS_QOQ_GROWTH], [], [])
+    assert [call.args["period"] for call in growth.calls] == ["2023-12-31", "2024-12-31"]
+    assert all(call.name == "metric_query" for call in growth.calls)
+    holding = await FakeAgentModel().plan(questions[MetricName.HOLDING_COMPANY_ASSETS], [], [])
+    assert [call.name for call in holding.calls] == ["metric_query"]
+
+
+async def test_fake_plan_without_a_metric_or_ticker_stays_on_search() -> None:
+    cet1 = await FakeAgentModel().plan("What was JPMorgan CET1 at year-end 2024?", [], [])
+    assert cet1.calls
+    assert {call.name for call in cet1.calls} == {"search_filings"}
+    bare = await FakeAgentModel().plan("What were total deposits in 2024?", [], [])
+    assert {call.name for call in bare.calls} == {"search_filings"}
+    minimum = await FakeAgentModel().plan("What was the JPM minimum in 2024?", [], [])
+    assert {call.name for call in minimum.calls} == {"search_filings"}
+
+
+async def test_fake_plan_synthesizes_after_the_metric_call() -> None:
+    traces = (
+        TraceStep(
+            tool="metric_query",
+            args={"ticker": "JPM", "period": "2024-12-31"},
+            ok=True,
+            detail="1",
+        ),
+    )
+    decision = await FakeAgentModel().plan("What were JPM total deposits in 2024?", traces, [])
+    assert decision.kind == "synthesize"
+
+
+async def test_fake_draft_keeps_both_metric_accession_hits() -> None:
+    hits = (
+        _metric_hit("holding_company_net_income", _TEN_K, "net income is 10"),
+        _metric_hit("holding_company_net_income", _NINE_MONTH, "net income is 10 for nine months"),
+    )
+    draft = await FakeAgentModel().complete(
+        "What was JPM holding company net income in 2024?",
+        hits,
+    )
+    assert draft.kind == "answered"
+    assert len(draft.citations) == 2
+
+
+async def test_unconfigured_metric_query_matches_the_graph_shape() -> None:
+    async def search(query: str, *, k: int | None = None, filters: object = None) -> list[Hit]:
+        _ = query, k, filters
+        return []
+
+    async def missing(ticker: str, concept: str, period: str | None) -> str:
+        _ = ticker, concept, period
+        raise ValueError("missing")
+
+    async def missing_fdic(query: str) -> str:
+        raise ValueError(query)
+
+    tools = default_registry(search=search, xbrl=missing, fdic=missing_fdic)
+    result = await tools.execute("metric_query", _wire())
+    assert result.ok is False
+    assert result.detail == "metric query is not configured"
+    assert result.hits == ()
+
+
+async def test_fifth_invalid_metric_query_is_budget_exceeded() -> None:
+    gate = Gate(
+        load_policy(None),
+        default_registry(search=_empty_search, xbrl=_missing_xbrl, fdic=_missing_fdic),
+    )
+    args = _wire(group_by="bank__ticker")
+    details = [(await gate.execute("metric_query", args)).detail for _ in range(5)]
+    assert details == [
+        "invalid args",
+        "invalid args",
+        "invalid args",
+        "invalid args",
+        "budget exceeded",
+    ]
+
+
+def test_agent_and_mcp_do_not_import_metric_sql_modules() -> None:
+    for folder in ("agent", "mcp"):
+        for path in (ROOT / "src" / "capitalcite" / folder).rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            assert "metric_query.backends" not in text, path
+            assert "metric_query.cite" not in text, path
+
+
+def test_package_does_not_import_metricflow() -> None:
+    for path in (ROOT / "src" / "capitalcite").rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        assert "import metricflow" not in text, path
+        assert "from metricflow" not in text, path
+
+
+def test_open_metric_query_fails_closed_without_files(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.duckdb"
+    with pytest.raises(MetricQueryError) as caught:
+        open_metric_query(
+            backend_name="catalog",
+            warehouse=missing,
+            catalog_path=QUERY_CATALOG,
+        )
+    assert "missing.duckdb" not in str(caught.value)
+    warehouse = tmp_path / "warehouse.duckdb"
+    duckdb.connect(str(warehouse)).close()
+    with pytest.raises(MetricQueryError):
+        open_metric_query(backend_name="live", warehouse=warehouse, cwd=ROOT, env={})
+    backend, citations = open_metric_query(
+        backend_name="catalog",
+        warehouse=warehouse,
+        catalog_path=QUERY_CATALOG,
+    )
+    result = run_metric_query(_wire(), backend=backend, citations=citations)
+    assert result.ok is False
+    assert result.hits == ()
+
+
+def _metric_hit(section: str, accession: str, text: str) -> Hit:
+    return Hit(
+        score=1.0,
+        chunk=Chunk(
+            doc_id=accession,
+            section=section,
+            start=0,
+            end=len(text),
+            offset=0,
+            source_url="https://www.sec.gov/Archives/edgar/data/19617/index.json",
+            text=text,
+            token_count=count_tokens(text),
+            chunker=ChunkerName.FIXED,
+            ticker="JPM",
+            period="2024-12-31",
+            accession=accession,
+        ),
+    )
+
+
+async def _empty_search(query: str, *, k: int | None = None, filters: object = None) -> list[Hit]:
+    _ = query, k, filters
+    return []
+
+
+async def _missing_xbrl(ticker: str, concept: str, period: str | None) -> str:
+    _ = ticker, concept, period
+    raise ValueError("missing")
+
+
+async def _missing_fdic(query: str) -> str:
+    raise ValueError(query)

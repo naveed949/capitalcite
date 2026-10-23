@@ -22,8 +22,8 @@ class CapitalciteMCP(MCPServer):
         super().__init__(
             "capitalcite",
             instructions=(
-                "Cited answers over U.S. bank filings. search_filings and ask "
-                "go through the fail-closed gate and the audit log."
+                "Cited answers over U.S. bank filings. search_filings, metric_query, "
+                "and ask go through the fail-closed gate and the audit log."
             ),
             version=version("capitalcite"),
         )

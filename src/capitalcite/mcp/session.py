@@ -8,7 +8,7 @@ from capitalcite.agent.audited import AuditingTools, request_trace_id
 from capitalcite.agent.tools import SearchFn
 from capitalcite.agent.types import ToolResult
 from capitalcite.audit import AuditLog
-from capitalcite.config import Settings
+from capitalcite.config import Settings, metric_backends
 from capitalcite.gate import BrokenPolicy, Gate, load_policy
 from capitalcite.mcp.ask_tool import hits_payload, make_ask_runner
 from capitalcite.mcp.names import MCP_TOOL_NAMES
@@ -32,9 +32,12 @@ class McpSession:
         self.log = log
         self.policy = mcp_policy(load_policy(settings.gate_policy))
         search = _bound_search(setup)
+        metric_backend, metric_citations = metric_backends(settings)
         self.registry = mcp_registry(
             search=search,
             ask_runner=make_ask_runner(search, setup, settings),
+            metric_backend=metric_backend,
+            metric_citations=metric_citations,
         )
 
     async def dispatch(self, name: str, args: Mapping[str, object]) -> dict[str, object]:
@@ -88,7 +91,7 @@ def serialize_result(result: ToolResult) -> dict[str, object]:
         if result.reason is not None:
             body["reason"] = str(result.reason)
         return body
-    if result.tool == "search_filings":
+    if result.tool in {"search_filings", "metric_query"}:
         return {
             "ok": True,
             "detail": result.detail,
@@ -109,6 +112,7 @@ def advertised_tools(session: McpSession) -> list[tuple[str, str, dict[str, Any]
     descriptions = {
         "search_filings": "Search indexed bank filings. Citations come from stored chunks.",
         "ask": "Answer a question with grounded citations, or refuse.",
+        "metric_query": "One governed metric for one ticker and one quarter-end.",
     }
     if isinstance(session.policy, BrokenPolicy):
         return [

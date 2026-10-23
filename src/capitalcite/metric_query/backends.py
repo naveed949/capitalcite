@@ -127,7 +127,7 @@ class Catalog(BaseModel):
 
 
 class LiveMetricFlow:
-    """Shells mf at execute time. This class does not import metricflow.
+    """Shells mf at execute time. The metricflow package stays out of this process.
 
     open_metric_query(backend_name="catalog") constructs CatalogSql only.
     The image never constructs LiveMetricFlow.

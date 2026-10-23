@@ -108,7 +108,7 @@ async def drive(art: Path, root: Path) -> None:
         listed = await client.list_tools()
         names = sorted(tool.name for tool in listed.tools)
         _write(art, "mcp.tools.json", {"tools": names})
-        if set(names) != {"ask", "search_filings"}:
+        if set(names) != {"ask", "metric_query", "search_filings"}:
             raise RuntimeError(f"listed tools {names}")
 
         search = await client.call_tool("search_filings", {"query": "CET1 ratio", "ticker": "JPM"})
