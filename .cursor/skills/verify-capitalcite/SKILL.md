@@ -31,7 +31,7 @@ That is the default verification launch. `--small` skips live EDGAR and indexes 
 
 1. Runs `uv sync --frozen` so the editable install matches `uv.lock`.
 2. Binds uvicorn to `127.0.0.1` on a free port with `SEC_USER_AGENT='capitalcite-verify you@example.com'`.
-3. Waits until `GET /health` returns 200. `/health` stays 200 when the index is missing. It does not talk to Langfuse.
+3. Waits until `GET /health` returns 200. `/health` stays 200 when the index is missing. It does not talk to Langfuse. The helper stops that uvicorn before `capitalcite index` writes the shared `QDRANT_PATH`, then starts it again so `/health` and `/ask` reuse one client on the new points.
 4. Drives the mapped features below, writes evidence, then tears down **only** the uvicorn it started.
 
 Ready means: `GET /health` JSON is `{"status":"ok","service":"capitalcite","version":"<installed>","git_sha":"<non-empty>","point_count":<int>}`. `point_count` may be 0 before an index exists. A listening socket alone is not enough. Settings validation can still crash the worker on the first request if `SEC_USER_AGENT` lacks an `@`.

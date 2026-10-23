@@ -15,7 +15,7 @@ Verification uses the same embedded Qdrant index as search.
 
 ## How to get to it (user POV)
 
-- Index the corpus, then start uvicorn with the same `QDRANT_PATH`. `scripts/verify.sh` sets `ASK_MODEL=fake` for that process.
+- Index the corpus, then start uvicorn with the same `QDRANT_PATH`. Embedded Qdrant locks the folder, so uvicorn cannot stay up during `capitalcite index`. `scripts/verify.sh` sets `ASK_MODEL=fake` for that process.
 - POST JSON to `http://127.0.0.1:${PORT}/ask`.
 - Set `model` to `fake` or `openai` on the request. Omit it to use `ASK_MODEL`.
 

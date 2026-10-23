@@ -78,6 +78,38 @@ stop_pid() {
   fi
 }
 
+stop_main_uvicorn() {
+  stop_pid "${UVICORN_PID}"
+  UVICORN_PID=""
+}
+
+start_main_uvicorn() {
+  uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
+    >>"${ART}/uvicorn.log" 2>&1 &
+  UVICORN_PID=$!
+  write uvicorn.pid "${UVICORN_PID}"
+  local ready=0
+  local i=0
+  while [[ "${i}" -lt 60 ]]; do
+    if ! kill -0 "${UVICORN_PID}" 2>/dev/null; then
+      log "verify: uvicorn pid ${UVICORN_PID} exited before ready"
+      cat "${ART}/uvicorn.log" >&2 || true
+      exit 1
+    fi
+    if curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    i=$((i + 1))
+    sleep 0.25
+  done
+  if [[ "${ready}" -ne 1 ]]; then
+    log "verify: timed out waiting for GET /health on port ${PORT}"
+    cat "${ART}/uvicorn.log" >&2 || true
+    exit 1
+  fi
+}
+
 cleanup() {
   local rc=$?
   stop_pid "${UVICORN_PID}"
@@ -138,32 +170,7 @@ write audit.path "${AUDIT_LOG_PATH}"
 export CORS_ORIGINS="https://verify.example"
 write cors.origins "${CORS_ORIGINS}"
 
-uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
-  >"${ART}/uvicorn.log" 2>&1 &
-UVICORN_PID=$!
-write uvicorn.pid "${UVICORN_PID}"
-
-ready=0
-i=0
-while [[ "${i}" -lt 60 ]]; do
-  if ! kill -0 "${UVICORN_PID}" 2>/dev/null; then
-    log "verify: uvicorn pid ${UVICORN_PID} exited before ready"
-    cat "${ART}/uvicorn.log" >&2 || true
-    exit 1
-  fi
-  if curl -sf "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  i=$((i + 1))
-  sleep 0.25
-done
-
-if [[ "${ready}" -ne 1 ]]; then
-  log "verify: timed out waiting for GET /health on port ${PORT}"
-  cat "${ART}/uvicorn.log" >&2 || true
-  exit 1
-fi
+start_main_uvicorn
 
 log "verify: doctor GET /health"
 set +e
@@ -1411,6 +1418,8 @@ if [[ "${SMALL}" -eq 1 ]]; then
     --embedder bge-small
   )
   printf '%s\n' "${INDEX_CMD[*]}" >"${ART}/index.cmd"
+  log "verify: stopping uvicorn so capitalcite index can write the embedded store"
+  stop_main_uvicorn
   log "verify: ${INDEX_CMD[*]} (--small fixture index)"
   set +e
   "${INDEX_CMD[@]}" >"${ART}/index.1.out" 2>"${ART}/index.1.err"
@@ -1423,6 +1432,8 @@ if [[ "${SMALL}" -eq 1 ]]; then
     cat "${ART}/index.1.err" >&2 || true
     exit 1
   fi
+  log "verify: restarting uvicorn on the indexed store"
+  start_main_uvicorn
   ASK_FIXTURE='{"question":"What CET1 ratio did JPMorgan disclose?","k":10,"ticker":"JPM","model":"fake"}'
   ASK_FIXTURE_REFUSE='{"question":"What CET1 ratio did Wells Fargo disclose for year-end 2026?","k":10,"ticker":"WFC","model":"fake"}'
   ASK_FIXTURE_AGENT='{"question":"What CET1 ratio did JPMorgan disclose for 2024?","k":10,"path":"agent","model":"fake"}'
@@ -1571,6 +1582,8 @@ else
     --embedder bge-small
   )
   printf '%s\n' "${INDEX_CMD[*]}" >"${ART}/index.cmd"
+  log "verify: stopping uvicorn so capitalcite index can write the embedded store"
+  stop_main_uvicorn
   log "verify: ${INDEX_CMD[*]} (1/2)"
   set +e
   "${INDEX_CMD[@]}" >"${ART}/index.1.out" 2>"${ART}/index.1.err"
@@ -1583,10 +1596,14 @@ else
     cat "${ART}/index.1.err" >&2 || true
     exit 1
   fi
+  log "verify: restarting uvicorn on the indexed store"
+  start_main_uvicorn
 
   Q013='{"query":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","mode":"hybrid","k":5}'
   post_search search.repro.1 "${Q013}"
 
+  log "verify: stopping uvicorn so capitalcite index can write the embedded store"
+  stop_main_uvicorn
   log "verify: ${INDEX_CMD[*]} (2/2)"
   set +e
   "${INDEX_CMD[@]}" >"${ART}/index.2.out" 2>"${ART}/index.2.err"
@@ -1599,6 +1616,8 @@ else
     cat "${ART}/index.2.err" >&2 || true
     exit 1
   fi
+  log "verify: restarting uvicorn on the reindexed store"
+  start_main_uvicorn
 
   post_search search.repro.2 "${Q013}"
   post_search search.cc-h-013.hybrid "${Q013}"
