@@ -36,6 +36,11 @@ uv-cache/
 # Local agent decision logs (not the docs/DECISIONS.md index)
 .audit/
 
+# Node
+node_modules/
+.next/
+web/.next/
+
 # Editors / OS
 .idea/
 .vscode/

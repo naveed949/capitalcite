@@ -259,6 +259,26 @@ The first `index` downloads FastEmbed `bge-small` (about 67 MB) and the BM25 voc
 
 `GET /health` does not talk to Qdrant. Search and ask need the index and the same `QDRANT_PATH` as uvicorn.
 
+### Web app
+
+With that fixture index built and uvicorn still on `127.0.0.1:8000`, the page in `web/` asks the same API. It does not add CORS. The browser posts to Next. Next forwards the body to uvicorn.
+
+```bash
+pnpm --dir web install
+CAPITALCITE_API_ORIGIN=http://127.0.0.1:8000 ASK_MODEL=fake pnpm --dir web dev
+```
+
+Open `http://127.0.0.1:3001`. Dev and `pnpm --dir web start` listen on port 3001 so a local Langfuse stack can keep port 3000. `ASK_MODEL` defaults to `fake` when it is unset. The page sends that value as `model`. When it is `fake`, the page says `deterministic demo model` before you ask.
+
+`localhost` and `127.0.0.1` are different browser origins. The quickstart binds uvicorn to `127.0.0.1`. Set `CAPITALCITE_API_ORIGIN` to `http://127.0.0.1:8000`, and open the page on `http://127.0.0.1:3001`. Do not point the origin at `localhost` while uvicorn is bound to `127.0.0.1`. The origin is not a `NEXT_PUBLIC_` variable. The browser never reads it.
+
+A retrieval question with ticker `JPM`, the agent question `What CET1 ratio did JPMorgan disclose for 2024?`, and the Wells Fargo 2026 refusal all run on this fixture index. Fixture-index shots: [answered span](docs/web/answered-span.png), [agent timeline](docs/web/agent-timeline.png), [refusal](docs/web/refused.png). Regenerate the client types after an API model change.
+
+```bash
+pnpm --dir web generate:api
+pnpm --dir web check:api
+```
+
 ## Optional paths
 
 **Live EDGAR corpus.** `uv run capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025` then `chunk` / `index` without `--input-dir tests/fixtures/...`. Exit 2 is UNVERIFIED (EDGAR 403/429/5xx), not a pass.
@@ -294,6 +314,7 @@ Write-up number check: [ADR 0017](docs/decisions/0017-writeup.md).
 Eval report pick and the fake-model default: [ADR 0018](docs/decisions/0018-eval-report-and-ask-default.md).
 Streaming answers: [ADR 0021](docs/decisions/0021-ask-stream.md).
 BankFind host and metrics extract: [ADR 0022](docs/decisions/0022-bankfind-host-and-metrics-extract.md).
+Web UI: [ADR 0020](docs/decisions/0020-web-ui.md).
 
 The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 
@@ -307,6 +328,7 @@ The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 | Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with RRF. `POST /search` returns scores and citations | `capitalcite index`, `POST /search` |
 | Structured answers | `POST /ask` returns a citation copied from a retrieved chunk, or a refusal. `ASK_MODEL=fake` does not read `OPENAI_API_KEY` | `POST /ask` |
 | Streaming answers | `POST /ask/stream` is SSE of the same run. Frames reuse `PlanStep`, `TraceStep`, `Citation`, and `AskResponse` | `POST /ask/stream` |
+| Web app | Page on port 3001. Same-origin `POST /api/ask/stream` proxies to the API. A claim renders only with its spans | `pnpm --dir web dev` |
 | Agent | `POST /ask` `path=agent` runs LangGraph plan → tools → the same `ask()` / `ground()` / `guard` | `POST /ask` `path=agent` |
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, `calculator`, `graph_query`. Unknown names are denied | agent tools |
 | Fail-closed gate | JSON allow-list. Unknown names, extra keys, and a policy-load failure are denies | `capitalcite gate` |

@@ -50,3 +50,46 @@ jobs:
 
       - name: Retrieval eval (small)
         run: uv run capitalcite eval --suite golden --small --out "${RUNNER_TEMP}/eval-small"
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package
+        run: uv sync --frozen
+        env:
+          SEC_USER_AGENT: capitalcite-ci ci@example.com
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.33.4 --activate
+
+      - name: Install web dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Check generated API types
+        run: pnpm --dir web check:api
+        env:
+          SEC_USER_AGENT: capitalcite-ci ci@example.com
+
+      - name: Typecheck
+        run: pnpm --dir web typecheck
+
+      - name: Lint
+        run: pnpm --dir web lint
+
+      - name: Test
+        run: pnpm --dir web test
+
+      - name: Build
+        run: pnpm --dir web build

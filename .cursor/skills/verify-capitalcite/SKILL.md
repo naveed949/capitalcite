@@ -1,6 +1,6 @@
 ---
 name: verify-capitalcite
-description: "Drive capitalcite's FastAPI HTTP API (primary), `capitalcite` CLI, and `capitalcite mcp` stdio the way a user does: launch uvicorn on a free port, curl /health, run `capitalcite version`, drive MCP with the official client, optionally check docker compose and Qdrant. Use when proving a change works, after editing API/CLI/compose/MCP, or before merging."
+description: "Drive capitalcite's FastAPI HTTP API (primary), `capitalcite` CLI, `capitalcite mcp` stdio, and the web app on port 3001 the way a user does: launch uvicorn on a free port, curl /health, run `capitalcite version`, drive MCP with the official client, open the page in a browser against that API, optionally check docker compose and Qdrant. Use when proving a change works, after editing API/CLI/compose/MCP/web, or before merging."
 ---
 
 # Verify capitalcite
@@ -10,7 +10,7 @@ This skill is for the next agent, mid-task, who has never seen the app. It drive
 **Primary surface:** HTTP API — FastAPI, `uv run uvicorn capitalcite.api:app`.
 **Secondary surface:** `capitalcite` CLI (`uv run capitalcite`).
 **MCP surface:** `capitalcite mcp` on stdio, driven with the official `mcp.Client` and `StdioServerParameters`.
-**Not a surface yet:** there is no web UI. Do not open a browser.
+**Web surface:** the Next.js app in `web/`, `pnpm --dir web dev` on port 3001. The browser posts to that origin. Next forwards `POST /api/ask/stream` to the uvicorn this run started. Do not open a browser against a different API host.
 
 Two instances can run side by side: pick a free loopback port per run and a unique `artifacts/verify/<timestamp>/` directory. Do not attach to an already-running uvicorn you did not start. Do not `docker compose down` a stack you did not start.
 
@@ -92,6 +92,7 @@ Stable handles (do not invent others):
 | HTTP | `POST /search` | 200 + citation fields + gold span overlap on `cc-h-013` / `cc-h-063`; UNVERIFIED only when ingest could not run |
 | HTTP | `POST /ask` | 200 + grounded citations on `cc-h-013` with `model` `fake`; `cc-u-001` refused; live `model` `openai` is UNVERIFIED without `OPENAI_API_KEY` |
 | HTTP | `POST /ask/stream` | 200 `text/event-stream`; `answered.response` equals `POST /ask` for the same body; agent frames include `plan` / `tool_call`; blank question is 422 before SSE. `--small` uses the fixture index |
+| Web | `web ask` | Page shows `deterministic demo model`, a cited retrieval answer, `search_filings` on the agent path, a refusal with no answer node, and cancel. Missing pnpm, node, or a browser is UNVERIFIED |
 | HTTP | `POST /ask` `path=agent` | 200 + plan/traces on `cc-h-055` (comparison) and `cc-h-061` (multi-hop) with `model` `fake`; live `model` `openai` is UNVERIFIED without `OPENAI_API_KEY` |
 | CLI | `capitalcite gate decide --tool shell --args '{"cmd":"ls"}'` | exit 0 + JSON `kind` `deny`; unknown tool, invalid args, and a broken policy file each deny |
 | CLI | `capitalcite gate redteam` | exit 0 + `failed` 0; injection text cannot run a denied tool |
@@ -119,7 +120,7 @@ Report each driven feature as `passed`, `failed`, or `UNVERIFIED`.
 
 - `passed` only when this run executed the user path and the proof files match the expected result.
 - `failed` when the path ran and the result is wrong.
-- `UNVERIFIED` when the path cannot run here. Azure deploy with no credentials, live EDGAR 403, and Docker missing for the optional compose stack are `UNVERIFIED`. Embedded `POST /search` is UNVERIFIED only when ingest could not store JPM FY24 / WFC FY25. Record the attempted command and the missing precondition.
+- `UNVERIFIED` when the path cannot run here. Azure deploy with no credentials, live EDGAR 403, Docker missing for the optional compose stack, and a missing Node toolchain or browser for `web ask` are `UNVERIFIED`. Embedded `POST /search` is UNVERIFIED only when ingest could not store JPM FY24 / WFC FY25. Record the attempted command and the missing precondition.
 
 Never report `UNVERIFIED` as `passed`. `scripts/verify.sh` may exit 0 when only optional steps were skipped. Copy those skips into the report as `UNVERIFIED`. Files named `*.skipped` or `verified-unreachable` mean `UNVERIFIED`.
 
@@ -152,6 +153,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `search.top5.txt` / `search.*.body.json` / `search.http` **or** `search.unreachable` | Live `POST /search` on embedded Qdrant, or UNVERIFIED when ingest could not run |
 | `ask.body.json` / `ask.http` / `ask.cc-u-001.body.json` **or** `ask.unreachable` | Live `POST /ask` with `ASK_MODEL=fake` on that same index. `ask.openai.unverified` when live OpenAI was not run |
 | `stream.body` / `stream.http` / `stream.events.json` **or** `stream.unreachable` | Live `POST /ask/stream` on that same index. Parsed events end with `done`. `answered.response` matches the paired `/ask` body |
+| `web.exit` / `web.label.txt` / `web.answered.txt` / `web.agent.txt` / `web.refused.txt` / `web.cancel.txt` / `web.answered.png` / `web.agent.png` / `web.refused.png` **or** `web.unreachable` / `web.browser.unverified` | Browser drive of the page against this run's uvicorn. Missing pnpm or node writes `web.unreachable`. A failed Chromium launch writes `web.browser.unverified` |
 | `gate.help.out` / `gate.validate.out` / `gate.decide.*.body.json` / `gate.redteam.body.json` / `gate.bench.body.json` | Offline fail-closed gate: shipped policy loads, unknown/invalid/broken deny, red-team `failed` is 0, `p95_ms` is recorded |
 | `agent.cc-h-055.body.json` / `agent.cc-h-061.body.json` **or** `agent.unreachable` | Live `POST /ask` `path=agent` with the fake model on comparison and multi-hop items. `agent.openai.unverified` when live OpenAI was not run |
 | `spans.jsonl` **or** `spans.skipped` | File-exporter JSONL of ask/retrieve (and eval) spans. Proof of the tree without Langfuse |
@@ -210,7 +212,7 @@ Do not reverse-engineer the script: the Drive table and the feature files list t
 
 When a later issue adds a user-facing endpoint or command, extend verification in the same PR that adds the surface — do not wait for a dedicated "update the skill" issue.
 
-1. Add a feature file under [features/](features/) with the four H2s (`Sub-features`, `How to get to it (user POV)`, `Driving it with curl` or `Driving it with the capitalcite CLI`, `Gotchas`).
+1. Add a feature file under [features/](features/) with the four H2s (`Sub-features`, `How to get to it (user POV)`, `Driving it with curl`, `Driving it with the capitalcite CLI`, or `Driving it with the browser`, `Gotchas`).
 2. Link it from [features/README.md](features/README.md).
 3. Add a step to `scripts/verify.sh` that invokes the new handle, writes `<name>.body` / `<name>.out` and `<name>.exit` into the same timestamped artifacts dir, and fails the script on a bad status/body.
 4. If the new path needs Qdrant, an index, or a golden file, say so as a **precondition** in that feature's Gotchas. Do not weaken the journey so it passes on an empty store. Report `UNVERIFIED` and write a `verified-unreachable` artifact with the missing precondition.
@@ -235,6 +237,7 @@ Expected later handles (do not add empty stubs now):
 | #15 MCP | `capitalcite mcp` via official stdio client (landed) |
 | #16 entity graph | `capitalcite graph load/query` and `eval --suite graph --small` (landed). Live Neo4j Bolt is UNVERIFIED without Docker |
 | metrics extract | `capitalcite metrics extract --fixtures` (landed). Live BankFind and live companyfacts are outside this helper |
+| web app | `web ask` on port 3001 (landed). Missing pnpm or a browser is UNVERIFIED |
 
 `./scripts/verify.sh` runs `capitalcite check`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED.
 
