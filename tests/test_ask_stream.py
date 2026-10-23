@@ -2,24 +2,30 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 from collections.abc import Mapping
 from pathlib import Path
 
 import httpx
 import pytest
+import uvicorn
 from fastapi import FastAPI
 from httpx import ASGITransport
 from qdrant_client import AsyncQdrantClient
 
-from capitalcite.agent import FakeAgentModel, PlannerDecision, ToolCall
+from capitalcite.agent import FakeAgentModel, PlannerDecision, PlanStep, ToolCall
+from capitalcite.agent.observe import Observe
 from capitalcite.api.app import create_app
-from capitalcite.api.ask_models import AskRequest, AskResponse, ToolCallEvent, event_model_names
-from capitalcite.api.routes.ask import iter_ask
+from capitalcite.api.ask_models import AskResponse, event_model_names
+from capitalcite.api.routes.ask import AskRequest
 from capitalcite.api.routes.search import get_setup
 from capitalcite.audit import AuditRecord, verify
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.config import Settings, get_settings
 from capitalcite.retrieval import FakeEmbedder, RetrievalSetup, build_index, setup_retrieval
+
+_ORIGINAL_ASYNC_HTTP = httpx.AsyncHTTPTransport.handle_async_request
+_ORIGINAL_SYNC_HTTP = httpx.HTTPTransport.handle_request
 
 _JPM_URL = "https://www.sec.gov/Archives/edgar/data/19617/jpm.htm"
 _BAC_URL = "https://www.sec.gov/Archives/edgar/data/70858/bac.htm"
@@ -29,7 +35,7 @@ def test_openapi_lists_stream_events() -> None:
     schema = create_app().openapi()
     stream = schema["paths"]["/ask/stream"]["post"]
     media = stream["responses"]["200"]["content"]
-    assert "text/event-stream" in media
+    assert list(media) == ["text/event-stream"]
     dumped = json.dumps(media["text/event-stream"])
     names = event_model_names()
     assert names == (
@@ -46,6 +52,11 @@ def test_openapi_lists_stream_events() -> None:
     )
     for name in names:
         assert name in dumped
+
+
+def test_openapi_refs_resolve() -> None:
+    schema = create_app().openapi()
+    _assert_refs_resolve(schema)
 
 
 async def test_rag_event_order_and_answered_matches_ask(tmp_path: Path) -> None:
@@ -69,6 +80,26 @@ async def test_rag_event_order_and_answered_matches_ask(tmp_path: Path) -> None:
     answered = next(event for event in events if event["event"] == "answered")
     assert answered["response"] == ask
     AskResponse.model_validate(answered["response"])
+
+
+async def test_agent_answered_matches_ask(tmp_path: Path) -> None:
+    application, _setup = await _indexed_app(tmp_path, [_chunk()])
+    body: dict[str, object] = {
+        "question": "What buffer did JPM describe?",
+        "path": "agent",
+        "model": "fake",
+    }
+    ask = await _post_json(application, "/ask", body)
+    status, media, events = await _read_stream(application, body)
+    assert status == 200
+    assert media.startswith("text/event-stream")
+    names = [event["event"] for event in events]
+    assert names[0] == "plan"
+    assert "tool_call" in names
+    assert names[-1] == "done"
+    terminal = next(event for event in events if event["event"] in {"answered", "refused"})
+    assert terminal["response"] == ask
+    AskResponse.model_validate(terminal["response"])
 
 
 async def test_rag_refusal_has_no_citations(tmp_path: Path) -> None:
@@ -147,6 +178,8 @@ async def test_disconnect_cancels_the_in_flight_tool(
             cancelled += 1
             raise
 
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", _ORIGINAL_ASYNC_HTTP)
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", _ORIGINAL_SYNC_HTTP)
     monkeypatch.setattr("capitalcite.api.routes.ask.retrieve", slow_retrieve)
     monkeypatch.setattr(
         "capitalcite.api.routes.ask.build_agent_model",
@@ -160,33 +193,72 @@ async def test_disconnect_cancels_the_in_flight_tool(
             )
         ),
     )
-    _application, setup = await _indexed_app(
+    application, _setup = await _indexed_app(
         tmp_path, [_chunk(), _chunk(ticker="BAC", url=_BAC_URL)]
     )
-    events = iter_ask(
-        AskRequest.model_validate(
-            {"question": "compare JPM and BAC", "path": "agent", "model": "fake"}
-        ),
-        setup,
-        _settings(tmp_path),
-    )
-    saw_tool_call = False
+    server, serve_task, port = await _start_uvicorn(application)
     try:
-        async for event in events:
-            if isinstance(event, ToolCallEvent):
-                saw_tool_call = True
+        async with (
+            httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=5.0) as client,
+            client.stream(
+                "POST",
+                "/ask/stream",
+                json={"question": "compare JPM and BAC", "path": "agent", "model": "fake"},
+            ) as response,
+        ):
+            buf = ""
+            async for chunk in response.aiter_text():
+                buf += chunk
+                if "event: tool_call" in buf or '"event":"tool_call"' in buf:
+                    break
+        for _ in range(40):
+            if cancelled == 1:
                 break
+            await asyncio.sleep(0.05)
+        assert started == 1
+        assert finished == 0
+        assert cancelled == 1
+        assert started < 2
+        report = verify(tmp_path / "audit.jsonl")
+        assert report.ok is True
+        assert report.records >= 1
     finally:
-        await events.aclose()
-    for _ in range(40):
-        if cancelled == 1:
-            break
-        await asyncio.sleep(0.05)
-    assert saw_tool_call
-    assert started == 1
-    assert finished == 0
-    assert cancelled == 1
-    assert started < 2
+        server.should_exit = True
+        await serve_task
+
+
+async def test_unexpected_error_after_200_emits_error_and_done(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def boom(
+        body: AskRequest,
+        setup: object,
+        settings: Settings,
+        *,
+        observe: Observe | None = None,
+    ) -> None:
+        _ = body, setup, settings
+        step = PlanStep(tool="search_filings", args={"query": "one"}, status="pending")
+        if observe is not None:
+            observe.plan([step])
+            observe.tool_call(step)
+        raise RuntimeError("tool exploded")
+
+    monkeypatch.setattr("capitalcite.api.routes.ask._run_agent", boom)
+    application, _setup = await _indexed_app(tmp_path, [_chunk()])
+    status, media, events = await _read_stream(
+        application,
+        {"question": "What buffer did JPM describe?", "path": "agent", "model": "fake"},
+    )
+    assert status == 200
+    assert media.startswith("text/event-stream")
+    names = [event["event"] for event in events]
+    assert names[0] == "plan"
+    assert "error" in names
+    assert names[-1] == "done"
+    err = next(event for event in events if event["event"] == "error")
+    assert err["status"] == 500
+    assert "exploded" in str(err["detail"])
 
 
 async def test_blank_question_is_422_before_the_stream(tmp_path: Path) -> None:
@@ -200,6 +272,59 @@ async def test_blank_question_is_422_before_the_stream(tmp_path: Path) -> None:
 
 def test_ask_request_still_imports_from_the_route() -> None:
     assert AskRequest.model_fields["path"].default == "rag"
+
+
+def _assert_refs_resolve(schema: Mapping[str, object]) -> None:
+    def resolve(ref: str) -> object:
+        assert ref.startswith("#/"), ref
+        node: object = schema
+        for part in ref[2:].split("/"):
+            key = part.replace("~1", "/").replace("~0", "~")
+            assert isinstance(node, dict), ref
+            assert key in node, ref
+            node = node[key]
+        return node
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str):
+                resolve(ref)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(schema)
+
+
+async def _start_uvicorn(
+    application: FastAPI,
+) -> tuple[uvicorn.Server, asyncio.Task[None], int]:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = int(sock.getsockname()[1])
+    sock.close()
+    config = uvicorn.Config(
+        application,
+        host="127.0.0.1",
+        port=port,
+        log_level="warning",
+        lifespan="on",
+    )
+    server = uvicorn.Server(config)
+    task = asyncio.create_task(server.serve())
+    for _ in range(100):
+        if server.started:
+            return server, task, port
+        if task.done():
+            task.result()
+            raise RuntimeError("uvicorn exited before listen")
+        await asyncio.sleep(0.05)
+    server.should_exit = True
+    await task
+    raise RuntimeError("uvicorn did not start")
 
 
 async def _post_json(

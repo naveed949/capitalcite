@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Annotated, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from capitalcite.agent.types import AskPath, PlanStep, TraceStep
 from capitalcite.ask.types import AskModelName, Citation
@@ -153,7 +153,7 @@ class RefusedEvent(BaseModel):
 class ErrorEvent(BaseModel):
     model_config = ConfigDict(frozen=True)
     event: Literal["error"] = "error"
-    status: Literal[422, 503]
+    status: Literal[422, 500, 503]
     detail: str = Field(min_length=1)
 
 
@@ -233,3 +233,54 @@ def event_model_names() -> tuple[str, ...]:
     union = get_args(AskEvent)[0]
     members = get_args(union)
     return tuple(model.model_fields["event"].default for model in members)
+
+
+def ask_event_openapi_schema() -> dict[str, object]:
+    """JSON Schema for the SSE union, with refs aimed at OpenAPI components."""
+    schema = TypeAdapter(AskEvent).json_schema(ref_template="#/components/schemas/{model}")
+    if not isinstance(schema, dict):
+        raise TypeError("event schema must be an object")
+    return schema
+
+
+def hoist_openapi_defs(openapi: dict[str, object]) -> None:
+    """Move ``$defs`` onto ``components.schemas`` and rewrite leftover ``#/$defs/`` refs."""
+    components = openapi.setdefault("components", {})
+    if not isinstance(components, dict):
+        raise TypeError("openapi components must be an object")
+    schemas = components.setdefault("schemas", {})
+    if not isinstance(schemas, dict):
+        raise TypeError("openapi components.schemas must be an object")
+
+    def walk(node: object) -> None:
+        if isinstance(node, dict):
+            defs = node.pop("$defs", None)
+            if isinstance(defs, dict):
+                for name, spec in defs.items():
+                    schemas.setdefault(name, spec)
+                    walk(spec)
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/$defs/"):
+                node["$ref"] = "#/components/schemas/" + ref.removeprefix("#/$defs/")
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(openapi)
+    for spec in schemas.values():
+        if not isinstance(spec, dict):
+            continue
+        properties = spec.get("properties")
+        if not isinstance(properties, dict) or "event" not in properties:
+            continue
+        required = spec.setdefault("required", [])
+        if isinstance(required, list) and "event" not in required:
+            required.append("event")
+
+
+def fault_detail(exc: BaseException) -> str:
+    """One-line detail for an ``error`` event. ``encode_sse`` rejects newlines."""
+    text = " ".join(str(exc).split())
+    return text if text else type(exc).__name__

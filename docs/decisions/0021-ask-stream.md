@@ -23,19 +23,24 @@ JSON can read SSE. The route is POST. There is no GET twin.
 
 The server writes facts. The client does not send mid-run messages.
 A WebSocket would add a handshake, a frame type, and a close code for
-a one-way job. Long-poll would hide each fact behind another request
+a one-way task. Long-poll would hide each fact behind another request
 and would still need an event schema.
 
 SSE is one HTTP response, `Content-Type: text/event-stream`, and a
 sequence of `event:` / `data:` blocks. The client parses lines. The
-server can end the stream with `done`. Starlette's `StreamingResponse`
-is that response. The project does not add `sse-starlette`.
+server can end the stream with `done`. `_AskSSEResponse` writes those
+frames. It peeks the first event in the same task that sends the body
+so a 422 or 503 can go out before any SSE byte. The project does not
+add `sse-starlette`.
 
-Starlette cancels the generator when the client drops. The generator's
-`finally` closes the event iterator. The agent run is one child task
-plus a queue. That `finally` cancels the task. `CancelledError` is a
-`BaseException`. It is not a gate deny and it is not an `error` event.
-A second planned tool does not start after cancel.
+A watcher task reads ASGI `http.disconnect` and cancels the request
+task. That cancel is `uncancel()`'d so it is not treated as an
+unexpected failure. Any other `CancelledError` is re-raised. The
+event iterator's `finally` then cancels the one agent child. An
+unexpected exception after HTTP 200 becomes an `error` event with
+status 500, then `done`. `CancelledError` is a `BaseException`. It is
+not a gate deny and it is not an `error` event. A second planned tool
+does not start after cancel.
 
 Backpressure is the queue and the `yield`. `Observe` methods only
 `put_nowait` in-memory events. They do not write sockets. If the

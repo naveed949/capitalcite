@@ -9,7 +9,6 @@ from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import TypeAdapter
 from starlette.responses import Response
 from starlette.types import Receive, Scope, Send
 
@@ -44,7 +43,9 @@ from capitalcite.api.ask_models import (
     PlanEvent,
     RefusedEvent,
     ToolCallEvent,
+    ask_event_openapi_schema,
     encode_sse,
+    fault_detail,
     fold_response,
     terminal_facts,
     tool_fact,
@@ -137,11 +138,14 @@ class _AskSSEResponse(Response):
 
         await send({"type": "http.response.start", "status": 200, "headers": _SSE_START_HEADERS})
         current = asyncio.current_task()
+        cancelled_by_client = False
 
         async def watch_disconnect() -> None:
+            nonlocal cancelled_by_client
             while True:
                 message = await receive()
                 if message["type"] == "http.disconnect":
+                    cancelled_by_client = True
                     if current is not None:
                         current.cancel()
                     return
@@ -165,7 +169,26 @@ class _AskSSEResponse(Response):
                 )
             await send({"type": "http.response.body", "body": b"", "more_body": False})
         except asyncio.CancelledError:
-            pass
+            if not cancelled_by_client:
+                raise
+            if current is not None:
+                current.uncancel()
+        except Exception as exc:
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": encode_sse(ErrorEvent(status=500, detail=fault_detail(exc))),
+                    "more_body": True,
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": encode_sse(DoneEvent()),
+                    "more_body": True,
+                }
+            )
+            await send({"type": "http.response.body", "body": b"", "more_body": False})
         finally:
             watcher.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -208,15 +231,14 @@ async def post_ask(
 @router.post(
     "/ask/stream",
     response_model=None,
-    openapi_extra={
-        "responses": {
-            "200": {
-                "content": {
-                    "text/event-stream": {
-                        "schema": TypeAdapter(AskEvent).json_schema(),
-                    }
+    responses={
+        200: {
+            "description": "Server-sent events for one ask run.",
+            "content": {
+                "text/event-stream": {
+                    "schema": ask_event_openapi_schema(),
                 }
-            }
+            },
         }
     },
 )
@@ -259,10 +281,13 @@ async def iter_ask(
                         fault = event
                     yield event
         except ValueError as exc:
-            fault = ErrorEvent(status=422, detail=str(exc))
+            fault = ErrorEvent(status=422, detail=fault_detail(exc))
             yield fault
         except _STREAM_FAULTS as exc:
-            fault = ErrorEvent(status=503, detail=str(exc))
+            fault = ErrorEvent(status=503, detail=fault_detail(exc))
+            yield fault
+        except Exception as exc:
+            fault = ErrorEvent(status=500, detail=fault_detail(exc))
             yield fault
         if response is not None:
             span.set(
