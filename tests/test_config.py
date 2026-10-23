@@ -82,6 +82,31 @@ def test_langfuse_tracing_enabled_reads_env(monkeypatch: pytest.MonkeyPatch) -> 
 def test_ask_model_defaults_to_fake() -> None:
     settings = Settings.model_validate({"sec_user_agent": "capitalcite-tests tests@example.com"})
     assert settings.ask_model == "fake"
+    assert settings.test_slow_retrieve_ms == 0
+
+
+def test_slow_retrieve_ms_reads_capitalcite_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("CAPITALCITE_TEST_SLOW_RETRIEVE_MS", "4000")
+    settings = Settings()
+    assert settings.test_slow_retrieve_ms == 4000
+
+
+def test_slow_retrieve_ms_rejected_in_prod(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("CAPITALCITE_TEST_SLOW_RETRIEVE_MS", "4000")
+    with pytest.raises(ValidationError, match="CAPITALCITE_TEST_SLOW_RETRIEVE_MS"):
+        Settings()
+
+
+def test_slow_retrieve_ms_rejects_above_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("CAPITALCITE_TEST_SLOW_RETRIEVE_MS", "10001")
+    with pytest.raises(ValidationError):
+        Settings()
 
 
 def test_ask_model_openai_env_is_not_rewritten_to_fake(monkeypatch: pytest.MonkeyPatch) -> None:

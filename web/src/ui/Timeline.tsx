@@ -2,7 +2,7 @@ import type { TimelineItem } from "../session/session";
 
 export function Timeline(props: { items: readonly TimelineItem[] }) {
   return (
-    <ol data-testid="timeline" className="flex flex-col gap-2 text-sm">
+    <ol data-testid="timeline" aria-live="polite" className="flex flex-col gap-2 text-sm">
       {props.items.map((item, index) => (
         <li key={index} data-kind={item.kind} className="rounded border border-zinc-200 px-3 py-2">
           <TimelineRow item={item} />

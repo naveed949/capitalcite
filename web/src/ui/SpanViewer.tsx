@@ -1,9 +1,21 @@
+import { forwardRef } from "react";
 import type { FilingSpan } from "../session/session";
 
-export function SpanViewer(props: { span: FilingSpan; onClose: () => void }) {
+export const SpanViewer = forwardRef<
+  HTMLElement,
+  {
+    span: FilingSpan;
+    onClose: () => void;
+  }
+>(function SpanViewer(props, ref) {
   const href = httpUrl(props.span.sourceUrl);
   return (
-    <aside data-testid="span-viewer" className="w-full rounded border border-zinc-300 p-4">
+    <aside
+      ref={ref}
+      tabIndex={-1}
+      data-testid="span-viewer"
+      className="w-full rounded border border-zinc-300 p-4"
+    >
       <p data-testid="span-doc" className="font-mono text-sm">
         {props.span.docId}
       </p>
@@ -36,7 +48,7 @@ export function SpanViewer(props: { span: FilingSpan; onClose: () => void }) {
       </button>
     </aside>
   );
-}
+});
 
 function httpUrl(value: string): string | undefined {
   let url: URL;

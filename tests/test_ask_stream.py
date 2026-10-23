@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import socket
 from collections.abc import Mapping
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import httpx
 import pytest
@@ -18,12 +21,14 @@ from capitalcite.agent import FakeAgentModel, PlannerDecision, PlanStep, ToolCal
 from capitalcite.agent.observe import Observe
 from capitalcite.api.app import create_app
 from capitalcite.api.ask_models import AskResponse, event_model_names, hoist_openapi_defs
-from capitalcite.api.routes.ask import AskRequest
+from capitalcite.api.routes.ask import AskRequest, _note_client_cancel, _rag_events
 from capitalcite.api.routes.search import get_setup
+from capitalcite.ask.types import Refused
 from capitalcite.audit import AuditRecord, verify
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.config import Settings, get_settings
 from capitalcite.retrieval import FakeEmbedder, RetrievalSetup, build_index, setup_retrieval
+from capitalcite.retrieval.types import IndexConfig
 
 _ORIGINAL_ASYNC_HTTP = httpx.AsyncHTTPTransport.handle_async_request
 _ORIGINAL_SYNC_HTTP = httpx.HTTPTransport.handle_request
@@ -237,6 +242,140 @@ async def test_disconnect_cancels_the_in_flight_tool(
     finally:
         server.should_exit = True
         await serve_task
+
+
+async def test_disconnect_cancels_rag_retrieve_before_first_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    started = 0
+    finished = 0
+    cancelled = 0
+
+    async def slow_retrieve(*_args: object, **_kwargs: object) -> list[object]:
+        nonlocal started, finished, cancelled
+        started += 1
+        try:
+            await asyncio.sleep(30)
+            finished += 1
+            return []
+        except asyncio.CancelledError:
+            cancelled += 1
+            raise
+
+    marker = tmp_path / "cancel.marker"
+    monkeypatch.setenv("CAPITALCITE_CANCEL_MARKER", str(marker))
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", _ORIGINAL_ASYNC_HTTP)
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", _ORIGINAL_SYNC_HTTP)
+    monkeypatch.setattr("capitalcite.api.routes.ask.retrieve", slow_retrieve)
+    application, _setup = await _indexed_app(tmp_path, [_chunk()])
+    server, serve_task, port = await _start_uvicorn(application)
+    ask_logger = logging.getLogger("capitalcite.api.routes.ask")
+    ask_logger.setLevel(logging.INFO)
+    ask_logger.addHandler(caplog.handler)
+    try:
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=5.0) as client:
+
+            async def pending() -> None:
+                async with client.stream(
+                    "POST",
+                    "/ask/stream",
+                    json={
+                        "question": "What buffer did JPM describe?",
+                        "ticker": "JPM",
+                        "model": "fake",
+                    },
+                ) as response:
+                    async for _chunk in response.aiter_text():
+                        pass
+
+            task = asyncio.create_task(pending())
+            for _ in range(40):
+                if started == 1:
+                    break
+                await asyncio.sleep(0.05)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, httpx.HTTPError):
+                await task
+        for _ in range(40):
+            if cancelled == 1:
+                break
+            await asyncio.sleep(0.05)
+        assert started == 1
+        assert finished == 0
+        assert cancelled == 1
+        assert "ask stream cancelled by client" in caplog.text
+        assert marker.read_text(encoding="utf-8") == "cancelled\n"
+    finally:
+        ask_logger.removeHandler(caplog.handler)
+        server.should_exit = True
+        await serve_task
+
+
+def test_note_client_cancel_skips_marker_in_prod(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / "cancel.marker"
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("CAPITALCITE_CANCEL_MARKER", str(marker))
+    get_settings.cache_clear()
+    try:
+        _note_client_cancel()
+        assert not marker.exists()
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_slow_retrieve_sleeps_only_for_the_cancel_question(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order: list[str] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        order.append(f"sleep:{seconds}")
+
+    async def fake_retrieve(_setup: object, query: str, **_kwargs: object) -> list[object]:
+        order.append(f"retrieve:{query}")
+        return []
+
+    async def fake_ask(*_args: object, **_kwargs: object) -> Refused:
+        return Refused(refusal_reason="no passages were retrieved")
+
+    monkeypatch.setattr("capitalcite.api.routes.ask.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr("capitalcite.api.routes.ask.retrieve", fake_retrieve)
+    monkeypatch.setattr("capitalcite.api.routes.ask.ask", fake_ask)
+    config = IndexConfig(
+        embedder_id="bge-small",
+        dense_size=384,
+        sparse_id="bm25",
+        chunker=ChunkerName.SECTION,
+        chunk_size=512,
+        chunk_overlap=64,
+        collection_prefix="filings",
+    )
+    setup = cast(RetrievalSetup, SimpleNamespace(config=config, search_k=8))
+    hold = "Hold this retrieve so cancel can land"
+
+    async def run(question: str, ms: int) -> None:
+        order.clear()
+        settings = Settings.model_validate(
+            {
+                "sec_user_agent": "capitalcite-tests tests@example.com",
+                "app_env": "test",
+                "CAPITALCITE_TEST_SLOW_RETRIEVE_MS": ms,
+            }
+        )
+        events = [
+            event async for event in _rag_events(AskRequest(question=question), setup, settings, 0)
+        ]
+        assert events[0].event == "refused"
+
+    await run(hold, 0)
+    assert order == [f"retrieve:{hold}"]
+    await run("What CET1 ratio did JPMorgan disclose?", 4000)
+    assert order == ["retrieve:What CET1 ratio did JPMorgan disclose?"]
+    await run(hold, 4000)
+    assert order == [f"sleep:{4.0}", f"retrieve:{hold}"]
 
 
 async def test_unexpected_error_after_200_emits_error_and_done(

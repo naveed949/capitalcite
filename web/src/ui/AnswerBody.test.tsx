@@ -40,6 +40,8 @@ describe("AnswerBody", () => {
     const seen: string[] = [];
     render(<AnswerBody claim={claim} onShowSpan={(span) => seen.push(span.docId)} />);
     expect(screen.getByTestId("answer")).toHaveTextContent("CET1 ratio of 13.0 percent");
+    expect(screen.getByTestId("answer")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("button", { name: "Item 1 citation 1" })).toBeInTheDocument();
     fireEvent.click(screen.getByTestId("span-chip"));
     expect(seen).toEqual(["doc-1"]);
   });
@@ -52,6 +54,19 @@ describe("AnswerBody", () => {
     expect(screen.queryByTestId("ticker")).toBeNull();
     expect(screen.queryByTestId("period")).toBeNull();
     expect(screen.getByRole("radio", { name: "Retrieval" })).toBeInTheDocument();
+  });
+
+  it("moves focus into the span viewer and back to the chip", () => {
+    const claim = fixtureClaim();
+    let session = reduceSession(initialSession, { type: "submit", input });
+    session = reduceSession(session, { type: "answered", claim });
+    render(<AskSessionView session={session} onSubmit={() => undefined} onCancel={() => undefined} />);
+    const chip = screen.getByRole("button", { name: "Item 1 citation 1" });
+    chip.focus();
+    fireEvent.click(chip);
+    expect(screen.getByTestId("span-viewer")).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(chip).toHaveFocus();
   });
 
   it("does not mount an answer while the session is only citing", () => {
@@ -70,6 +85,7 @@ describe("SpanViewer", () => {
     expect(screen.getByTestId("span-section")).toHaveTextContent("Item 1");
     const quote = screen.getByTestId("span-quote");
     expect(screen.getByTestId("span-viewer").tagName).toBe("ASIDE");
+    expect(screen.getByTestId("span-viewer")).toHaveAttribute("tabindex", "-1");
     expect(quote.tagName).toBe("MARK");
     expect(quote).toHaveTextContent("CET1 ratio of 13.0 percent");
     expect(quote).toHaveAttribute("data-quote-start", "12");

@@ -226,7 +226,7 @@ async function* sseFrames(
     buffer += decoder.decode().replaceAll("\r\n", "\n");
     if (buffer.trim().length > 0) yield buffer;
   } finally {
-    reader.releaseLock();
+    await reader.cancel().catch(() => undefined);
   }
 }
 

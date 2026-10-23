@@ -20,6 +20,7 @@ from capitalcite.trace import (
     configure,
     configure_for_tests,
     current_trace_id,
+    eval_attrs,
     gate_decision,
     generation_attrs,
     observation,
@@ -336,6 +337,13 @@ def test_retrieval_attrs_cap_hits_and_omit_chunk_text() -> None:
     capped = retrieval_attrs(hits, mode="bm25", collection="filings", k=3)
     assert "capitalcite.hit.2.score" in capped
     assert "capitalcite.hit.3.score" not in capped
+
+
+def test_eval_attrs_keep_git_sha_digit_runs() -> None:
+    sha = "abc" + ("1" * 16) + "def"
+    attrs = eval_attrs(git_sha=sha, suite="golden", small=True)
+    assert attrs["capitalcite.git_sha"] == sha
+    assert "[REDACTED DIGITS]" not in str(attrs["capitalcite.git_sha"])
 
 
 def test_generation_cost_requires_a_known_rate_and_both_counts() -> None:

@@ -196,6 +196,8 @@ def _clean(key: str, raw: object) -> AttrValue | None:
         return None
     if key == "capitalcite.question":
         return mask_text(raw, max_len=_QUESTION_MAX)
+    if key == "capitalcite.git_sha":
+        return raw
     return mask_value(raw)
 
 

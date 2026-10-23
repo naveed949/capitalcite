@@ -13,7 +13,7 @@ The page at `http://127.0.0.1:3001` asks a filing question and shows a cited ans
 ## How to get to it (user POV)
 
 - Build the fixture index (or the ingested index) and start uvicorn on `127.0.0.1` with `ASK_MODEL=fake`, the same way `POST /ask/stream` is verified.
-- From the repo root, run `pnpm --dir web install` and `CAPITALCITE_API_ORIGIN=http://127.0.0.1:${PORT} ASK_MODEL=fake pnpm --dir web dev`.
+- From the repo root, run `pnpm --dir web install` and `pnpm --dir web build`, then `CAPITALCITE_API_ORIGIN=http://127.0.0.1:${PORT} ASK_MODEL=fake pnpm --dir web start`. Local editing can still use `pnpm --dir web dev`.
 - Open `http://127.0.0.1:3001`. Choose Retrieval or Agent, type the question, and press Ask. Press Cancel while a request is in flight.
 
 ## Driving it with the browser
@@ -31,7 +31,7 @@ Preconditions:
 - **Ask a retrieval question.** Choose Retrieval. Question `What CET1 ratio did JPMorgan disclose?`. Ticker `JPM`. Press Ask. The answer node is non-empty. At least one chip renders. The chip opens a viewer with a non-empty doc id, section, and quote.
 - **Ask on the agent path.** Choose Agent. Question `What CET1 ratio did JPMorgan disclose for 2024?`. Ticker and period inputs are not on the page. Press Ask. The timeline shows `search_filings`.
 - **Ask a refusal.** Choose Retrieval. Question `What CET1 ratio did Wells Fargo disclose for year-end 2026?`. Ticker `WFC`. Press Ask. The refusal region has text. The answer node is absent.
-- **Cancel.** Hold `POST /api/ask/stream`, press Ask, press Cancel, and abort the held request. The page shows the cancelled state. The answer node is absent.
+- **Cancel.** Hold `POST /api/ask/stream`, press Ask, press Cancel, and abort the held request. The page shows the cancelled state. The answer node is absent. The Playwright `e2e` job also asks the slow-retrieve question, clicks Cancel, and checks `CAPITALCITE_CANCEL_MARKER` for a cancel write that does not depend on `LOG_LEVEL`.
 - **Bundled helper.** `./scripts/verify.sh` or `./scripts/verify.sh --small` runs this after the stream step, on the same index and the same uvicorn. It writes `web.exit`, `web.label.txt`, `web.answered.txt`, `web.agent.txt`, `web.refused.txt`, `web.cancel.txt`, `web.answered.png`, `web.agent.png`, and `web.refused.png`, or `web.unreachable` / `web.browser.unverified`.
 - **Proof.** Keep the page HTML and the browser text files. A 200 from `POST /ask/stream` is not this feature. Pytest is not this feature.
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   visibleClaim,
   visibleSpans,
@@ -39,6 +39,8 @@ export function AskSessionView(props: {
   onCancel: () => void;
 }) {
   const [opened, setOpened] = useState<SpanId | null>(null);
+  const viewerRef = useRef<HTMLElement>(null);
+  const priorFocus = useRef<HTMLElement | null>(null);
   const spans = visibleSpans(props.session);
   const claim = visibleClaim(props.session);
   const citing = props.session.status === "asking" && props.session.phase === "citing";
@@ -55,7 +57,14 @@ export function AskSessionView(props: {
         );
   const timeline = props.session.status === "idle" ? [] : props.session.timeline;
 
+  useEffect(() => {
+    if (openedSpan === undefined) return;
+    viewerRef.current?.focus();
+  }, [openedSpan]);
+
   function showSpan(span: FilingSpan) {
+    const active = document.activeElement;
+    priorFocus.current = active instanceof HTMLElement ? active : null;
     setOpened({
       docId: span.docId,
       start: span.start,
@@ -63,6 +72,11 @@ export function AskSessionView(props: {
       quoteStart: span.quoteStart,
       quoteEnd: span.quoteEnd,
     });
+  }
+
+  function closeViewer() {
+    setOpened(null);
+    priorFocus.current?.focus();
   }
 
   return (
@@ -78,7 +92,9 @@ export function AskSessionView(props: {
           Cancelled
         </p>
       ) : null}
-      {openedSpan !== undefined ? <SpanViewer span={openedSpan} onClose={() => setOpened(null)} /> : null}
+      {openedSpan !== undefined ? (
+        <SpanViewer ref={viewerRef} span={openedSpan} onClose={closeViewer} />
+      ) : null}
     </div>
   );
 }

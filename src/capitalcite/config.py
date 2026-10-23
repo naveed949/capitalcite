@@ -15,6 +15,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from capitalcite.chunking.models import ChunkerName
 
+TEST_HOOK_ENVS = frozenset({"test", "verify", "local"})
+
 
 class Settings(BaseSettings):
     """Runtime settings for the API process.
@@ -95,6 +97,16 @@ class Settings(BaseSettings):
         default=8000,
         ge=1,
         description="Agent graph stops when the estimated token use reaches this.",
+    )
+    test_slow_retrieve_ms: int = Field(
+        default=0,
+        ge=0,
+        le=10000,
+        validation_alias="CAPITALCITE_TEST_SLOW_RETRIEVE_MS",
+        description=(
+            "Milliseconds to sleep before retrieve for the e2e cancel question. 0 skips the sleep. "
+            "Values above 0 are rejected unless APP_ENV is test, verify, or local."
+        ),
     )
     gate_policy: Path | None = Field(
         default=None,
@@ -264,6 +276,15 @@ class Settings(BaseSettings):
     def overlap_smaller_than_size(self) -> Settings:
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
+        return self
+
+    @model_validator(mode="after")
+    def slow_retrieve_only_outside_production(self) -> Settings:
+        if self.test_slow_retrieve_ms > 0 and self.app_env not in TEST_HOOK_ENVS:
+            raise ValueError(
+                "CAPITALCITE_TEST_SLOW_RETRIEVE_MS is only allowed when "
+                "APP_ENV is test, verify, or local"
+            )
         return self
 
 

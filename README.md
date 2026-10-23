@@ -265,10 +265,11 @@ With that fixture index built and uvicorn still on `127.0.0.1:8000`, the page in
 
 ```bash
 pnpm --dir web install
-CAPITALCITE_API_ORIGIN=http://127.0.0.1:8000 ASK_MODEL=fake pnpm --dir web dev
+CAPITALCITE_API_ORIGIN=http://127.0.0.1:8000 ASK_MODEL=fake pnpm --dir web build
+CAPITALCITE_API_ORIGIN=http://127.0.0.1:8000 ASK_MODEL=fake pnpm --dir web start
 ```
 
-Open `http://127.0.0.1:3001`. Dev and `pnpm --dir web start` listen on port 3001 so a local Langfuse stack can keep port 3000. `ASK_MODEL` defaults to `fake` when it is unset. The page sends that value as `model`. When it is `fake`, the page says `deterministic demo model` before you ask.
+Open `http://127.0.0.1:3001`. That is the same `next start` path the e2e job and `verify.sh` use. Local editing can use `pnpm --dir web dev` on the same port without a build. Both listen on port 3001 so a local Langfuse stack can keep port 3000. `ASK_MODEL` defaults to `fake` when it is unset. The Next proxy writes that value into the API body and ignores a client `model`. When it is `fake`, the page says `deterministic demo model` before you ask.
 
 `localhost` and `127.0.0.1` are different browser origins. The quickstart binds uvicorn to `127.0.0.1`. Set `CAPITALCITE_API_ORIGIN` to `http://127.0.0.1:8000`, and open the page on `http://127.0.0.1:3001`. Do not point the origin at `localhost` while uvicorn is bound to `127.0.0.1`. The origin is not a `NEXT_PUBLIC_` variable. The browser never reads it.
 
@@ -328,7 +329,7 @@ The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 | Hybrid search | BM25 and dense vectors in one Qdrant collection, fused with RRF. `POST /search` returns scores and citations | `capitalcite index`, `POST /search` |
 | Structured answers | `POST /ask` returns a citation copied from a retrieved chunk, or a refusal. `ASK_MODEL=fake` does not read `OPENAI_API_KEY` | `POST /ask` |
 | Streaming answers | `POST /ask/stream` is SSE of the same run. Frames reuse `PlanStep`, `TraceStep`, `Citation`, and `AskResponse` | `POST /ask/stream` |
-| Web app | Page on port 3001. Same-origin `POST /api/ask/stream` proxies to the API. A claim renders only with its spans | `pnpm --dir web dev` |
+| Web app | Page on port 3001. Same-origin `POST /api/ask/stream` proxies to the API. The proxy pins `model` from `ASK_MODEL`. A claim renders only with its spans | `pnpm --dir web start` |
 | Agent | `POST /ask` `path=agent` runs LangGraph plan → tools → the same `ask()` / `ground()` / `guard` | `POST /ask` `path=agent` |
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, `calculator`, `graph_query`. Unknown names are denied | agent tools |
 | Fail-closed gate | JSON allow-list. Unknown names, extra keys, and a policy-load failure are denies | `capitalcite gate` |

@@ -27,6 +27,7 @@ describe("Timeline", () => {
       />,
     );
     expect(screen.getByTestId("timeline")).toHaveTextContent("unknown_tool");
+    expect(screen.getByTestId("timeline")).toHaveAttribute("aria-live", "polite");
   });
 
   it("shows a denied row from a folded session", () => {

@@ -353,10 +353,24 @@ def test_post_ask_rejects_empty_question_and_bad_period(tmp_path: Path) -> None:
         empty = http.post("/ask", json={"question": ""})
         blank = http.post("/ask", json={"question": "   ", "model": "fake"})
         period = http.post("/ask", json={"question": "cet1", "period": "FY2024", "model": "fake"})
+        too_long = http.post("/ask", json={"question": "x" * 8001, "model": "fake"})
+        stream_long = http.post("/ask/stream", json={"question": "y" * 8001})
     assert empty.status_code == 422
     assert blank.status_code == 422
     assert period.status_code == 422
     assert period.json()["detail"] == "period must be YYYY-MM-DD or a 4-digit year"
+    assert too_long.status_code == 422
+    assert stream_long.status_code == 422
+    assert "text/event-stream" not in stream_long.headers.get("content-type", "")
+    for payload in (too_long.json(), stream_long.json()):
+        blob = json.dumps(payload)
+        assert "x" * 50 not in blob
+        assert "y" * 50 not in blob
+        detail = payload.get("detail")
+        if isinstance(detail, list):
+            for item in detail:
+                if isinstance(item, dict):
+                    assert "input" not in item
 
 
 def test_post_ask_emits_nested_retrieve_and_generate_spans(tmp_path: Path) -> None:

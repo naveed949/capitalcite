@@ -17,7 +17,9 @@ _AUDITED_DENIES = frozenset(
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=1)
+    model_config = ConfigDict(hide_input_in_errors=True)
+
+    question: str = Field(min_length=1, max_length=8000)
     k: int | None = Field(default=None, ge=1, le=50)
     ticker: str | None = None
     form: str | None = None

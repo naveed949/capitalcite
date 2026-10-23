@@ -108,6 +108,26 @@ describe("askStream", () => {
     });
   });
 
+  it("cancels the body reader when a frame is malformed", async () => {
+    let cancelled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("not-a-frame\n\n"));
+      },
+      cancel() {
+        cancelled += 1;
+      },
+    });
+    const events = await collect(async () =>
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+    expect(events).toEqual([{ type: "fault", fault: { kind: "transport", detail: "invalid event frame" } }]);
+    expect(cancelled).toBe(1);
+  });
+
   it("yields cancelled when the signal aborts", async () => {
     const controller = new AbortController();
     const fetchImpl: typeof fetch = (_url, init) =>
