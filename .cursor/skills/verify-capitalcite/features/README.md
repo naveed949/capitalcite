@@ -53,6 +53,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Hybrid search](./search.md) covers `POST /search`, `capitalcite index --help`, and the quote-index recall sanity.
 - [Retrieval eval](./eval.md) covers `capitalcite eval --suite golden` and the `--small` CI path.
 - [Structured answers](./ask.md) covers `POST /ask`.
+- [Streaming answers](./stream.md) covers `POST /ask/stream`.
 - [Plan-then-act agent](./agent.md) covers `POST /ask` with `path` `agent`.
 - [Fail-closed tool gate](./gate.md) covers `capitalcite gate validate`, `decide`, `redteam`, and `bench`.
 - [Langfuse tracing](./tracing.md) covers `CAPITALCITE_TRACE_FILE` span JSONL after `POST /ask` and `capitalcite eval --small`.

@@ -24,9 +24,10 @@ From the repo root, with no `.env` required (the helper injects a test `SEC_USER
 
 ```bash
 ./scripts/verify.sh
+./scripts/verify.sh --small
 ```
 
-That is the default verification launch. It:
+That is the default verification launch. `--small` skips live EDGAR and indexes the fixture chunks so `POST /ask/stream` can run without twelve filings. It:
 
 1. Runs `uv sync --frozen` so the editable install matches `uv.lock`.
 2. Binds uvicorn to `127.0.0.1` on a free port with `SEC_USER_AGENT='capitalcite-verify you@example.com'`.
@@ -90,6 +91,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite index --help` | exit 0; lists `--embedder` |
 | HTTP | `POST /search` | 200 + citation fields + gold span overlap on `cc-h-013` / `cc-h-063`; UNVERIFIED only when ingest could not run |
 | HTTP | `POST /ask` | 200 + grounded citations on `cc-h-013` with `model` `fake`; `cc-u-001` refused; live `model` `openai` is UNVERIFIED without `OPENAI_API_KEY` |
+| HTTP | `POST /ask/stream` | 200 `text/event-stream`; `answered.response` equals `POST /ask` for the same body; agent frames include `plan` / `tool_call`; blank question is 422 before SSE. `--small` uses the fixture index |
 | HTTP | `POST /ask` `path=agent` | 200 + plan/traces on `cc-h-055` (comparison) and `cc-h-061` (multi-hop) with `model` `fake`; live `model` `openai` is UNVERIFIED without `OPENAI_API_KEY` |
 | CLI | `capitalcite gate decide --tool shell --args '{"cmd":"ls"}'` | exit 0 + JSON `kind` `deny`; unknown tool, invalid args, and a broken policy file each deny |
 | CLI | `capitalcite gate redteam` | exit 0 + `failed` 0; injection text cannot run a denied tool |
@@ -149,6 +151,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `index.1.out` / `index.2.out` **or** `search.unreachable` | Two `capitalcite index` runs on the ingested corpus, or UNVERIFIED when ingest could not run |
 | `search.top5.txt` / `search.*.body.json` / `search.http` **or** `search.unreachable` | Live `POST /search` on embedded Qdrant, or UNVERIFIED when ingest could not run |
 | `ask.body.json` / `ask.http` / `ask.cc-u-001.body.json` **or** `ask.unreachable` | Live `POST /ask` with `ASK_MODEL=fake` on that same index. `ask.openai.unverified` when live OpenAI was not run |
+| `stream.body` / `stream.http` / `stream.events.json` **or** `stream.unreachable` | Live `POST /ask/stream` on that same index. Parsed events end with `done`. `answered.response` matches the paired `/ask` body |
 | `gate.help.out` / `gate.validate.out` / `gate.decide.*.body.json` / `gate.redteam.body.json` / `gate.bench.body.json` | Offline fail-closed gate: shipped policy loads, unknown/invalid/broken deny, red-team `failed` is 0, `p95_ms` is recorded |
 | `agent.cc-h-055.body.json` / `agent.cc-h-061.body.json` **or** `agent.unreachable` | Live `POST /ask` `path=agent` with the fake model on comparison and multi-hop items. `agent.openai.unverified` when live OpenAI was not run |
 | `spans.jsonl` **or** `spans.skipped` | File-exporter JSONL of ask/retrieve (and eval) spans. Proof of the tree without Langfuse |
@@ -196,9 +199,10 @@ If a run fails mid-way, run cleanup anyway (the trap should fire). If you launch
 
 ```bash
 ./scripts/verify.sh
+./scripts/verify.sh --small
 ```
 
-No arguments. It prints each step to stdout (paste that into a PR) and mirrors the same facts into `artifacts/verify/<timestamp>/`. Exit 0 means required API, CLI, and MCP checks passed. Optional Docker or Qdrant steps that did not run are `UNVERIFIED`, not passed. The script still exits 0 in that case.
+No arguments runs the full helper, including live EDGAR ingest when it works. `--small` skips live EDGAR, indexes the fixture chunks already written by the chunk step, and drives `POST /ask` plus `POST /ask/stream` on that index. It prints each step to stdout (paste that into a PR) and mirrors the same facts into `artifacts/verify/<timestamp>/`. Exit 0 means required API, CLI, and MCP checks passed. Optional Docker or Qdrant steps that did not run are `UNVERIFIED`, not passed. The script still exits 0 in that case. `--small` cannot prove `cc-u-001` year-guard or a two-bank agent item; record those as UNVERIFIED.
 
 Do not reverse-engineer the script: the Drive table and the feature files list the exact commands it wraps.
 
@@ -222,6 +226,7 @@ Expected later handles (do not add empty stubs now):
 | #5 golden set | `capitalcite golden validate` (landed) |
 | #6 evals | `capitalcite eval --suite golden` (landed) |
 | #7 answers | `POST /ask` (landed) |
+| streaming answers | `POST /ask/stream` (landed) |
 | #8 agent | `POST /ask` `path=agent` (landed) |
 | #9 gate | `capitalcite gate decide` (landed) |
 | #10 audit | `capitalcite audit verify` (landed) |

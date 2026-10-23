@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Drive capitalcite the way a user does: live uvicorn + CLI.
-# Usage (repo root): ./scripts/verify.sh
+# Usage (repo root): ./scripts/verify.sh [--small]
 # Evidence: artifacts/verify/<UTC-timestamp>/  (gitignored)
 # Cleanup kills only the uvicorn this script started; evidence is kept.
+# --small skips live EDGAR and indexes the fixture chunks for /ask/stream.
 
 set -euo pipefail
 
@@ -17,6 +18,20 @@ if ! command -v curl >/dev/null 2>&1; then
   echo "verify: curl is required" >&2
   exit 1
 fi
+
+SMALL=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --small)
+      SMALL=1
+      shift
+      ;;
+    *)
+      echo "verify: unknown argument: $1 (supported: --small)" >&2
+      exit 1
+      ;;
+  esac
+done
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 ART="${ROOT}/artifacts/verify/${TS}"
@@ -69,6 +84,8 @@ trap cleanup EXIT INT TERM
 
 log "verify: artifacts -> ${ART}"
 write summary.txt "timestamp ${TS}"
+write small "${SMALL}"
+log "verify: small=${SMALL}"
 
 log "verify: uv sync --frozen"
 uv sync --frozen
@@ -646,6 +663,11 @@ log "verify: capitalcite ingest --help ok"
 
 INGEST_DIR="${ART}/data"
 mkdir -p "${INGEST_DIR}"
+if [[ "${SMALL}" -eq 1 ]]; then
+  write ingest.skipped "--small uses tests/fixtures/chunking/corpus; live EDGAR was not called"
+  write golden.against-raw.skipped "--small: --against-raw needs the twelve-filing corpus"
+  log "verify: ingest skipped (--small fixture corpus)"
+else
 INGEST_CMD=(uv run capitalcite ingest --tickers JPM,BAC,WFC,C --forms 10-K --years 2023-2025 --output-dir "${INGEST_DIR}")
 printf '%s\n' "${INGEST_CMD[*]}" >"${ART}/ingest.cmd"
 log "verify: ${INGEST_CMD[*]}"
@@ -768,6 +790,7 @@ PY
   fi
   log "verify: golden validate --against-raw ok"
   cat "${ART}/golden.against-raw.out"
+fi
 fi
 
 if [[ -f "${ART}/ingest.unreachable" && ! -f "${ART}/golden.against-raw.exit" ]]; then
@@ -1120,14 +1143,195 @@ post_ask() {
   fi
 }
 
-if [[ -f "${ART}/ingest.unreachable" ]]; then
+post_ask_stream() {
+  local name="$1"
+  local body="$2"
+  printf '%s\n' "${body}" >"${ART}/${name}.request.json"
+  set +e
+  local http
+  http="$(
+    curl -sS --max-time 180 \
+      -D "${ART}/${name}.headers" \
+      -o "${ART}/${name}.body" \
+      -w "%{http_code}" \
+      -H 'content-type: application/json' \
+      -H 'accept: text/event-stream' \
+      -d "${body}" \
+      "http://127.0.0.1:${PORT}/ask/stream"
+  )"
+  local rc=$?
+  set -e
+  write "${name}.exit" "${rc}"
+  write "${name}.http" "${http}"
+  if [[ "${rc}" -ne 0 ]]; then
+    log "verify: POST /ask/stream ${name} curl exit ${rc}"
+    cat "${ART}/${name}.body" >&2 || true
+    exit 1
+  fi
+  if [[ "${http}" != "200" ]]; then
+    log "verify: POST /ask/stream ${name} HTTP ${http}"
+    cat "${ART}/${name}.body" >&2 || true
+    exit 1
+  fi
+  if ! grep -qi "text/event-stream" "${ART}/${name}.headers"; then
+    log "verify: POST /ask/stream ${name} missing text/event-stream"
+    cat "${ART}/${name}.headers" >&2 || true
+    exit 1
+  fi
+}
+
+check_ask_stream() {
+  local stream_name="$1"
+  local ask_name="$2"
+  uv run python - "${ART}" "${stream_name}" "${ask_name}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+art = Path(sys.argv[1])
+stream_name = sys.argv[2]
+ask_name = sys.argv[3]
+text = (art / f"{stream_name}.body").read_text(encoding="utf-8")
+events: list[dict[str, object]] = []
+for line in text.splitlines():
+    if line.startswith("data: "):
+        payload = json.loads(line.removeprefix("data: "))
+        if not isinstance(payload, dict):
+            sys.stderr.write(f"verify: {stream_name} data is not an object\n")
+            sys.exit(1)
+        events.append(payload)
+if not events:
+    sys.stderr.write(f"verify: {stream_name} produced no SSE data frames\n")
+    sys.exit(1)
+names = [str(event.get("event") or "") for event in events]
+if names[-1] != "done":
+    sys.stderr.write(f"verify: {stream_name} last event is {names[-1]!r}, not done\n")
+    sys.exit(1)
+if "error" in names:
+    sys.stderr.write(f"verify: {stream_name} included an error event\n")
+    sys.exit(1)
+ask_path = art / f"{ask_name}.body.json"
+if ask_path.is_file():
+    ask = json.loads(ask_path.read_text(encoding="utf-8"))
+    kind = str(ask.get("kind") or "")
+    matches = [event for event in events if event.get("event") == kind]
+    if len(matches) != 1:
+        sys.stderr.write(f"verify: {stream_name} expected one {kind} event, got {len(matches)}\n")
+        sys.exit(1)
+    if matches[0].get("response") != ask:
+        sys.stderr.write(f"verify: {stream_name} {kind}.response != POST /ask\n")
+        sys.exit(1)
+(art / f"{stream_name}.events.json").write_text(
+    json.dumps(events, indent=2) + "\n", encoding="utf-8"
+)
+print(f"stream {stream_name} events={'/'.join(names)}")
+PY
+}
+
+if [[ "${SMALL}" -eq 1 ]]; then
+  INDEX_CMD=(
+    uv run capitalcite index
+    --input-dir "${CHUNK_OUT}"
+    --chunker section
+    --embedder bge-small
+  )
+  printf '%s\n' "${INDEX_CMD[*]}" >"${ART}/index.cmd"
+  log "verify: ${INDEX_CMD[*]} (--small fixture index)"
+  set +e
+  "${INDEX_CMD[@]}" >"${ART}/index.1.out" 2>"${ART}/index.1.err"
+  index_1_rc=$?
+  set -e
+  write index.1.exit "${index_1_rc}"
+  if [[ "${index_1_rc}" -ne 0 ]]; then
+    log "verify: capitalcite index of fixture chunks failed"
+    cat "${ART}/index.1.out" >&2 || true
+    cat "${ART}/index.1.err" >&2 || true
+    exit 1
+  fi
+  ASK_FIXTURE='{"question":"What CET1 ratio did JPMorgan disclose?","k":10,"ticker":"JPM","model":"fake"}'
+  ASK_FIXTURE_REFUSE='{"question":"What CET1 ratio did Wells Fargo disclose for year-end 2026?","k":10,"ticker":"WFC","model":"fake"}'
+  ASK_FIXTURE_AGENT='{"question":"What CET1 ratio did JPMorgan disclose for 2024?","k":10,"path":"agent","model":"fake"}'
+  log "verify: POST /ask fixture JPM model=fake"
+  post_ask ask.fixture "${ASK_FIXTURE}"
+  log "verify: POST /ask fixture WFC 2026 model=fake"
+  post_ask ask.fixture.refused "${ASK_FIXTURE_REFUSE}"
+  log "verify: POST /ask/stream fixture JPM model=fake"
+  post_ask_stream stream.fixture "${ASK_FIXTURE}"
+  check_ask_stream stream.fixture ask.fixture
+  log "verify: POST /ask/stream fixture WFC 2026 model=fake"
+  post_ask_stream stream.fixture.refused "${ASK_FIXTURE_REFUSE}"
+  check_ask_stream stream.fixture.refused ask.fixture.refused
+  log "verify: POST /ask/stream fixture agent model=fake"
+  post_ask_stream stream.fixture.agent "${ASK_FIXTURE_AGENT}"
+  check_ask_stream stream.fixture.agent ""
+  uv run python - "${ART}/stream.fixture.agent.body" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+names = [
+    json.loads(line.removeprefix("data: ")).get("event")
+    for line in text.splitlines()
+    if line.startswith("data: ")
+]
+if "plan" not in names or "tool_call" not in names:
+    sys.stderr.write(f"verify: fixture agent stream missing plan/tool_call: {names}\n")
+    sys.exit(1)
+if names[-1] != "done":
+    sys.stderr.write(f"verify: fixture agent stream last event is {names[-1]!r}\n")
+    sys.exit(1)
+print("stream fixture agent has plan/tool_call/done")
+PY
+  cp "${ART}/ask.fixture.body.json" "${ART}/ask.body.json"
+  cp "${ART}/ask.fixture.http" "${ART}/ask.http"
+  cp "${ART}/ask.fixture.exit" "${ART}/ask.exit"
+  cp "${ART}/stream.fixture.body" "${ART}/stream.body"
+  cp "${ART}/stream.fixture.http" "${ART}/stream.http"
+  cp "${ART}/stream.fixture.exit" "${ART}/stream.exit"
+  cp "${ART}/stream.fixture.events.json" "${ART}/stream.events.json"
+  write search.unreachable "--small fixture index; gold span search needs the ingested 10-Ks"
+  write agent.unreachable "--small fixture index is JPM-only; comparison/multi-hop items need BAC"
+  write ask.openai.unverified "--small does not probe live OpenAI"
+  write agent.openai.unverified "--small does not probe live OpenAI"
+  write audit.agent.skipped "--small ran a one-bank fixture agent stream; one-record check needs cc-h-055/061"
+  log "verify: POST /search gold items UNVERIFIED (--small fixture index)"
+  log "verify: POST /ask cc-h-013 / cc-u-001 UNVERIFIED (--small fixture index)"
+  log "verify: POST /ask path=agent cc-h-055 / cc-h-061 UNVERIFIED (--small fixture index)"
+  log "verify: POST /ask/stream fixture path ok"
+  if [[ -f "${ART}/spans.jsonl" && -s "${ART}/spans.jsonl" ]]; then
+    log "verify: span JSONL after fixture /ask"
+    uv run python - "${ART}/spans.jsonl" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+records = [
+    json.loads(line)
+    for line in path.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+]
+names = {str(row.get("name")) for row in records}
+if "ask" not in names:
+    sys.stderr.write(f"verify: span names {sorted(names)} missing ask\n")
+    sys.exit(1)
+print(f"spans ask n={len(records)}")
+PY
+  else
+    write spans.skipped "fixture /ask did not write span JSONL"
+    log "verify: ask span tree UNVERIFIED (empty file)"
+  fi
+elif [[ -f "${ART}/ingest.unreachable" ]]; then
   write search.unreachable "live ingest unreachable; embedded index needs JPM FY24 and WFC FY25 chunks"
   write ask.unreachable "POST /search was unverified; POST /ask needs the same index"
+  write stream.unreachable "POST /search was unverified; POST /ask/stream needs the same index"
   write agent.unreachable "POST /search was unverified; POST /ask path=agent needs the same index"
   write spans.skipped "POST /ask was unverified; span JSONL needs a fake /ask"
   write audit.agent.skipped "POST /ask path=agent was unverified; live one-record check needs traces"
   log "verify: POST /search UNVERIFIED (no ingested corpus)"
   log "verify: POST /ask UNVERIFIED (no ingested corpus)"
+  log "verify: POST /ask/stream UNVERIFIED (no ingested corpus)"
   log "verify: POST /ask path=agent UNVERIFIED (no ingested corpus)"
   log "verify: ask span tree UNVERIFIED (no ingested corpus)"
 else
@@ -1358,6 +1562,16 @@ PY
   post_ask ask.cc-h-013 "${ASK013}"
   log "verify: POST /ask cc-u-001 model=fake"
   post_ask ask.cc-u-001 "${ASK_U001}"
+  log "verify: POST /ask/stream cc-h-013 model=fake"
+  post_ask_stream stream.cc-h-013 "${ASK013}"
+  check_ask_stream stream.cc-h-013 ask.cc-h-013
+  log "verify: POST /ask/stream cc-u-001 model=fake"
+  post_ask_stream stream.cc-u-001 "${ASK_U001}"
+  check_ask_stream stream.cc-u-001 ask.cc-u-001
+  cp "${ART}/stream.cc-h-013.body" "${ART}/stream.body"
+  cp "${ART}/stream.cc-h-013.http" "${ART}/stream.http"
+  cp "${ART}/stream.cc-h-013.exit" "${ART}/stream.exit"
+  cp "${ART}/stream.cc-h-013.events.json" "${ART}/stream.events.json"
   post_search search.cc-u-001.hybrid-wfc "${SEARCH_U001}"
 
   ASK_OPENAI='{"question":"What was JPMorgan'\''s Standardized CET1 capital ratio at year-end 2024?","k":10,"ticker":"JPM","model":"openai"}'
@@ -1563,6 +1777,9 @@ PY
   post_ask agent.cc-h-055 "${AGENT055}"
   log "verify: POST /ask path=agent cc-h-061 model=fake"
   post_ask agent.cc-h-061 "${AGENT061}"
+  log "verify: POST /ask/stream path=agent cc-h-055 model=fake"
+  post_ask_stream stream.agent.cc-h-055 "${AGENT055}"
+  check_ask_stream stream.agent.cc-h-055 agent.cc-h-055
 
   AGENT_OPENAI='{"question":"Which bank had the higher Standardized CET1 ratio at year-end 2024, JPMorgan or Bank of America?","k":10,"path":"agent","model":"openai"}'
   write agent.openai.key "${KEY_PRESENT}"
@@ -2086,8 +2303,8 @@ print(
 PY
 log "verify: eval span tagged with git_sha and config_hash"
 
-if [[ -f "${ART}/ingest.unreachable" ]]; then
-  write eval.skipped "live ingest unreachable; corpus eval needs the twelve 10-Ks"
+if [[ -f "${ART}/ingest.unreachable" || -f "${ART}/ingest.skipped" ]]; then
+  write eval.skipped "live ingest unreachable or --small; corpus eval needs the twelve 10-Ks"
   log "verify: corpus eval UNVERIFIED (no live corpus)"
 else
   EVAL_OUT="${ART}/eval"
@@ -2248,7 +2465,9 @@ fi
     echo "audit.agent.exit $(cat "${ART}/audit.agent.exit")"
   fi
   echo "ingest.help.exit $(cat "${ART}/ingest.help.exit")"
-  if [[ -f "${ART}/ingest.unreachable" ]]; then
+  if [[ -f "${ART}/ingest.skipped" ]]; then
+    echo "ingest skipped ($(cat "${ART}/ingest.skipped"))"
+  elif [[ -f "${ART}/ingest.unreachable" ]]; then
     echo "ingest unreachable ($(cat "${ART}/ingest.unreachable"))"
   else
     echo "ingest.exit $(cat "${ART}/ingest.exit")"
@@ -2281,6 +2500,12 @@ fi
   elif [[ -f "${ART}/ask.http" ]]; then
     echo "ask.http $(cat "${ART}/ask.http")"
     echo "ask.exit $(cat "${ART}/ask.exit")"
+  fi
+  if [[ -f "${ART}/stream.unreachable" ]]; then
+    echo "stream unreachable ($(cat "${ART}/stream.unreachable"))"
+  elif [[ -f "${ART}/stream.http" ]]; then
+    echo "stream.http $(cat "${ART}/stream.http")"
+    echo "stream.exit $(cat "${ART}/stream.exit")"
   fi
   if [[ -f "${ART}/ask.openai.unverified" ]]; then
     echo "ask openai unverified ($(cat "${ART}/ask.openai.unverified"))"
