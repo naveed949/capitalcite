@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import calendar
+import csv
+import io
 import os
 import re
 import subprocess
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -13,16 +16,12 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "dbt" / "models" / "semantic" / "bank_financials.yml"
+GOLDEN = ROOT / "evals" / "results" / "metrics" / "mf-query.csv"
 ENTITY_LEVELS = frozenset({"bank_subsidiary", "holding_company"})
+RATE_METRICS = frozenset({"nim", "efficiency_ratio"})
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 SIMPLE_FILTER = re.compile(
     r"^\{\{\s*Dimension\('bank__entity_level'\)\s*\}\}\s*=\s*'(bank_subsidiary|holding_company)'$"
-)
-QUERY_ROW = re.compile(
-    r"^(?P<quarter>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\s+"
-    r"(?P<ticker>[A-Za-z0-9.]+)\s+"
-    r"(?P<deposits>\S+)"
-    r"(?:\s+(?P<growth>\S+))?\s*$"
 )
 
 REQUIRED_MF_QUERY: tuple[str, ...] = (
@@ -41,6 +40,8 @@ REQUIRED_MF_QUERY: tuple[str, ...] = (
     "metric_time__quarter,bank__ticker",
     "--where",
     "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'",
+    "--decimals",
+    "10",
 )
 
 
@@ -89,35 +90,36 @@ def test_simple_metrics_lock_entity_level() -> None:
     assert [item["name"] for item in inputs] == ["total_deposits", "total_deposits"]
 
 
-def committed_mf_stdout_path(repo: Path) -> Path:
-    """Return the golden named for HEAD or the nearest ancestor.
+def test_rate_saved_queries_group_by_ticker() -> None:
+    """A saved query that includes nim or efficiency_ratio groups by ticker.
 
-    A shallow checkout only has HEAD in rev-list. The sole committed
-    golden is then the contract.
+    Those rates are reported percents. Dropping ticker returns the max of
+    the percents, which is not a portfolio figure.
     """
-    directory = repo / "evals" / "results" / "metrics"
-    listing = subprocess.run(
-        ["git", "rev-list", "HEAD"],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    for sha in listing.stdout.split():
-        short = subprocess.run(
-            ["git", "rev-parse", "--short=12", sha],
-            cwd=repo,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        path = directory / f"{short}-mf-query.txt"
-        if path.is_file():
-            return path
-    files = sorted(directory.glob("*-mf-query.txt"))
-    if len(files) == 1:
-        return files[0]
-    raise AssertionError("no committed mf query stdout under evals/results/metrics")
+    catalog = _load_catalog()
+    rate_queries = 0
+    for query in _mapping_list(catalog, "saved_queries"):
+        metrics = {str(name) for name in query["query_params"]["metrics"]}
+        if not metrics & RATE_METRICS:
+            continue
+        rate_queries += 1
+        groups = [str(item) for item in query["query_params"]["group_by"]]
+        assert any("bank__ticker" in item for item in groups), query["name"]
+    assert rate_queries, "no saved query includes nim or efficiency_ratio"
+
+
+def _csv_without_null_deposits(text: str) -> str:
+    """Drop offset-window rows whose deposits cell is empty."""
+    reader = csv.DictReader(io.StringIO(text.replace("\r\n", "\n")))
+    if reader.fieldnames is None:
+        raise AssertionError("mf csv has no header")
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=reader.fieldnames, lineterminator="\n")
+    writer.writeheader()
+    for row in reader:
+        if (row.get("total_deposits") or "").strip():
+            writer.writerow(row)
+    return buffer.getvalue()
 
 
 def _require_ci_target() -> None:
@@ -131,15 +133,21 @@ def _strip_ansi(text: str) -> str:
 
 def _run_required_query() -> str:
     _require_ci_target()
-    completed = subprocess.run(
-        REQUIRED_MF_QUERY,
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert completed.returncode == 0, completed.stderr
-    return _strip_ansi(completed.stdout)
+    with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as handle:
+        csv_path = Path(handle.name)
+    try:
+        completed = subprocess.run(
+            [*REQUIRED_MF_QUERY, "--csv", str(csv_path)],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert completed.returncode == 0, completed.stderr
+        raw = _strip_ansi(csv_path.read_text(encoding="utf-8"))
+    finally:
+        csv_path.unlink(missing_ok=True)
+    return _csv_without_null_deposits(raw)
 
 
 @pytest.fixture(scope="module")
@@ -149,8 +157,9 @@ def mf_query_stdout() -> str:
 
 @pytest.mark.mf
 def test_mf_query_matches_committed_stdout(mf_query_stdout: str) -> None:
-    expected = committed_mf_stdout_path(ROOT).read_text(encoding="utf-8")
+    expected = GOLDEN.read_text(encoding="utf-8")
     assert mf_query_stdout == expected
+    assert ",,\n" not in mf_query_stdout
 
 
 def _quarter_end(quarter_start: date) -> date:
@@ -170,16 +179,18 @@ def _prior_quarter_end(quarter_end: date) -> date:
 
 
 def _first_growth_row(stdout: str) -> tuple[str, date, str, str]:
-    for line in stdout.splitlines():
-        match = QUERY_ROW.match(line)
-        if match is None or match.group("growth") is None:
+    reader = csv.DictReader(io.StringIO(stdout))
+    for row in reader:
+        growth = (row.get("deposits_qoq_growth") or "").strip()
+        deposits = (row.get("total_deposits") or "").strip()
+        if not growth or not deposits:
             continue
-        quarter_start = date.fromisoformat(match.group("quarter")[:10])
+        quarter_start = date.fromisoformat(row["metric_time__quarter"][:10])
         return (
-            match.group("ticker"),
+            row["bank__ticker"],
             _quarter_end(quarter_start),
-            match.group("deposits"),
-            match.group("growth"),
+            deposits,
+            growth,
         )
     raise AssertionError("required query has no deposits_qoq_growth cell")
 
@@ -213,5 +224,5 @@ def test_mf_growth_cell_matches_adjacent_deposits(mf_query_stdout: str) -> None:
     prior_amount = float(rows[0][1])
     this_amount = float(rows[1][1])
     assert prior_amount != 0
-    assert printed_deposits == format(this_amount, "g")
-    assert printed_growth == format((this_amount - prior_amount) / prior_amount, "g")
+    assert float(printed_deposits) == this_amount
+    assert float(printed_growth) == (this_amount - prior_amount) / prior_amount

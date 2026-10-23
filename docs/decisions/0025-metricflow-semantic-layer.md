@@ -79,6 +79,10 @@ observed quarter-ends. The spine is not a parent of the fact.
 paths. The snapshot test exits before it runs a query when
 `DBT_TARGET` is not `ci`.
 
+`mf` reads `dbt/target/semantic_manifest.json`. `dbt parse` or
+`dbt build` writes that file. A YAML-only edit does not change a query
+until you parse or build again.
+
 ## Alternatives that lost
 
 Cube is another service and another query language for a local DuckDB

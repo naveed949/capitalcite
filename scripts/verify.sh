@@ -2619,7 +2619,7 @@ cat "${ART}/dbt-shape.out"
 export DBT_PROFILES_DIR="${ROOT}/dbt"
 export DBT_TARGET=ci
 
-log "verify: mf validate-configs"
+log "verify: mf validate-configs (compiled semantic_manifest.json)"
 set +e
 uv run --frozen --group metrics mf validate-configs \
   >"${ART}/mf-validate.out" 2>"${ART}/mf-validate.err"
@@ -2642,6 +2642,7 @@ uv run --frozen --group metrics mf query \
   --metrics total_deposits,deposits_qoq_growth \
   --group-by metric_time__quarter,bank__ticker \
   --where "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'" \
+  --decimals 10 \
   >"${ART}/mf-query.out" 2>"${ART}/mf-query.err"
 mf_query_rc=$?
 set -e

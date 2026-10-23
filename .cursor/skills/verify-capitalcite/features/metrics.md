@@ -9,7 +9,7 @@ The caller does not write that SQL. `/ask` does not read this warehouse.
 - `mf-validate` runs `mf validate-configs` after `dbt build --target ci` and exits 0.
 - `mf-query` runs `total_deposits` and `deposits_qoq_growth` grouped by `metric_time__quarter` and `bank__ticker`, filtered to `bank_subsidiary`, with `--quiet` and `--order metric_time__quarter,bank__ticker`. Exit 0.
 - `mf-saved` runs `lead_bank_deposits_qoq`, `lead_bank_balance_sheet`, `lead_bank_earnings`, and `holding_company_assets`. Each exits 0.
-- `mf-pytest` runs `pytest tests/test_mf_metrics.py -m mf` and exits 0. The snapshot matches `evals/results/metrics/<sha12>-mf-query.txt`.
+- `mf-pytest` runs `pytest tests/test_mf_metrics.py -m mf` and exits 0. The snapshot matches `evals/results/metrics/mf-query.csv`.
 
 ## How to get to it (user POV)
 
@@ -25,7 +25,8 @@ Preconditions:
 
 - `uv sync --frozen --group metrics` has been run in this checkout, or the command uses `uv run --group metrics`. The pytest step also needs `--group dev`.
 - The committed tree `tests/fixtures/metrics` is present.
-- `dbt build --target ci` has written `dbt/target/ci.duckdb` and `dbt/target/semantic_manifest.json`.
+- `dbt parse` or `dbt build --target ci` has written `dbt/target/semantic_manifest.json`. `mf` reads that compiled manifest, not the YAML alone. A YAML edit is invisible until you parse or build again.
+- `dbt build --target ci` has written `dbt/target/ci.duckdb`.
 - `DBT_TARGET=ci`, `DBT_PROJECT_DIR=dbt`, and `DBT_PROFILES_DIR=dbt`. `mf` has no `--target` flag. It opens the profile target.
 - `/ask` is not this feature.
 
@@ -39,7 +40,7 @@ uv run --group metrics mf query \
   --where "{{ Dimension('bank__entity_level') }} = 'bank_subsidiary'"
 ```
 
-- **Order the snapshot.** The committed file and `pytest -m mf` add `--quiet` and `--order metric_time__quarter,bank__ticker`. Compare stdout only, after stripping ANSI.
+- **Order the snapshot.** `pytest -m mf` adds `--quiet`, `--order metric_time__quarter,bank__ticker`, `--decimals 10`, and `--csv`. The committed file is `evals/results/metrics/mf-query.csv`. Rows whose deposits cell is empty are dropped before the diff. Those empty rows are the next quarter on the time spine. `offset_window` joins them so the last observed quarter can compute growth.
 - **Run a saved query.** `lead_bank_deposits_qoq` stores the required question. `lead_bank_balance_sheet` is FDIC `ASSET` and `DEP`. `lead_bank_earnings` is FDIC `NETINC`, `NIMY`, and `EEFFR` at one bank and one quarter. `holding_company_assets` is SEC `us-gaap` `Assets` in whole USD.
 - **Bundled helper.** `./scripts/verify.sh` writes `mf-validate.out`, `mf-validate.err`, `mf-validate.exit`, `mf-query.out`, `mf-query.err`, `mf-query.exit`, `mf-saved-<name>.out`, `mf-saved-<name>.err`, `mf-saved-<name>.exit`, `mf-pytest.out`, `mf-pytest.err`, and `mf-pytest.exit`. `--small` does not skip this block.
 - **Proof.** Keep the CLI stdout and the exit code. Pytest is the snapshot. A null growth cell means the prior quarter is missing or zero.
@@ -47,6 +48,8 @@ uv run --group metrics mf query \
 ## Gotchas
 
 - Unset `DBT_TARGET` selects `dev`, which reads `data/warehouse/capitalcite.duckdb`. The snapshot test exits before any query when `DBT_TARGET` is not `ci`.
+- `uv run pytest` and `make test` skip `-m mf`. Run `make test-mf` or `pytest -m mf` after `dbt build --target ci` with `DBT_TARGET=ci`.
+- `mf validate-configs` and `mf query` read `dbt/target/semantic_manifest.json`. Run `dbt parse` or `dbt build` after you edit the catalog YAML.
 - `dbt build` still takes `--target` on the command line. The env var and that flag have to name the same output, or `mf` opens a different file than the build wrote.
 - `metric_time__quarter` prints the quarter start. The quarter ending 2026-06-30 prints as `2026-04-01T00:00:00`. The quarter-end is the last day of the month two months later.
 - The growth figure is a fraction. `0.05` means five percent. Do not multiply FDIC thousands by 1,000.
