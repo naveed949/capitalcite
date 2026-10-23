@@ -76,6 +76,21 @@ only when that flag is set. Importing the CLI does not require that tree.
 A packaged install without a checkout still runs `--help`. A missing tree
 on `--fixtures` is exit 1. There is no `--fixtures-dir`.
 
+## Image console scripts
+
+The runtime image already copied the project venv to `/app/.venv`. The
+builder used to write that venv at `/src/.venv`, so `capitalcite` and
+`uvicorn` shebangs still named `/src/.venv/bin/python`. The copied script
+existed. The interpreter path did not. Infra only ran `docker build`, so
+the broken scripts were already in the image. That failure is older than
+the packaged `--help` import crash. `UV_PYTHON_DOWNLOADS=0` keeps the
+builder on the image Python. The builder now sets
+`UV_PROJECT_ENVIRONMENT` to `/app/.venv` so shebangs name
+`/app/.venv/bin/python`, which is the same interpreter the runtime PATH
+uses. Changing the image entrypoint to `python -m` would hide the next
+broken console script. Infra runs `capitalcite --help` and
+`python -c "import capitalcite.api"` in the built image.
+
 ## What BankFind and EDGAR returned on 2026-10-23
 
 Exact `NAME` lookup returned one active institution for three holdings.

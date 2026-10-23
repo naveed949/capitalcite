@@ -43,6 +43,9 @@ jobs:
       - name: CLI help from the image
         run: docker run --rm --entrypoint capitalcite capitalcite:ci --help
 
+      - name: Import the API from the image
+        run: docker run --rm --entrypoint python capitalcite:ci -c "import capitalcite.api"
+
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-latest
