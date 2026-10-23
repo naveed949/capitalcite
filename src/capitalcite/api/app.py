@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from capitalcite.api.ask_limit import AskLimiter
 from capitalcite.api.ask_models import hoist_openapi_defs
@@ -44,6 +47,19 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         shutdown()
 
 
+def _validation_detail(errors: Sequence[object]) -> list[object]:
+    encoded = jsonable_encoder(list(errors))
+    if not isinstance(encoded, list):
+        return []
+    cleaned: list[object] = []
+    for item in encoded:
+        if isinstance(item, dict):
+            cleaned.append({key: value for key, value in item.items() if key != "input"})
+        else:
+            cleaned.append(item)
+    return cleaned
+
+
 def create_app() -> FastAPI:
     """Build the FastAPI app."""
     settings = get_settings()
@@ -52,6 +68,11 @@ def create_app() -> FastAPI:
         summary="Cited, evaluated answers over U.S. bank filings.",
         lifespan=lifespan,
     )
+
+    @application.exception_handler(RequestValidationError)
+    async def hide_validation_input(_request: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": _validation_detail(exc.errors())})
+
     application.state.ask_limiter = AskLimiter(
         limit=settings.ask_rate_limit,
         window_s=settings.ask_rate_window_s,
