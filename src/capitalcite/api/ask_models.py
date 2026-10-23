@@ -257,7 +257,10 @@ def hoist_openapi_defs(openapi: dict[str, object]) -> None:
             defs = node.pop("$defs", None)
             if isinstance(defs, dict):
                 for name, spec in defs.items():
-                    schemas.setdefault(name, spec)
+                    existing = schemas.get(name)
+                    if existing is not None and existing != spec:
+                        raise ValueError(f"openapi schema clash: {name}")
+                    schemas[name] = spec
                     walk(spec)
             ref = node.get("$ref")
             if isinstance(ref, str) and ref.startswith("#/$defs/"):

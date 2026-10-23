@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import socket
 from collections.abc import Mapping
 from pathlib import Path
@@ -16,7 +17,7 @@ from qdrant_client import AsyncQdrantClient
 from capitalcite.agent import FakeAgentModel, PlannerDecision, PlanStep, ToolCall
 from capitalcite.agent.observe import Observe
 from capitalcite.api.app import create_app
-from capitalcite.api.ask_models import AskResponse, event_model_names
+from capitalcite.api.ask_models import AskResponse, event_model_names, hoist_openapi_defs
 from capitalcite.api.routes.ask import AskRequest
 from capitalcite.api.routes.search import get_setup
 from capitalcite.audit import AuditRecord, verify
@@ -29,6 +30,7 @@ _ORIGINAL_SYNC_HTTP = httpx.HTTPTransport.handle_request
 
 _JPM_URL = "https://www.sec.gov/Archives/edgar/data/19617/jpm.htm"
 _BAC_URL = "https://www.sec.gov/Archives/edgar/data/70858/bac.htm"
+_LEAK = "upstream https://internal.example/secret-path?token=abc123 exploded"
 
 
 def test_openapi_lists_stream_events() -> None:
@@ -57,6 +59,16 @@ def test_openapi_lists_stream_events() -> None:
 def test_openapi_refs_resolve() -> None:
     schema = create_app().openapi()
     _assert_refs_resolve(schema)
+
+
+def test_hoist_rejects_conflicting_schema() -> None:
+    with pytest.raises(ValueError, match="openapi schema clash: PlanEvent"):
+        hoist_openapi_defs(
+            {
+                "components": {"schemas": {"PlanEvent": {"type": "string"}}},
+                "$defs": {"PlanEvent": {"type": "object"}},
+            }
+        )
 
 
 async def test_rag_event_order_and_answered_matches_ask(tmp_path: Path) -> None:
@@ -228,7 +240,7 @@ async def test_disconnect_cancels_the_in_flight_tool(
 
 
 async def test_unexpected_error_after_200_emits_error_and_done(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     async def boom(
         body: AskRequest,
@@ -242,10 +254,11 @@ async def test_unexpected_error_after_200_emits_error_and_done(
         if observe is not None:
             observe.plan([step])
             observe.tool_call(step)
-        raise RuntimeError("tool exploded")
+        raise RuntimeError(_LEAK)
 
     monkeypatch.setattr("capitalcite.api.routes.ask._run_agent", boom)
     application, _setup = await _indexed_app(tmp_path, [_chunk()])
+    caplog.set_level(logging.ERROR, logger="capitalcite.api.routes.ask")
     status, media, events = await _read_stream(
         application,
         {"question": "What buffer did JPM describe?", "path": "agent", "model": "fake"},
@@ -258,7 +271,43 @@ async def test_unexpected_error_after_200_emits_error_and_done(
     assert names[-1] == "done"
     err = next(event for event in events if event["event"] == "error")
     assert err["status"] == 500
-    assert "exploded" in str(err["detail"])
+    assert err["detail"] == "internal error"
+    dumped = json.dumps(events)
+    assert "exploded" not in dumped
+    assert "internal.example" not in dumped
+    assert "abc123" not in dumped
+    assert "ask stream failed" in caplog.text
+    assert _LEAK in caplog.text
+
+
+async def test_ask_unexpected_error_is_generic_500(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def boom(
+        body: AskRequest,
+        setup: object,
+        settings: Settings,
+        *,
+        observe: Observe | None = None,
+    ) -> None:
+        _ = body, setup, settings, observe
+        raise RuntimeError(_LEAK)
+
+    monkeypatch.setattr("capitalcite.api.routes.ask._run_agent", boom)
+    application, _setup = await _indexed_app(tmp_path, [_chunk()])
+    transport = ASGITransport(app=application, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/ask",
+            json={"question": "What buffer did JPM describe?", "path": "agent", "model": "fake"},
+        )
+    assert response.status_code == 500
+    body = response.text
+    assert "Internal Server Error" in body
+    assert "exploded" not in body
+    assert "internal.example" not in body
+    assert "abc123" not in body
+    assert "application/json" not in response.headers.get("content-type", "")
 
 
 async def test_blank_question_is_422_before_the_stream(tmp_path: Path) -> None:

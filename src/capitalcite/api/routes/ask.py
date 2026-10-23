@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from typing import Annotated
 
@@ -80,8 +81,11 @@ from capitalcite.retrieval.types import Hit
 from capitalcite.trace import ObservationKind, ask_attrs, git_sha, observation
 
 router = APIRouter(tags=["ask"])
+logger = logging.getLogger(__name__)
 
 __all__ = ["AskRequest", "AskResponse", "iter_ask", "router"]
+
+_INTERNAL_ERROR = ErrorEvent(status=500, detail="internal error")
 
 _SSE_START_HEADERS = [
     (b"cache-control", b"no-cache"),
@@ -173,11 +177,12 @@ class _AskSSEResponse(Response):
                 raise
             if current is not None:
                 current.uncancel()
-        except Exception as exc:
+        except Exception:
+            logger.exception("ask stream failed")
             await send(
                 {
                     "type": "http.response.body",
-                    "body": encode_sse(ErrorEvent(status=500, detail=fault_detail(exc))),
+                    "body": encode_sse(_INTERNAL_ERROR),
                     "more_body": True,
                 }
             )
@@ -285,9 +290,6 @@ async def iter_ask(
             yield fault
         except _STREAM_FAULTS as exc:
             fault = ErrorEvent(status=503, detail=fault_detail(exc))
-            yield fault
-        except Exception as exc:
-            fault = ErrorEvent(status=500, detail=fault_detail(exc))
             yield fault
         if response is not None:
             span.set(

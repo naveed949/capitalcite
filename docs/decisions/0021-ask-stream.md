@@ -37,10 +37,11 @@ A watcher task reads ASGI `http.disconnect` and cancels the request
 task. That cancel is `uncancel()`'d so it is not treated as an
 unexpected failure. Any other `CancelledError` is re-raised. The
 event iterator's `finally` then cancels the one agent child. An
-unexpected exception after HTTP 200 becomes an `error` event with
-status 500, then `done`. `CancelledError` is a `BaseException`. It is
-not a gate deny and it is not an `error` event. A second planned tool
-does not start after cancel.
+unexpected exception after HTTP 200 is logged and becomes an `error`
+event with status 500 and detail `internal error`, then `done`. The
+exception text does not go to the client. `CancelledError` is a
+`BaseException`. It is not a gate deny and it is not an `error` event.
+A second planned tool does not start after cancel.
 
 Backpressure is the queue and the `yield`. `Observe` methods only
 `put_nowait` in-memory events. They do not write sockets. If the
