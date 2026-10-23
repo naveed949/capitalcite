@@ -218,10 +218,10 @@ class Settings(BaseSettings):
         if value is None:
             return ()
         if isinstance(value, str):
-            origins = tuple(part.strip() for part in value.split(",") if part.strip())
-            if "*" in origins:
+            parsed = tuple(part.strip() for part in value.split(",") if part.strip())
+            if "*" in parsed:
                 raise ValueError("CORS_ORIGINS cannot include '*'")
-            return origins
+            return parsed
         if isinstance(value, (list, tuple)):
             origins: list[str] = []
             for item in value:
