@@ -43,7 +43,6 @@ node_modules/
 .next/
 web/.next/
 
-# dbt (dev warehouse file is already under /data/**)
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
