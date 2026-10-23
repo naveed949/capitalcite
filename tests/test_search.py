@@ -136,16 +136,18 @@ def test_api_and_cli_do_not_import_store_clients() -> None:
             assert needle not in text, f"{path} mentions {needle}"
 
 
-def test_health_does_not_construct_qdrant(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_stays_up_when_the_store_cannot_open(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("Qdrant client constructed")
+        raise RuntimeError("store unavailable")
 
     monkeypatch.setattr("capitalcite.retrieval.service.AsyncQdrantClient", boom)
     application = create_app()
     with TestClient(application) as http:
         response = http.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["point_count"] == 0
 
 
 def _settings() -> Settings:
