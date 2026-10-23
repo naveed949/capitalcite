@@ -28,6 +28,10 @@ RUN mkdir -p /app/fastembed /app/qdrant \
     && capitalcite index --input-dir /tmp/demo --embedder bge-small \
     && python -c 'from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
 
+# Offline load checks mock.file and tamil.txt. The Qdrant/bm25 snapshot does not
+# ship those names. Empty files keep a later load on this cache.
+RUN python -c 'import os; from pathlib import Path; cache=Path(os.environ["FASTEMBED_CACHE_PATH"]); snaps=list(cache.glob("models--Qdrant--bm25/snapshots/*")); assert snaps, "bm25 snapshot missing"; [(snap / "mock.file").touch() for snap in snaps]; [(snap / "tamil.txt").touch() for snap in snaps]; os.environ["HF_HUB_OFFLINE"]="1"; from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
+
 FROM python:3.12-slim-bookworm AS runtime
 
 RUN useradd --uid 65532 --create-home --home-dir /home/app app \

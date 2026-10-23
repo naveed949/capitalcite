@@ -26,6 +26,9 @@ def test_dockerfile_does_not_copy_env() -> None:
     assert "GIT_SHA" in text
     assert "BAAI/bge-small-en-v1.5" in text
     assert "Qdrant/bm25" in text
+    assert "mock.file" in text
+    assert "tamil.txt" in text
+    assert "HF_HUB_OFFLINE=1" in text
     assert "ASK_RATE_LIMIT" in text
     assert "UV_PROJECT_ENVIRONMENT=/app/.venv" in text
 

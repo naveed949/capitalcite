@@ -56,6 +56,8 @@ for line in raw.splitlines():
                 "ask_http_",
                 "OOMKilled=",
                 "peak_",
+                "vmrss_kb_samples=",
+                "vmrss_kb_max=",
                 "UNVERIFIED",
                 "host_port=",
                 "disk ",
@@ -157,7 +159,11 @@ sample_pid=""
 (
   while "${DOCKER[@]}" inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q true; do
     "${DOCKER[@]}" stats --no-stream --format '{{.MemUsage}} {{.MemPerc}} cpu={{.CPUPerc}}' "$NAME" >>"$STATS" 2>/dev/null || true
-    sleep 0.5
+    rss="$("${DOCKER[@]}" exec "$NAME" awk '/^VmRSS:/ {print $2}' /proc/1/status 2>/dev/null || true)"
+    if [[ -n "${rss}" ]]; then
+      printf 'vmrss_kb=%s\n' "${rss}" >>"$STATS"
+    fi
+    sleep 0.2
   done
 ) &
 sample_pid=$!
@@ -282,7 +288,13 @@ units = {
 pattern = re.compile(r"([0-9]+(?:\.[0-9]+)?)([A-Za-z]+)")
 best = None
 best_line = ""
+vmrss = []
 for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    if line.startswith("vmrss_kb="):
+        vmrss.append(int(line.split("=", 1)[1]))
+        continue
+    if "/" not in line:
+        continue
     match = pattern.search(line)
     if match is None:
         continue
@@ -297,8 +309,13 @@ for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
 if best is None:
     print("peak_rss=UNVERIFIED stats lines did not parse")
 else:
-    print(f"peak_stats_bytes={best}")
+    print(f"peak_stats_parsed_bytes={int(best)}")
     print(f"peak_stats_line={best_line}")
+if vmrss:
+    print(f"vmrss_kb_samples={len(vmrss)}")
+    print(f"vmrss_kb_max={max(vmrss)}")
+else:
+    print("vmrss_kb_max=UNVERIFIED no VmRSS samples")
 PY
 else
   log "peak_rss=UNVERIFIED no docker stats samples"
