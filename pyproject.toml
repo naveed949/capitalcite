@@ -84,6 +84,10 @@ files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
 
+[[tool.mypy.overrides]]
+module = ["duckdb", "yaml"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG = ROOT / "dbt" / "models" / "semantic" / "bank_financials.yml"
@@ -64,11 +64,6 @@ def _mapping_list(catalog: dict[str, Any], key: str) -> list[dict[str, Any]]:
 
 
 def test_simple_metrics_lock_entity_level() -> None:
-    """Every simple metric filters bank__entity_level to one closed literal.
-
-    deposits_qoq_growth is derived and lists only total_deposits.
-    No metric has type ratio. No metric name equals a measure name.
-    """
     catalog = _load_catalog()
     measures = {
         str(measure["name"])
@@ -95,10 +90,10 @@ def test_simple_metrics_lock_entity_level() -> None:
 
 
 def committed_mf_stdout_path(repo: Path) -> Path:
-    """evals/results/metrics/<sha12>-mf-query.txt for HEAD, else the nearest ancestor.
+    """Return the golden named for HEAD or the nearest ancestor.
 
-    A shallow CI checkout only has HEAD in rev-list. If the walk misses,
-    the single committed golden in that directory is the contract.
+    A shallow checkout only has HEAD in rev-list. The sole committed
+    golden is then the contract.
     """
     directory = repo / "evals" / "results" / "metrics"
     listing = subprocess.run(
@@ -154,13 +149,11 @@ def mf_query_stdout() -> str:
 
 @pytest.mark.mf
 def test_mf_query_matches_committed_stdout(mf_query_stdout: str) -> None:
-    """Re-run the required query and diff stdout against the committed file."""
     expected = committed_mf_stdout_path(ROOT).read_text(encoding="utf-8")
     assert mf_query_stdout == expected
 
 
 def _quarter_end(quarter_start: date) -> date:
-    """Map a quarter start to the fact's quarter-end, two months later."""
     month = quarter_start.month + 2
     year = quarter_start.year + (month - 1) // 12
     month = (month - 1) % 12 + 1
@@ -193,8 +186,7 @@ def _first_growth_row(stdout: str) -> tuple[str, date, str, str]:
 
 @pytest.mark.mf
 def test_mf_growth_cell_matches_adjacent_deposits(mf_query_stdout: str) -> None:
-    """One growth cell equals the two adjacent FDIC DEP amounts on the fact."""
-    import duckdb  # type: ignore[import-not-found]
+    import duckdb
 
     ticker, this_end, printed_deposits, printed_growth = _first_growth_row(mf_query_stdout)
     prior_end = _prior_quarter_end(this_end)
