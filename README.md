@@ -293,6 +293,7 @@ This README: [ADR 0016](docs/decisions/0016-readme-demo.md).
 Write-up number check: [ADR 0017](docs/decisions/0017-writeup.md).
 Eval report pick and the fake-model default: [ADR 0018](docs/decisions/0018-eval-report-and-ask-default.md).
 Streaming answers: [ADR 0021](docs/decisions/0021-ask-stream.md).
+BankFind host and metrics extract: [ADR 0022](docs/decisions/0022-bankfind-host-and-metrics-extract.md).
 
 The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 
