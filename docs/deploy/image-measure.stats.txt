@@ -1,4 +1,4 @@
-58.67MiB / 512MiB 11.46% cpu=92.72%
-vmrss_kb=77520
-296.9MiB / 512MiB 57.99% cpu=58.98%
-vmrss_kb=362120
+65.97MiB / 512MiB 12.89% cpu=93.77%
+vmrss_kb=90188
+296.7MiB / 512MiB 57.96% cpu=57.99%
+vmrss_kb=362296
