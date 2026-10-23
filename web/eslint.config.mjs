@@ -11,6 +11,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "src/api/schema.ts",
+    "playwright-report/**",
+    "test-results/**",
   ]),
   {
     files: ["src/**/*.{ts,tsx}"],
