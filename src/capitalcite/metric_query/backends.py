@@ -1,5 +1,3 @@
-"""MetricFlow SQL has one author. Live execution and the catalog compiler both call mf_argv."""
-
 from __future__ import annotations
 
 import csv
@@ -40,12 +38,8 @@ _MfMode = Literal["csv", "explain"]
 
 
 def where_clause(query: MetricQuery) -> str:
-    """Ticker, quarter start, and entity_level, in that order.
+    """deposits_qoq_growth keeps the quarter literal behind OR 1 = 1.
 
-    Jinja Dimension and TimeDimension calls are fixed text. The ticker
-    pattern excludes quotes. entity_level is the enum value.
-
-    deposits_qoq_growth keeps the quarter literal behind OR 1 = 1.
     MetricFlow applies where before the offset, so a real time equality
     removes the prior quarter and the growth cell is null. Execute keeps
     the row whose metric_time__quarter is quarter_start.
@@ -67,10 +61,6 @@ def mf_argv(
     mode: _MfMode,
     csv_path: Path | None = None,
 ) -> list[str]:
-    """uv run --group metrics mf query --quiet --metrics --group-by --where --decimals 10.
-
-    Then --csv or --explain. No --target. DBT_TARGET is in the child environment.
-    """
     argv = [
         "uv",
         "run",
@@ -116,7 +106,6 @@ class Catalog(BaseModel):
     entries: tuple[CatalogEntry, ...]
 
     def by_key(self) -> dict[tuple[MetricName, GroupBy], CatalogEntry]:
-        """One entry per metric. Duplicate keys raise MetricQueryError."""
         found: dict[tuple[MetricName, GroupBy], CatalogEntry] = {}
         for entry in self.entries:
             key = (entry.metric, entry.group_by)
@@ -127,12 +116,6 @@ class Catalog(BaseModel):
 
 
 class LiveMetricFlow:
-    """Shells mf at execute time. The metricflow package stays out of this process.
-
-    open_metric_query(backend_name="catalog") constructs CatalogSql only.
-    The image never constructs LiveMetricFlow.
-    """
-
     def __init__(self, *, cwd: Path, env: Mapping[str, str]) -> None:
         self._cwd = cwd
         self._env = dict(env)
@@ -160,8 +143,6 @@ class LiveMetricFlow:
 
 
 class CatalogSql:
-    """Executes one precompiled statement. Opens DuckDB read_only per execute and closes it."""
-
     def __init__(self, catalog: Catalog, warehouse: Path) -> None:
         self._by_key = catalog.by_key()
         self._warehouse = warehouse
@@ -197,15 +178,6 @@ class CatalogSql:
 
 
 def compile_catalog(path: Path, *, cwd: Path, env: Mapping[str, str]) -> None:
-    """One explain per MetricName, using SENTINEL_TICKER and SENTINEL_QUARTER_END.
-
-    parameterize replaces each quoted 'ZZQZZQ' and each quoted '1999-10-01'
-    with ?, consuming the quotes, left to right, and records param_order.
-    Zero quoted occurrences of either sentinel fail the compile. A leftover
-    bare sentinel fails the compile. Any occurrence of 1999-12-31 fails the
-    compile. A second statement fails the compile. semantic_sha256 is the
-    sha256 of bank_financials.yml. The request process does not call this.
-    """
     digest = _semantic_sha256(cwd)
     entries: list[CatalogEntry] = []
     for metric in MetricName:
@@ -242,7 +214,6 @@ def compile_catalog(path: Path, *, cwd: Path, env: Mapping[str, str]) -> None:
 
 
 def load_catalog(path: Path) -> Catalog:
-    """Parse boundary for catalog.json. Extra keys fail. Version must be 1."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -254,10 +225,6 @@ def load_catalog(path: Path) -> Catalog:
 
 
 def parameterize(sql: str) -> tuple[str, tuple[ParamName, ...]]:
-    """Replace quoted 'ZZQZZQ' and quoted '1999-10-01' only.
-
-    Each match becomes a bare ? and one param_order entry.
-    """
     order: list[ParamName] = []
 
     def replace(match: re.Match[str]) -> str:
@@ -272,10 +239,6 @@ def parameterize(sql: str) -> tuple[str, tuple[ParamName, ...]]:
 
 
 def sql_from_explain(stdout: str) -> str:
-    """Strip ANSI. Keep from the first SELECT or WITH line through the end.
-
-    Fail if that slice does not contain both sentinels.
-    """
     text = _ANSI.sub("", stdout)
     lines = text.splitlines()
     start: int | None = None
@@ -349,9 +312,7 @@ def _csv_rows(text: str) -> list[dict[str, str]]:
 
 
 def _cell_from_rows(rows: list[dict[str, str]], query: MetricQuery) -> MetricCell:
-    """Keep the one row for query.quarter_start.
-
-    Growth SQL also returns other quarters, because the time predicate cannot
+    """Growth SQL also returns other quarters, because the time predicate cannot
     filter inputs without erasing the prior quarter.
     """
     matched: list[str | None] = []

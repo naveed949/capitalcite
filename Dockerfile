@@ -32,8 +32,6 @@ RUN mkdir -p /app/fastembed /app/qdrant \
     && python -c 'from pathlib import Path; from capitalcite.retrieval.fastembed_pins import verify_pinned_files; verify_pinned_files(Path("/app/fastembed"))' \
     && python -c 'from fastembed import TextEmbedding; from fastembed.sparse import SparseTextEmbedding; TextEmbedding("BAAI/bge-small-en-v1.5"); SparseTextEmbedding("Qdrant/bm25")'
 
-# This stage builds the fixture warehouse and checks catalog.json against
-# mf query --explain. It is discarded. The runtime image does not install MetricFlow.
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim@sha256:e5b65587bce7de595f299855d7385fe7fca39b8a74baa261ba1b7147afa78e58 AS metrics
 
 WORKDIR /src

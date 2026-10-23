@@ -190,6 +190,20 @@ def test_parse_rejects_unknown_fields_and_metrics() -> None:
 
 
 def test_quarter_start_matches_the_semantic_month_map() -> None:
+    loaded = yaml.safe_load(CATALOG.read_text(encoding="utf-8"))
+    expr = ""
+    for model in loaded["semantic_models"]:
+        for dimension in model["dimensions"]:
+            if dimension["name"] == "quarter_id":
+                expr = str(dimension["expr"])
+    mapping = {
+        int(month): int(start)
+        for month, start in re.findall(
+            r"when (\d+) then make_date\(year\(quarter_id\), (\d+), 1\)",
+            expr,
+        )
+    }
+    assert mapping == {3: 1, 6: 4, 9: 7, 12: 10}
     expected = {
         "2024-03-31": date(2024, 1, 1),
         "2024-06-30": date(2024, 4, 1),

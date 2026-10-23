@@ -1,5 +1,3 @@
-"""metric_query shell. Siblings do not import this module."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping

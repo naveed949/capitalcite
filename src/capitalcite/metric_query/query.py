@@ -1,9 +1,4 @@
-"""One metric, one ticker, one quarter-end.
-
-period is fct_bank_financials_quarterly.quarter_id.
-metric_time__quarter is quarter_start(), the label mf prints.
-entity_level is the metric lock. group_by has one member, so the value is one cell.
-"""
+"""metric_time__quarter is quarter_start(), the label mf prints."""
 
 from __future__ import annotations
 
@@ -35,8 +30,6 @@ class MetricName(StrEnum):
 
 
 class GroupBy(StrEnum):
-    """One citable grain. The string is the mf --group-by value."""
-
     QUARTER_AND_TICKER = "metric_time__quarter,bank__ticker"
 
 
@@ -50,8 +43,6 @@ class MetricQueryError(Exception):
 
 
 class MetricQuery(BaseModel):
-    """One metric, one ticker, one quarter-end."""
-
     model_config = ConfigDict(frozen=True, extra="forbid")
     metric: MetricName
     group_by: GroupBy
@@ -68,11 +59,6 @@ class MetricQuery(BaseModel):
         return self
 
     def quarter_start(self) -> date:
-        """First day of period's quarter. mf where clauses use this date.
-
-        Maps 3->1, 6->4, 9->7, 12->10, day 1. Same mapping as the
-        quarter_id expr in bank_financials.yml.
-        """
         return date(self.period.year, _QUARTER_START_MONTH[self.period.month], 1)
 
 
@@ -96,11 +82,6 @@ class QueryBackend(Protocol):
 
 
 def locked_level(metric: MetricName) -> EntityLevel:
-    """Total function. Simple metrics match their YAML entity filter.
-
-    deposits_qoq_growth returns the lock of total_deposits, because the
-    derived metric has no filter of its own and the input metric does.
-    """
     match metric:
         case (
             MetricName.TOTAL_DEPOSITS
@@ -178,7 +159,6 @@ def render_figure(value: Decimal) -> str:
 
 
 def cells_equal(left: MetricCell, right: MetricCell) -> bool:
-    """Same query. Both null, or math.isclose(rel_tol=1e-12) on the values."""
     if left.query != right.query:
         return False
     if left.value is None or right.value is None:

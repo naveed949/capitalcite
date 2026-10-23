@@ -8,12 +8,16 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from capitalcite.chunking.models import ChunkerName
+
+if TYPE_CHECKING:
+    from capitalcite.metric_query import QueryBackend
+    from capitalcite.metric_query.cite import CitationResolver
 
 TEST_HOOK_ENVS = frozenset({"test", "verify", "local"})
 
@@ -309,7 +313,9 @@ def get_settings() -> Settings:
     return Settings()
 
 
-def metric_backends(settings: Settings) -> tuple[Any, Any]:
+def metric_backends(
+    settings: Settings,
+) -> tuple[QueryBackend | None, CitationResolver | None]:
     """Open the metric backend when WAREHOUSE_PATH is set. Otherwise both are None.
 
     A set path with a missing file raises, so process start fails closed.

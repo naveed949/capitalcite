@@ -1,5 +1,3 @@
-"""Citation policy for one fact row. The SQL backends do not import this module."""
-
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -82,12 +80,6 @@ class CitationBundle(BaseModel):
 
 
 def cite_kind(metric: MetricName) -> CiteKind:
-    """Exhaustive match.
-
-    total_deposits, total_assets, net_income, nim, efficiency_ratio, and
-    deposits_qoq_growth return FDIC. The three holding-company metrics
-    return the SEC kind with the same stem.
-    """
     match metric:
         case (
             MetricName.TOTAL_DEPOSITS
@@ -113,11 +105,6 @@ class CitationResolver:
         self._warehouse = warehouse
 
     def resolve(self, cell: MetricCell) -> CitationBundle:
-        """Read one fact row after the cell exists.
-
-        The quote number comes from cell.value. The fact amount is ignored.
-        deposits_qoq_growth cites the current FDIC row only.
-        """
         if cell.value is None:
             raise MetricQueryError("metric cell is null")
         row = self._read(cell.query)
@@ -163,14 +150,11 @@ class CitationResolver:
 
 
 def hits_for(cell: MetricCell, bundle: CitationBundle) -> tuple[Hit, ...]:
-    """One Hit per SourceRef. The figure is render_figure(cell.value)."""
     if cell.value is None:
         raise MetricQueryError("metric cell is null")
     hits: list[Hit] = []
     for source in bundle.sources:
         text = _quote(cell, source)
-        # The fake draft keeps every hit whose section is a metric name,
-        # so both fy_minus_9m accessions reach the answer.
         chunk = Chunk(
             doc_id=source.doc_id,
             section=cell.query.metric.value,
