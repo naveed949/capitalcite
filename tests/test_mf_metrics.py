@@ -194,7 +194,7 @@ def _first_growth_row(stdout: str) -> tuple[str, date, str, str]:
 @pytest.mark.mf
 def test_mf_growth_cell_matches_adjacent_deposits(mf_query_stdout: str) -> None:
     """One growth cell equals the two adjacent FDIC DEP amounts on the fact."""
-    import duckdb
+    import duckdb  # type: ignore[import-not-found]
 
     ticker, this_end, printed_deposits, printed_growth = _first_growth_row(mf_query_stdout)
     prior_end = _prior_quarter_end(this_end)
