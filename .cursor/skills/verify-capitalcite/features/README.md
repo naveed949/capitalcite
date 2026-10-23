@@ -61,6 +61,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [MCP server](./mcp.md) covers `capitalcite mcp` over stdio with the official MCP client.
 - [Local compose stack](./local-stack.md) covers `docker compose config` and Qdrant `/healthz` when Docker is present.
 - [Optional entity graph](./graph.md) covers `capitalcite graph` and `eval --suite graph --small`.
+- [Metrics extract](./metrics-extract.md) covers `capitalcite metrics extract --fixtures` and the BankFind host `api.fdic.gov/banks`.
 
 ## Extending the map
 
