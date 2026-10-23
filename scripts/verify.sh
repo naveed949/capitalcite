@@ -1925,6 +1925,11 @@ expected = 0
 for name in ("agent.cc-h-055.body.json", "agent.cc-h-061.body.json"):
     body = json.loads((art / name).read_text(encoding="utf-8"))
     expected += len(body.get("traces") or [])
+stream_events_path = art / "stream.agent.cc-h-055.events.json"
+if stream_events_path.is_file():
+    for event in json.loads(stream_events_path.read_text(encoding="utf-8")):
+        if event.get("event") in {"answered", "refused"}:
+            expected += len((event.get("response") or {}).get("traces") or [])
 openai_unverified = (art / "agent.openai.unverified").is_file()
 if openai_unverified:
     if len(records) != expected:
