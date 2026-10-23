@@ -272,7 +272,7 @@ Open `http://127.0.0.1:3001`. Dev and `pnpm --dir web start` listen on port 3001
 
 `localhost` and `127.0.0.1` are different browser origins. The quickstart binds uvicorn to `127.0.0.1`. Set `CAPITALCITE_API_ORIGIN` to `http://127.0.0.1:8000`, and open the page on `http://127.0.0.1:3001`. Do not point the origin at `localhost` while uvicorn is bound to `127.0.0.1`. The origin is not a `NEXT_PUBLIC_` variable. The browser never reads it.
 
-A retrieval question with ticker `JPM`, the agent question `What CET1 ratio did JPMorgan disclose for 2024?`, and the Wells Fargo 2026 refusal all run on this fixture index. Regenerate the client types after an API model change.
+A retrieval question with ticker `JPM`, the agent question `What CET1 ratio did JPMorgan disclose for 2024?`, and the Wells Fargo 2026 refusal all run on this fixture index. Fixture-index shots: [answered span](docs/web/answered-span.png), [agent timeline](docs/web/agent-timeline.png), [refusal](docs/web/refused.png). Regenerate the client types after an API model change.
 
 ```bash
 pnpm --dir web generate:api

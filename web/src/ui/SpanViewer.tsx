@@ -3,7 +3,7 @@ import type { FilingSpan } from "../session/session";
 export function SpanViewer(props: { span: FilingSpan; onClose: () => void }) {
   const href = httpUrl(props.span.sourceUrl);
   return (
-    <dialog open data-testid="span-viewer" className="w-full max-w-xl rounded border border-zinc-300 p-4">
+    <aside data-testid="span-viewer" className="w-full rounded border border-zinc-300 p-4">
       <p data-testid="span-doc" className="font-mono text-sm">
         {props.span.docId}
       </p>
@@ -34,7 +34,7 @@ export function SpanViewer(props: { span: FilingSpan; onClose: () => void }) {
       <button type="button" className="mt-4 rounded border border-zinc-300 px-3 py-1 text-sm" onClick={props.onClose}>
         Close
       </button>
-    </dialog>
+    </aside>
   );
 }
 

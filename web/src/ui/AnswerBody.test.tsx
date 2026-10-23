@@ -69,6 +69,7 @@ describe("SpanViewer", () => {
     expect(screen.getByTestId("span-doc")).toHaveTextContent("doc-1");
     expect(screen.getByTestId("span-section")).toHaveTextContent("Item 1");
     const quote = screen.getByTestId("span-quote");
+    expect(screen.getByTestId("span-viewer").tagName).toBe("ASIDE");
     expect(quote.tagName).toBe("MARK");
     expect(quote).toHaveTextContent("CET1 ratio of 13.0 percent");
     expect(quote).toHaveAttribute("data-quote-start", "12");

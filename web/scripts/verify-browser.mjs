@@ -47,6 +47,7 @@ const refusalQuestion = "What CET1 ratio did Wells Fargo disclose for year-end 2
 try {
   const labelPage = await browser.newPage();
   await labelPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await labelPage.evaluate(() => document.fonts.ready);
   const label = labelPage.getByTestId("demo-model");
   await label.waitFor({ timeout: 15000 });
   const labelText = (await label.innerText()).trim();
@@ -78,13 +79,19 @@ try {
 
   const agentPage = await browser.newPage();
   await agentPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await agentPage.evaluate(() => document.fonts.ready);
   await agentPage.getByRole("radio", { name: "Agent" }).check();
   if ((await agentPage.getByTestId("ticker").count()) !== 0) {
     throw new Error("ticker input still visible on the agent path");
   }
   await agentPage.getByLabel("Question").fill(agentQuestion);
   await agentPage.getByRole("button", { name: "Ask" }).click();
-  await agentPage.getByTestId("timeline").getByText("search_filings").waitFor({ timeout: 120000 });
+  await agentPage
+    .getByTestId("timeline")
+    .locator('[data-kind="call"]')
+    .filter({ hasText: "search_filings" })
+    .waitFor({ timeout: 120000 });
+  await agentPage.getByTestId("answer").waitFor({ timeout: 120000 });
   write("web.agent.txt", await agentPage.getByTestId("timeline").innerText());
   await agentPage.screenshot({
     path: resolve(out, "web.agent.png"),
@@ -94,6 +101,7 @@ try {
 
   const refusalPage = await browser.newPage();
   await refusalPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await refusalPage.evaluate(() => document.fonts.ready);
   await refusalPage.getByLabel("Question").fill(refusalQuestion);
   await refusalPage.getByLabel("Ticker").fill("WFC");
   await refusalPage.getByRole("button", { name: "Ask" }).click();
