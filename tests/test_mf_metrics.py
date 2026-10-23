@@ -91,11 +91,6 @@ def test_simple_metrics_lock_entity_level() -> None:
 
 
 def test_rate_saved_queries_group_by_ticker() -> None:
-    """A saved query that includes nim or efficiency_ratio groups by ticker.
-
-    Those rates are reported percents. Dropping ticker returns the max of
-    the percents, which is not a portfolio figure.
-    """
     catalog = _load_catalog()
     rate_queries = 0
     for query in _mapping_list(catalog, "saved_queries"):
@@ -109,7 +104,6 @@ def test_rate_saved_queries_group_by_ticker() -> None:
 
 
 def _csv_without_null_deposits(text: str) -> str:
-    """Drop offset-window rows whose deposits cell is empty."""
     reader = csv.DictReader(io.StringIO(text.replace("\r\n", "\n")))
     if reader.fieldnames is None:
         raise AssertionError("mf csv has no header")
