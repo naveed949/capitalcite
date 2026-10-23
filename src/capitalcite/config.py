@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from capitalcite.chunking.models import ChunkerName
@@ -96,12 +96,15 @@ class Settings(BaseSettings):
         ge=1,
         description="Agent graph stops when the estimated token use reaches this.",
     )
-    capitalcite_test_slow_retrieve_ms: int = Field(
+    test_slow_retrieve_ms: int = Field(
         default=0,
         ge=0,
+        validation_alias=AliasChoices(
+            "CAPITALCITE_TEST_SLOW_RETRIEVE_MS",
+            "test_slow_retrieve_ms",
+        ),
         description=(
-            "When greater than 0, POST /ask/stream sleeps this many milliseconds "
-            "before retrieve for the e2e cancel question. Production stays 0."
+            "Milliseconds to sleep before retrieve for the e2e cancel question. 0 skips the sleep."
         ),
     )
     gate_policy: Path | None = Field(

@@ -245,7 +245,7 @@ async def test_disconnect_cancels_the_in_flight_tool(
 
 
 async def test_disconnect_cancels_rag_retrieve_before_first_event(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     started = 0
     finished = 0
@@ -267,6 +267,9 @@ async def test_disconnect_cancels_rag_retrieve_before_first_event(
     monkeypatch.setattr("capitalcite.api.routes.ask.retrieve", slow_retrieve)
     application, _setup = await _indexed_app(tmp_path, [_chunk()])
     server, serve_task, port = await _start_uvicorn(application)
+    ask_logger = logging.getLogger("capitalcite.api.routes.ask")
+    ask_logger.setLevel(logging.INFO)
+    ask_logger.addHandler(caplog.handler)
     try:
         async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=5.0) as client:
 
@@ -298,7 +301,9 @@ async def test_disconnect_cancels_rag_retrieve_before_first_event(
         assert started == 1
         assert finished == 0
         assert cancelled == 1
+        assert "ask stream cancelled by client" in caplog.text
     finally:
+        ask_logger.removeHandler(caplog.handler)
         server.should_exit = True
         await serve_task
 
@@ -342,8 +347,7 @@ async def test_slow_retrieve_sleeps_only_for_the_cancel_question(
             }
         )
         events = [
-            event
-            async for event in _rag_events(AskRequest(question=question), setup, settings, 0)
+            event async for event in _rag_events(AskRequest(question=question), setup, settings, 0)
         ]
         assert events[0].event == "refused"
 

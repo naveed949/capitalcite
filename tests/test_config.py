@@ -82,14 +82,7 @@ def test_langfuse_tracing_enabled_reads_env(monkeypatch: pytest.MonkeyPatch) -> 
 def test_ask_model_defaults_to_fake() -> None:
     settings = Settings.model_validate({"sec_user_agent": "capitalcite-tests tests@example.com"})
     assert settings.ask_model == "fake"
-    assert settings.capitalcite_test_slow_retrieve_ms == 0
-
-
-def test_slow_retrieve_ms_reads_capitalcite_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
-    monkeypatch.setenv("CAPITALCITE_TEST_SLOW_RETRIEVE_MS", "4000")
-    settings = Settings()
-    assert settings.capitalcite_test_slow_retrieve_ms == 4000
+    assert settings.test_slow_retrieve_ms == 0
 
 
 def test_slow_retrieve_ms_reads_capitalcite_env(monkeypatch: pytest.MonkeyPatch) -> None:
