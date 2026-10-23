@@ -95,7 +95,12 @@ def test_simple_metrics_lock_entity_level() -> None:
 
 
 def committed_mf_stdout_path(repo: Path) -> Path:
-    """evals/results/metrics/<sha12>-mf-query.txt for HEAD, else the nearest ancestor."""
+    """evals/results/metrics/<sha12>-mf-query.txt for HEAD, else the nearest ancestor.
+
+    A shallow CI checkout only has HEAD in rev-list. If the walk misses,
+    the single committed golden in that directory is the contract.
+    """
+    directory = repo / "evals" / "results" / "metrics"
     listing = subprocess.run(
         ["git", "rev-list", "HEAD"],
         cwd=repo,
@@ -111,9 +116,12 @@ def committed_mf_stdout_path(repo: Path) -> Path:
             capture_output=True,
             text=True,
         ).stdout.strip()
-        path = repo / "evals" / "results" / "metrics" / f"{short}-mf-query.txt"
+        path = directory / f"{short}-mf-query.txt"
         if path.is_file():
             return path
+    files = sorted(directory.glob("*-mf-query.txt"))
+    if len(files) == 1:
+        return files[0]
     raise AssertionError("no committed mf query stdout under evals/results/metrics")
 
 
