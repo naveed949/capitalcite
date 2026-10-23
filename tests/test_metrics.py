@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import shutil
 from datetime import UTC, datetime
@@ -12,6 +13,7 @@ from typer.testing import CliRunner
 
 from capitalcite.agent.fdic import lead_institutions_url, search_institutions_url
 from capitalcite.agent.http import HttpxJsonClient
+from capitalcite.agent.xbrl import companyfacts_url
 from capitalcite.cli import FIXTURES, app
 from capitalcite.holdings import HoldingCompany, holding_companies, holding_company
 from capitalcite.ingest.rate_limit import shared_limiter
@@ -275,10 +277,19 @@ async def test_live_batch_trims_and_keeps_the_institutions_certificate(tmp_path:
     assert written.lead.cert.value == "628"
     assert bank.fdic_cert not in str(written.financials.path)
     assert written.financials.path.name == "628.json"
-    assert written.xbrl.path.read_bytes() == trim_companyfacts(_facts_body())
-    assert written.financials.path.read_bytes() == trim_financials(_financials_body())
-    assert written.xbrl.metadata.fetched_at == "2026-10-23T11:00:00Z"
+    xbrl_trimmed = trim_companyfacts(_facts_body())
+    fin_trimmed = trim_financials(_financials_body())
+    assert written.xbrl.path.read_bytes() == xbrl_trimmed
+    assert written.financials.path.read_bytes() == fin_trimmed
+    assert written.xbrl.metadata.url == companyfacts_url(company)
     assert written.financials.metadata.url == financials_url(Cert(value="628"))
+    assert written.xbrl.metadata.sha256 == hashlib.sha256(xbrl_trimmed).hexdigest()
+    assert written.financials.metadata.sha256 == hashlib.sha256(fin_trimmed).hexdigest()
+    assert written.xbrl.metadata.sha256 != hashlib.sha256(_facts_body()).hexdigest()
+    assert written.financials.metadata.sha256 != hashlib.sha256(_financials_body()).hexdigest()
+    assert written.xbrl.metadata.bytes == len(xbrl_trimmed)
+    assert written.financials.metadata.bytes == len(fin_trimmed)
+    assert written.xbrl.metadata.fetched_at == "2026-10-23T11:00:00Z"
     assert b"REPDTE" not in written.xbrl.path.read_bytes()
     assert b"entityName" not in written.financials.path.read_bytes()
     assert b'"cik"' in written.xbrl.path.read_bytes()

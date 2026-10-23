@@ -38,6 +38,7 @@ class HttpxJsonClient:
             async with httpx.AsyncClient(
                 timeout=self._timeout,
                 transport=self._transport,
+                follow_redirects=False,
             ) as client:
                 response = await client.get(url, headers={"User-Agent": self._user_agent})
         except httpx.HTTPError as exc:

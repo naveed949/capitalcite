@@ -101,6 +101,7 @@ async def test_httpx_json_client_fails_closed_on_replayed_301() -> None:
     with pytest.raises(ValueError, match="HTTP 301"):
         await client.get_json(url)
     assert len(seen) == 1
+    assert seen[0].url == url
     with pytest.raises(ValueError, match="HTTP 301"):
         await client.get_bytes(url)
     assert len(seen) == 2

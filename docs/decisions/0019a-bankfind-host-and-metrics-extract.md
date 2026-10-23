@@ -14,7 +14,7 @@ open a socket.
 
 ## Keep a 301 fail-closed
 
-`HttpxJsonClient` does not set `follow_redirects`. A replayed 301 raises
+`HttpxJsonClient` sets `follow_redirects=False`. A replayed 301 raises
 `ValueError` matching `HTTP 301` after one request. The metrics command
 maps that error to exit 2. Transport failures still surface as
 `request failed`.
