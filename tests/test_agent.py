@@ -81,6 +81,59 @@ async def test_execute_maps_unexpected_errors_to_tool_result() -> None:
     assert "boom" in result.detail
 
 
+async def test_httpx_json_client_fails_closed_on_replayed_301() -> None:
+    from capitalcite.agent.http import HttpxJsonClient
+
+    seen: list[httpx.Request] = []
+
+    def redirect(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            301,
+            headers={"location": "https://api.fdic.gov/banks/institutions"},
+        )
+
+    client = HttpxJsonClient(
+        user_agent="capitalcite-tests tests@example.com",
+        transport=httpx.MockTransport(redirect),
+    )
+    url = "https://banks.data.fdic.gov/api/institutions"
+    with pytest.raises(ValueError, match="HTTP 301"):
+        await client.get_json(url)
+    assert len(seen) == 1
+    with pytest.raises(ValueError, match="HTTP 301"):
+        await client.get_bytes(url)
+    assert len(seen) == 2
+    assert all(request.url == url for request in seen)
+
+
+async def test_fdic_lookup_hits_api_fdic_gov_banks() -> None:
+    from capitalcite.agent.fdic import FdicClient
+    from capitalcite.agent.http import HttpxJsonClient
+
+    seen: list[httpx.Request] = []
+
+    def one_row(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {"data": {"NAME": "EXAMPLE NATIONAL BANK", "CERT": "628"}},
+                ]
+            },
+        )
+
+    client = HttpxJsonClient(
+        user_agent="capitalcite-tests tests@example.com",
+        transport=httpx.MockTransport(one_row),
+    )
+    text = await FdicClient(client).lookup("EXAMPLE")
+    assert len(seen) == 1
+    assert str(seen[0].url).startswith("https://api.fdic.gov/banks/institutions")
+    assert "CERT=" in text
+
+
 async def test_httpx_json_client_maps_transport_errors() -> None:
     from capitalcite.agent.http import HttpxJsonClient
 
