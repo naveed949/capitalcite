@@ -2487,6 +2487,8 @@ fi
   echo "index.help.exit $(cat "${ART}/index.help.exit")"
   if [[ -f "${ART}/index.1.exit" ]]; then
     echo "index.1.exit $(cat "${ART}/index.1.exit")"
+  fi
+  if [[ -f "${ART}/index.2.exit" ]]; then
     echo "index.2.exit $(cat "${ART}/index.2.exit")"
   fi
   if [[ -f "${ART}/search.unreachable" ]]; then
