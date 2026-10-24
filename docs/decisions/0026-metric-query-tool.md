@@ -41,7 +41,10 @@ company.
 
 `max_calls` is 4. `max_arg_bytes` is 1024. The gate ticker
 `pattern` is `^[A-Z][A-Z0-9]{0,5}$`. A real-model planner must send an
-uppercase ticker; `jpm` is `invalid args` before the runner.
+uppercase ticker; `jpm` is `invalid args` before the runner. A question
+that names a holding company, bank holding, BHC, or parent, and also
+contains any exclusion word, stays on `search_filings`. A wrong parent
+cell is worse than a filing search.
 
 ## Why the demo runs a precompiled catalog
 

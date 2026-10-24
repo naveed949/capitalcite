@@ -15,9 +15,11 @@ import pytest
 import yaml
 
 from capitalcite.agent.audited import AuditingTools
+from capitalcite.agent.graph import run_agent
 from capitalcite.agent.models import _METRIC_PHRASES, FakeAgentModel, _plan_system_prompt
 from capitalcite.agent.tools import default_registry
-from capitalcite.agent.types import TraceStep
+from capitalcite.agent.types import Budgets, TraceStep
+from capitalcite.ask.types import Refused
 from capitalcite.audit import AuditLog, AuditRecord, verify
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.chunking.tokens import count_tokens
@@ -972,87 +974,197 @@ async def test_fake_plan_maps_each_metric_phrase() -> None:
     assert [call.name for call in holding.calls] == ["metric_query"]
 
 
-async def test_fake_plan_year_only_net_income_stays_on_search() -> None:
-    decision = await FakeAgentModel().plan("What was JPM's net income in 2025?", [], [])
-    assert decision.calls
-    assert {call.name for call in decision.calls} == {"search_filings"}
-
-
-async def test_fake_plan_narrative_deposits_stays_on_search() -> None:
-    decision = await FakeAgentModel().plan(
-        "How does JPM describe its total deposits strategy in the 2025 10-K?",
-        [],
-        [],
-    )
-    assert decision.calls
-    assert {call.name for call in decision.calls} == {"search_filings"}
-
-
-async def test_fake_plan_holding_company_anywhere_remaps_assets() -> None:
-    decision = await FakeAgentModel().plan(
-        "What was JPM's total assets for the holding company in 2026Q2?",
-        [],
-        [],
-    )
-    assert [call.name for call in decision.calls] == ["metric_query"]
-    assert decision.calls[0].args == {
-        "metric": "holding_company_assets",
-        "group_by": _GROUP,
-        "ticker": "JPM",
-        "period": "2026-06-30",
-    }
-    parent = await FakeAgentModel().plan(
-        "What was JPM's total assets for the parent in 2026Q2?",
-        [],
-        [],
-    )
-    assert parent.calls[0].args["metric"] == "holding_company_assets"
-    bhc = await FakeAgentModel().plan(
-        "What were JPM's BHC total assets in 2026Q2?",
-        [],
-        [],
-    )
-    assert [call.name for call in bhc.calls] == ["metric_query"]
-    assert bhc.calls[0].args == {
-        "metric": "holding_company_assets",
-        "group_by": _GROUP,
-        "ticker": "JPM",
-        "period": "2026-06-30",
-    }
-    bank_holding = await FakeAgentModel().plan(
-        "What were JPM's bank holding total assets in 2026Q2?",
-        [],
-        [],
-    )
-    assert bank_holding.calls[0].args["metric"] == "holding_company_assets"
-
-
-async def test_fake_plan_excluding_parent_stays_on_search() -> None:
-    decision = await FakeAgentModel().plan(
-        "What were JPM's deposits in 2026Q2, excluding the parent?",
-        [],
-        [],
-    )
-    assert decision.calls
-    assert {call.name for call in decision.calls} == {"search_filings"}
-
-
-async def test_fake_plan_what_is_is_a_numeric_signal() -> None:
-    decision = await FakeAgentModel().plan(
+_ROUTING_CASES: list[tuple[str, str, str, str | None, str | None, str]] = [
+    (
+        "deposits-2026q2",
+        "What were JPM's total deposits in 2026Q2?",
+        "metric_query",
+        "total_deposits",
+        "2026-06-30",
+        "",
+    ),
+    (
+        "what-is-deposits",
         "What is JPM's total deposits in 2026Q2?",
-        [],
-        [],
-    )
-    assert [call.name for call in decision.calls] == ["metric_query"]
-    assert decision.calls[0].args["metric"] == "total_deposits"
-    assert decision.calls[0].args["period"] == "2026-06-30"
+        "metric_query",
+        "total_deposits",
+        "2026-06-30",
+        "",
+    ),
+    (
+        "bank-level-deposits",
+        "What were JPM's bank-level deposits in 2026Q2?",
+        "metric_query",
+        "total_deposits",
+        "2026-06-30",
+        "",
+    ),
+    (
+        "for-the-holding-company",
+        "What was JPM's total assets for the holding company in 2026Q2?",
+        "metric_query",
+        "holding_company_assets",
+        "2026-06-30",
+        "",
+    ),
+    (
+        "parent-assets",
+        "What was JPM's total assets for the parent in 2026Q2?",
+        "metric_query",
+        "holding_company_assets",
+        "2026-06-30",
+        "",
+    ),
+    (
+        "bhc-total-assets",
+        "What were JPM's BHC total assets in 2026Q2?",
+        "metric_query",
+        "holding_company_assets",
+        "2026-06-30",
+        "",
+    ),
+    (
+        "bank-holding-assets",
+        "What were JPM's bank holding total assets in 2026Q2?",
+        "metric_query",
+        "holding_company_assets",
+        "2026-06-30",
+        "",
+    ),
+    (
+        "bank-holding-company-level",
+        "What were JPM's total assets at the bank holding company level in 2026Q2?",
+        "metric_query",
+        "holding_company_assets",
+        "2026-06-30",
+        "",
+    ),
+    (
+        "year-only-net-income",
+        "What was JPM's net income in 2025?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "describe-strategy",
+        "How does JPM describe its total deposits strategy in the 2025 10-K?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "excluding-the-parent",
+        "What were JPM's deposits in 2026Q2, excluding the parent?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "excluding-jpms-parent",
+        "What were JPM's total assets in 2026Q2, excluding JPM's parent?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "other-than-the-parent",
+        "What were JPM's total assets in 2026Q2 other than the parent?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "not-including-holding-company",
+        "What were JPM's total deposits in 2026Q2, not including the holding company?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "ex-parent",
+        "What were JPM's total assets, ex-parent, in 2026Q2?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "not-the-bhc",
+        "What were JPM's total assets in 2026Q2, not the BHC?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "filed-on-10q",
+        "What did JPMorgan say in the 10-Q filed 2025-11-04 about liquidity?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "invalid-calendar-date",
+        "What were JPM's total deposits at 2026-06-31?",
+        "refuse",
+        None,
+        None,
+        "period is not a valid date",
+    ),
+    (
+        "non-quarter-end-date",
+        "What were JPM's total deposits at 2025-11-04?",
+        "refuse",
+        None,
+        None,
+        "period is not a quarter-end",
+    ),
+]
 
 
-async def test_fake_plan_rejects_an_invalid_calendar_date() -> None:
-    question = "What were JPM's total deposits at 2026-06-31?"
+@pytest.mark.parametrize(
+    ("question", "tool", "metric", "period", "reason"),
+    [row[1:] for row in _ROUTING_CASES],
+    ids=[row[0] for row in _ROUTING_CASES],
+)
+async def test_fake_plan_routing_table(
+    question: str,
+    tool: str,
+    metric: str | None,
+    period: str | None,
+    reason: str,
+) -> None:
     decision = await FakeAgentModel().plan(question, [], [])
-    assert decision.kind == "synthesize"
-    assert decision.calls == ()
+    if tool == "refuse":
+        assert decision.kind == "synthesize"
+        assert decision.calls == ()
+        assert decision.refusal_reason == reason
+        result = await run_agent(
+            question,
+            FakeAgentModel(),
+            default_registry(search=_empty_search, xbrl=_missing_xbrl, fdic=_missing_fdic),
+            Budgets(max_steps=8, max_tokens=4000),
+        )
+        assert isinstance(result.answer, Refused)
+        assert result.answer.refusal_reason == reason
+        return
+    assert decision.kind == "plan"
+    names = {call.name for call in decision.calls}
+    assert tool in names
+    if tool == "metric_query":
+        assert names == {"metric_query"}
+        assert decision.calls[0].args["metric"] == metric
+        assert decision.calls[0].args["period"] == period
+    else:
+        assert "metric_query" not in names
 
 
 async def test_fake_plan_without_a_metric_or_ticker_stays_on_search() -> None:

@@ -42,6 +42,7 @@ class PlannerDecision(BaseModel):
     model_config = ConfigDict(frozen=True)
     kind: Literal["plan", "synthesize"]
     calls: tuple[ToolCall, ...] = ()
+    refusal_reason: str = ""
 
     @model_validator(mode="after")
     def legal_shape(self) -> PlannerDecision:
@@ -49,6 +50,8 @@ class PlannerDecision(BaseModel):
             raise ValueError("plan needs at least one tool call")
         if self.kind == "synthesize" and self.calls:
             raise ValueError("synthesize must not include tool calls")
+        if self.kind == "plan" and self.refusal_reason:
+            raise ValueError("plan must not include a refusal reason")
         return self
 
 

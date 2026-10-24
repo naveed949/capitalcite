@@ -80,7 +80,10 @@ class FakeAgentModel:
         if metric_calls is not None:
             if metric_calls:
                 return PlannerDecision(kind="plan", calls=tuple(metric_calls))
-            return PlannerDecision(kind="synthesize")
+            return PlannerDecision(
+                kind="synthesize",
+                refusal_reason=_metric_periods(question).reason,
+            )
         searched = {
             (
                 str(step.args.get("ticker") or ""),
@@ -259,8 +262,8 @@ _NUMERIC_ASK = re.compile(
 _NARRATIVE_ASK = re.compile(r"\b(?:describe|discuss|explain|strategy|risk)\b", re.IGNORECASE)
 _HOLDING_ASK = re.compile(r"\b(?:holding\s+company|bank\s+holding|bhc|parent)\b", re.IGNORECASE)
 _HOLDING_NEGATION = re.compile(
-    r"(?:exclud(?:e|ing|ed)|without|\bnot\b|ex-)\s*(?:the\s+)?"
-    r"(?:holding\s+company|bank\s+holding|bhc|parent)",
+    r"(?:exclud\w*|\bwithout\b|\bnot\b|other\s+than|\bexcept\b|ex-|"
+    r"\bless\b|\bminus\b|apart\s+from)",
     re.IGNORECASE,
 )
 _ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
@@ -358,9 +361,10 @@ def _metric_calls(question: str, traces: Sequence[TraceStep]) -> list[ToolCall] 
     metric = _metric_phrase(question)
     if metric is None:
         return None
-    if _HOLDING_NEGATION.search(question) is not None:
+    holding = _HOLDING_ASK.search(question) is not None
+    if holding and _HOLDING_NEGATION.search(question) is not None:
         return None
-    if _HOLDING_ASK.search(question) is not None:
+    if holding:
         metric = _HOLDING_METRIC.get(metric, metric)
     tickers = sorted(tickers_named(question))
     if not tickers:
@@ -510,7 +514,8 @@ def _plan_system_prompt() -> str:
         "or for year-only net_income. "
         "When the question says holding company, bank holding, BHC, or parent, "
         "use the holding_company_ metric. "
-        "If excluding, not, ex-, or without sits near those words, search_filings instead. "
+        "If the question also has any exclusion word (exclud*, without, not, "
+        "other than, except, ex-, less, minus, apart from), search_filings instead. "
         "Use graph_query for holding-company structure, RSSD, LEI, or subsidiary joins. "
         "For a comparison or multi-hop question, search each bank and year separately. "
         "When you have enough retrieved passages, return kind synthesize and no calls. "
