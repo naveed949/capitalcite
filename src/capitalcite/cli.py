@@ -1048,6 +1048,16 @@ def check_cmd(
         f"quote_sanity={report.snapshot.quote_sanity.hits}/"
         f"{report.snapshot.quote_sanity.items} "
         f"fixture={report.snapshot.fixture.hits}/{report.snapshot.fixture.items} "
+        f"agent_exact={report.snapshot.metrics_agent_exact.hits}/"
+        f"{report.snapshot.metrics_agent_exact.items} "
+        f"agent_refusal={report.snapshot.metrics_agent_refusal.hits}/"
+        f"{report.snapshot.metrics_agent_refusal.items} "
+        f"rag_exact={report.snapshot.metrics_rag_exact.hits}/"
+        f"{report.snapshot.metrics_rag_exact.items} "
+        f"rag_refusal={report.snapshot.metrics_rag_refusal.hits}/"
+        f"{report.snapshot.metrics_rag_refusal.items} "
+        f"v1_mart={report.snapshot.metrics_v1_mart.hits}/"
+        f"{report.snapshot.metrics_v1_mart.items} "
         f"redteam_failed={report.redteam_failed} "
         f"live={live_status.kind}"
     )
@@ -1077,6 +1087,11 @@ def _bootstrap_baseline() -> Baseline:
     return Baseline(
         quote_sanity=TrackedRate(hits=0, items=0),
         fixture=TrackedRate(hits=0, items=0),
+        metrics_agent_exact=TrackedRate(hits=0, items=0),
+        metrics_agent_refusal=TrackedRate(hits=0, items=0),
+        metrics_rag_exact=TrackedRate(hits=0, items=0),
+        metrics_rag_refusal=TrackedRate(hits=0, items=0),
+        metrics_v1_mart=TrackedRate(hits=0, items=0),
         small_n_items=0,
         small_arms=0,
         small_embedder_id="bootstrap",

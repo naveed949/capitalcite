@@ -27,6 +27,7 @@ from capitalcite.eval.fixture_index import (
     indexed_fixture,
 )
 from capitalcite.eval.judge import recall_items, score_item
+from capitalcite.eval.metrics_eval import run_metrics_suite
 from capitalcite.eval.runner import run_suite
 from capitalcite.gate.redteam import run_redteam
 from capitalcite.golden.models import GoldenItem
@@ -105,6 +106,7 @@ async def run_check(
             live_status = await _live(live, setup, ci_items)
     except FixtureIndexError as exc:
         raise CheckFailed(str(exc)) from exc
+    metrics = await run_metrics_suite(out_dir=None)
     with tempfile.TemporaryDirectory(prefix="capitalcite-check-small-") as tmp:
         small = await run_suite(
             suite="golden",
@@ -120,8 +122,17 @@ async def run_check(
             write=False,
         )
     snapshot = Baseline(
+        schema_version=2,
         quote_sanity=TrackedRate(hits=sanity.hits, items=sanity.items),
         fixture=fixture_rate,
+        metrics_agent_exact=metrics.agent.exact,
+        metrics_agent_refusal=metrics.agent.refusal,
+        metrics_rag_exact=metrics.rag.exact,
+        metrics_rag_refusal=metrics.rag.refusal,
+        metrics_v1_mart=TrackedRate(
+            hits=metrics.coverage.hits,
+            items=metrics.coverage.items,
+        ),
         small_n_items=small.n_items,
         small_arms=len(small.arms),
         small_embedder_id=small.embedder_id,

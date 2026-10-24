@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 from capitalcite.api.ask_models import AskResponse
 from capitalcite.ask.types import Citation
 from capitalcite.cli import app
+from capitalcite.eval.baseline import Baseline, Thresholds, TrackedRate, compare
 from capitalcite.eval.metrics_eval import (
     DEFAULT_V1,
     CoverageClass,
@@ -55,6 +56,30 @@ def test_metrics_suite_rejects_retrieval_flags() -> None:
     help_text = CliRunner().invoke(app, ["eval", "--help"])
     assert help_text.exit_code == 0
     assert "metrics" in help_text.stdout
+
+
+def test_compare_fails_when_a_metrics_hit_is_dropped() -> None:
+    exact = TrackedRate(hits=15, items=15)
+    committed = Baseline(
+        quote_sanity=TrackedRate(hits=36, items=77),
+        fixture=TrackedRate(hits=3, items=3),
+        metrics_agent_exact=exact,
+        metrics_agent_refusal=TrackedRate(hits=3, items=3),
+        metrics_rag_exact=TrackedRate(hits=0, items=15),
+        metrics_rag_refusal=TrackedRate(hits=1, items=3),
+        metrics_v1_mart=TrackedRate(hits=0, items=56),
+        small_n_items=77,
+        small_arms=6,
+        small_embedder_id="fake:deterministic",
+        thresholds=Thresholds(metrics_max_drop_items=0),
+    )
+    dropped = committed.model_copy(update={"metrics_agent_exact": TrackedRate(hits=14, items=15)})
+    report = compare(dropped, committed)
+    assert not report.ok
+    assert report.failures[0].metric == "metrics_agent_exact"
+    assert "dropped 1" in report.failures[0].detail
+    extra = committed.model_copy(update={"metrics_agent_exact": TrackedRate(hits=16, items=15)})
+    assert compare(extra, committed).ok
 
 
 def test_figure_token_respects_minus_zero_scale_and_percent() -> None:
