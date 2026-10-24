@@ -109,11 +109,15 @@ def _compile(model: AgentModel, tools: ToolExecutor, min_score: float, observe: 
         tokens = _charge(state, 100 + len(state["question"]) // 4)
         steps = state["steps_used"] + 1
         if decision.kind == "synthesize":
-            return {
+            update: dict[str, object] = {
                 "synthesize_now": True,
                 "steps_used": steps,
                 "tokens_used": tokens,
             }
+            if decision.refusal_reason:
+                update["answer"] = Refused(refusal_reason=decision.refusal_reason)
+                update["stop_reason"] = decision.refusal_reason
+            return update
         plan = [
             PlanStep(tool=call.name, args=dict(call.args), status="pending")
             for call in decision.calls

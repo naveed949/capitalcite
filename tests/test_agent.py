@@ -308,6 +308,28 @@ async def test_calculator_tool_returns_the_value() -> None:
     assert result.value.startswith("3.8")
 
 
+async def test_agent_answers_a_filed_on_date_that_is_not_a_quarter_end() -> None:
+    hit = _hit(
+        ticker="JPM",
+        text="the 8-K dated in May disclosed a board change",
+        period="2026-03-31",
+    )
+    tools = default_registry(
+        search=_search_of([hit]),
+        xbrl=_missing_xbrl,
+        fdic=_missing_fdic,
+    )
+    result = await run_agent(
+        "What did JPM disclose in the 8-K dated 2026-05-15?",
+        FakeAgentModel(),
+        tools,
+        Budgets(max_steps=8, max_tokens=8000),
+    )
+    assert {step.tool for step in result.plan} == {"search_filings"}
+    assert isinstance(result.answer, Answered)
+    assert "board change" in result.answer.answer
+
+
 async def test_agent_searches_each_named_bank_then_grounds() -> None:
     jpm = _hit(ticker="JPM", text="the Standardized CET1 ratios were 15.7% and 15.8%")
     bac = _hit(

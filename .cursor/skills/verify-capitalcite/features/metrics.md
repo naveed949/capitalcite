@@ -9,7 +9,7 @@ The caller does not write that SQL. `/ask` does not read this warehouse.
 - `mf-validate` runs `mf validate-configs` after `dbt build --target ci` and exits 0.
 - `mf-query` runs `total_deposits` and `deposits_qoq_growth` grouped by `metric_time__quarter` and `bank__ticker`, filtered to `bank_subsidiary`, with `--quiet` and `--order metric_time__quarter,bank__ticker`. Exit 0.
 - `mf-saved` runs `lead_bank_deposits_qoq`, `lead_bank_balance_sheet`, `lead_bank_earnings`, and `holding_company_assets`. Each exits 0.
-- `mf-pytest` runs `pytest tests/test_mf_metrics.py -m mf` and exits 0. The snapshot matches `evals/results/metrics/mf-query.csv`.
+- `mf-pytest` runs `pytest -m mf` and exits 0. The snapshot matches `evals/results/metrics/mf-query.csv`. The catalog-vs-live cells in `tests/test_metric_query.py` run in the same collection.
 
 ## How to get to it (user POV)
 

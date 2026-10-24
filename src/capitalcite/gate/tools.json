@@ -77,6 +77,45 @@
         }
       }
     },
+    "metric_query": {
+      "max_calls": 4,
+      "max_arg_bytes": 1024,
+      "args": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["metric", "group_by", "ticker", "period"],
+        "properties": {
+          "metric": {
+            "type": "string",
+            "enum": [
+              "total_deposits",
+              "total_assets",
+              "net_income",
+              "nim",
+              "efficiency_ratio",
+              "holding_company_assets",
+              "holding_company_deposits",
+              "holding_company_net_income",
+              "deposits_qoq_growth"
+            ]
+          },
+          "group_by": {
+            "type": "string",
+            "enum": ["metric_time__quarter,bank__ticker"]
+          },
+          "ticker": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[A-Z][A-Z0-9]{0,5}$"
+          },
+          "period": {"type": "string", "minLength": 10},
+          "entity_level": {
+            "type": "string",
+            "enum": ["bank_subsidiary", "holding_company"]
+          }
+        }
+      }
+    },
     "ask": {
       "max_calls": 8,
       "max_arg_bytes": 8192,

@@ -96,6 +96,23 @@ async def test_ask_matching_bank_and_year_calls_the_model() -> None:
     assert model.calls == 1
 
 
+async def test_ask_answers_a_filed_on_date_that_is_not_a_quarter_end() -> None:
+    model = FakeStructuredModel()
+    hit = _hit(period="2025-09-30", text="liquidity remained adequate in the third quarter")
+    question = "What did JPMorgan say in the 10-Q filed 2025-11-04 about liquidity?"
+    answer = await ask([hit], question, model)
+    assert isinstance(answer, Answered)
+    assert model.calls == 1
+    assert "liquidity remained adequate" in answer.answer
+    eight_k = await ask(
+        [_hit(period="2026-03-31", text="the 8-K disclosed a board change")],
+        "What did JPM disclose in the 8-K dated 2026-05-15?",
+        FakeStructuredModel(),
+    )
+    assert isinstance(eight_k, Answered)
+    assert "board change" in eight_k.answer
+
+
 async def test_ask_default_fake_quotes_the_first_hit() -> None:
     model = FakeStructuredModel()
     hit = _hit()
@@ -251,6 +268,32 @@ async def test_openai_without_transport_is_blocked() -> None:
     model = OpenAIStructuredModel("test-key", "gpt-4o-mini")
     with pytest.raises(RuntimeError, match="live network is forbidden"):
         await model.complete("What buffer is described?", [_hit()])
+
+
+def test_post_ask_rag_answers_a_filed_on_date(tmp_path: Path) -> None:
+    chunk = _chunk().model_copy(
+        update={
+            "text": "liquidity remained adequate in the third quarter",
+            "period": "2025-09-30",
+            "end": 10 + len("liquidity remained adequate in the third quarter"),
+        }
+    )
+    application, _setup = _indexed_app(tmp_path, [chunk])
+    with TestClient(application) as http:
+        response = http.post(
+            "/ask",
+            json={
+                "question": "What did JPMorgan say in the 10-Q filed 2025-11-04 about liquidity?",
+                "ticker": "JPM",
+                "model": "fake",
+            },
+        )
+    assert response.status_code == 200
+    body = AskResponse.model_validate(response.json())
+    assert body.path == "rag"
+    assert body.kind == "answered"
+    assert "liquidity remained adequate" in (body.answer or "")
+    assert body.refusal_reason != "period is not a quarter-end"
 
 
 def test_post_ask_answered_quotes_the_indexed_chunk(tmp_path: Path) -> None:
@@ -535,6 +578,15 @@ def _hit(
 
 def test_retrieval_refusal_allows_matching_hits() -> None:
     assert retrieval_refusal([_hit()], "What buffer did JPM describe?", min_score=0.0) is None
+    filed = _hit(period="2025-09-30", text="liquidity remained adequate in the third quarter")
+    assert (
+        retrieval_refusal(
+            [filed],
+            "What did JPMorgan say in the 10-Q filed 2025-11-04 about liquidity?",
+            min_score=0.0,
+        )
+        is None
+    )
 
 
 def _write_chunks(root: Path, chunks: list[Chunk]) -> None:

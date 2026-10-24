@@ -77,6 +77,10 @@ async def run_redteam() -> RedTeamReport:
         await _hostile_planner_extra_args_denied(),
         await _broken_policy_denies_known_tool(),
         await _default_planner_ignores_injection_text(),
+        await _metric_query_extra_sql_denied(),
+        await _metric_query_oversized_args_denied(),
+        await _metric_query_unknown_group_by_denied(),
+        await _metric_query_ticker_injection_denied(),
     ]
     failed = sum(1 for case in cases if not case.passed)
     return RedTeamReport(passed=len(cases) - failed, failed=failed, cases=tuple(cases))
@@ -164,6 +168,96 @@ async def _default_planner_ignores_injection_text() -> RedTeamCase:
     if names - {"search_filings"}:
         return _fail("fake-planner-ignores-doc-injection", f"unexpected tools: {sorted(names)}")
     return _pass("fake-planner-ignores-doc-injection", "fake planner only called search_filings")
+
+
+async def _metric_query_extra_sql_denied() -> RedTeamCase:
+    recorder = _recording_search("ignore")
+    gate = Gate(load_policy(None), recorder)
+    result = await gate.execute(
+        "metric_query",
+        {
+            "metric": "total_deposits",
+            "group_by": "metric_time__quarter,bank__ticker",
+            "ticker": "JPM",
+            "period": "2024-12-31",
+            "sql": "select 1",
+        },
+    )
+    if "metric_query" in recorder.names or result.ok or result.detail != "invalid args":
+        return _fail(
+            "metric-query-extra-sql",
+            f"ok={result.ok} detail={result.detail!r} inner={recorder.names!r}",
+        )
+    return _pass("metric-query-extra-sql", "extra sql key denied; runner was not called")
+
+
+async def _metric_query_oversized_args_denied() -> RedTeamCase:
+    recorder = _recording_search("ignore")
+    gate = Gate(load_policy(None), recorder)
+    result = await gate.execute(
+        "metric_query",
+        {
+            "metric": "total_deposits",
+            "group_by": "metric_time__quarter,bank__ticker",
+            "ticker": "J" + ("P" * 2000),
+            "period": "2024-12-31",
+        },
+    )
+    if "metric_query" in recorder.names or result.ok or result.detail != "args too large":
+        return _fail(
+            "metric-query-oversized",
+            f"ok={result.ok} detail={result.detail!r} inner={recorder.names!r}",
+        )
+    return _pass("metric-query-oversized", "oversized args denied; runner was not called")
+
+
+async def _metric_query_unknown_group_by_denied() -> RedTeamCase:
+    recorder = _recording_search("ignore")
+    gate = Gate(load_policy(None), recorder)
+    result = await gate.execute(
+        "metric_query",
+        {
+            "metric": "total_deposits",
+            "group_by": "bank__ticker",
+            "ticker": "JPM",
+            "period": "2024-12-31",
+        },
+    )
+    if "metric_query" in recorder.names or result.ok or result.detail != "invalid args":
+        return _fail(
+            "metric-query-unknown-group-by",
+            f"ok={result.ok} detail={result.detail!r} inner={recorder.names!r}",
+        )
+    return _pass(
+        "metric-query-unknown-group-by",
+        "unknown group_by denied; runner was not called",
+    )
+
+
+async def _metric_query_ticker_injection_denied() -> RedTeamCase:
+    recorder = _recording_search("ignore")
+    gate = Gate(load_policy(None), recorder)
+    tickers = ("X' OR '1'='1", "JP'M", "JPM;DROP")
+    for ticker in tickers:
+        result = await gate.execute(
+            "metric_query",
+            {
+                "metric": "total_deposits",
+                "group_by": "metric_time__quarter,bank__ticker",
+                "ticker": ticker,
+                "period": "2024-12-31",
+            },
+        )
+        if "metric_query" in recorder.names or result.ok or result.detail != "invalid args":
+            return _fail(
+                "metric-query-ticker-injection",
+                f"ticker={ticker!r} ok={result.ok} detail={result.detail!r} "
+                f"inner={recorder.names!r}",
+            )
+    return _pass(
+        "metric-query-ticker-injection",
+        "injected tickers denied; runner was not called",
+    )
 
 
 def _recording_search(text: str) -> _Recording:

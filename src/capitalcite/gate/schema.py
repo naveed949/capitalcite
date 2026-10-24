@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
 _OBJECT_KEYS = frozenset({"type", "properties", "required", "additionalProperties"})
-_PROP_KEYS = frozenset({"type", "minLength", "minimum", "maximum", "enum"})
+_PROP_KEYS = frozenset({"type", "minLength", "minimum", "maximum", "enum", "pattern"})
 _TYPES = frozenset({"object", "string", "integer", "number", "boolean", "null"})
 
 
@@ -36,6 +37,9 @@ def unsupported_schema(schema: Mapping[str, object]) -> str | None:
             enum_error = _check_enum(spec.get("enum"))
             if enum_error is not None:
                 return f"{name}: {enum_error}"
+            pattern_error = _check_pattern(spec.get("pattern"))
+            if pattern_error is not None:
+                return f"{name}: {pattern_error}"
     required = schema.get("required")
     if required is not None and (
         not isinstance(required, list) or not all(isinstance(item, str) for item in required)
@@ -65,6 +69,9 @@ def _validate(schema: Mapping[str, object], value: object) -> str | None:
         return "invalid args"
     min_length = _as_int(schema.get("minLength"))
     if min_length is not None and isinstance(value, str) and len(value) < min_length:
+        return "invalid args"
+    pattern = schema.get("pattern")
+    if isinstance(pattern, str) and isinstance(value, str) and re.fullmatch(pattern, value) is None:
         return "invalid args"
     minimum = _as_number(schema.get("minimum"))
     if (
@@ -101,6 +108,18 @@ def _validate(schema: Mapping[str, object], value: object) -> str | None:
                     return error
         elif additional is False:
             return "invalid args"
+    return None
+
+
+def _check_pattern(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        return "pattern must be a non-empty string"
+    try:
+        re.compile(value)
+    except re.error:
+        return "pattern must be a valid regular expression"
     return None
 
 

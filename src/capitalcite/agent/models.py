@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Sequence
-from typing import Protocol
+from datetime import date
+from typing import NamedTuple, Protocol
 
 import httpx
 from pydantic import ValidationError
@@ -20,6 +21,7 @@ from capitalcite.ask.types import (
     ModelNotConfigured,
     ModelUnavailable,
 )
+from capitalcite.metric_query.query import GroupBy, MetricName
 from capitalcite.retrieval.types import Hit
 from capitalcite.trace import ObservationKind, generation_attrs, observation
 
@@ -74,6 +76,14 @@ class FakeAgentModel:
         _ = hits
         if self._plan_script is not None:
             return self._plan_script
+        metric_calls = _metric_calls(question, traces)
+        if metric_calls is not None:
+            if metric_calls:
+                return PlannerDecision(kind="plan", calls=tuple(metric_calls))
+            return PlannerDecision(
+                kind="synthesize",
+                refusal_reason=_metric_periods(question).reason,
+            )
         searched = {
             (
                 str(step.args.get("ticker") or ""),
@@ -227,13 +237,236 @@ def build_agent_model(
     return OpenAIAgentModel(inner, key, openai_model, transport=transport)
 
 
+_METRIC_PHRASES: tuple[tuple[str, MetricName], ...] = (
+    ("holding company net income", MetricName.HOLDING_COMPANY_NET_INCOME),
+    ("holding company deposits", MetricName.HOLDING_COMPANY_DEPOSITS),
+    ("holding company assets", MetricName.HOLDING_COMPANY_ASSETS),
+    ("net interest margin", MetricName.NIM),
+    ("efficiency ratio", MetricName.EFFICIENCY_RATIO),
+    ("deposits growth", MetricName.DEPOSITS_QOQ_GROWTH),
+    ("deposit growth", MetricName.DEPOSITS_QOQ_GROWTH),
+    ("qoq growth", MetricName.DEPOSITS_QOQ_GROWTH),
+    ("total deposits", MetricName.TOTAL_DEPOSITS),
+    ("total assets", MetricName.TOTAL_ASSETS),
+    ("net income", MetricName.NET_INCOME),
+    ("deposits", MetricName.TOTAL_DEPOSITS),
+    ("assets", MetricName.TOTAL_ASSETS),
+    ("nim", MetricName.NIM),
+)
+_QUARTER_END = re.compile(r"\b(\d{4})-(03-31|06-30|09-30|12-31)\b")
+_QUARTER_NAME = re.compile(r"\bQ([1-4])\s+(\d{4})\b", re.IGNORECASE)
+_COMPACT_QUARTER = re.compile(r"\b(\d{4})Q([1-4])\b", re.IGNORECASE)
+_NUMERIC_ASK = re.compile(
+    r"\b(?:what\s+(?:was|were|is|are)|how\s+much|value\s+of)\b", re.IGNORECASE
+)
+_NARRATIVE_ASK = re.compile(r"\b(?:describe|discuss|explain|strategy|risk)\b", re.IGNORECASE)
+_HOLDING_MENTION = re.compile(
+    r"\b(?:bank\s+holding\s+company|holding\s+company|bank\s+holding|"
+    r"parent\s+company|parent|bhc)\b",
+    re.IGNORECASE,
+)
+_TICKER_TOKEN = r"[a-z][a-z0-9]{0,5}"
+_HOLDING_ENTITY = r"(?:holding\s+company|bank\s+holding\s+company|bhc|parent(?:\s+company)?)"
+_METRIC_NOUN = r"(?:(?:total\s+)?(?:deposits|assets)|net\s+income)"
+_BALANCE_NOUN = r"(?:total\s+)?(?:deposits|assets)"
+_PERIOD_TOKEN = r"(?:\d{4}q[1-4]|q[1-4]\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{4})"
+_WHEN = rf"(?:\s+(?:in|for|at|as\s+of)\s+{_PERIOD_TOKEN})?"
+_WHAT = r"what\s+(?:was|were|is|are)"
+_HOW_MUCH = r"how\s+much(?:\s+(?:was|were|is|are))?"
+_HOLDING_TEMPLATES = (
+    re.compile(
+        rf"^{_WHAT}\s+(?:the\s+)?{_TICKER_TOKEN}(?:'s)?\s+"
+        rf"{_HOLDING_ENTITY}(?:'s)?\s+{_METRIC_NOUN}{_WHEN}$"
+    ),
+    re.compile(
+        rf"^{_WHAT}\s+(?:the\s+)?{_TICKER_TOKEN}(?:'s)?\s+"
+        rf"{_METRIC_NOUN}\s+(?:of|for|at)\s+the\s+"
+        rf"{_HOLDING_ENTITY}(?:\s+level)?{_WHEN}$"
+    ),
+    re.compile(
+        rf"^{_HOW_MUCH}\s+(?:the\s+)?{_TICKER_TOKEN}(?:'s)?\s+"
+        rf"{_HOLDING_ENTITY}(?:'s)?\s+{_BALANCE_NOUN}{_WHEN}$"
+    ),
+    re.compile(
+        rf"^{_HOW_MUCH}\s+(?:the\s+)?{_TICKER_TOKEN}(?:'s)?\s+"
+        rf"{_BALANCE_NOUN}\s+(?:of|for|at)\s+the\s+"
+        rf"{_HOLDING_ENTITY}(?:\s+level)?{_WHEN}$"
+    ),
+)
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+_QUARTER_MONTH_DAYS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
+_NAMED_QUARTER_END = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}
+_FLOW_METRICS = frozenset({MetricName.NET_INCOME, MetricName.HOLDING_COMPANY_NET_INCOME})
+_HOLDING_METRIC = {
+    MetricName.TOTAL_ASSETS: MetricName.HOLDING_COMPANY_ASSETS,
+    MetricName.TOTAL_DEPOSITS: MetricName.HOLDING_COMPANY_DEPOSITS,
+    MetricName.NET_INCOME: MetricName.HOLDING_COMPANY_NET_INCOME,
+}
+
+
+class _PeriodAsk(NamedTuple):
+    periods: tuple[str, ...]
+    year_only: bool
+    reason: str = ""
+
+
+def _metric_phrase(question: str) -> MetricName | None:
+    lowered = question.lower()
+    best: tuple[int, MetricName] | None = None
+    for phrase, metric in _METRIC_PHRASES:
+        if phrase == "nim":
+            if re.search(r"\bnim\b", lowered) is None:
+                continue
+        elif phrase not in lowered:
+            continue
+        length = len(phrase)
+        if best is None or length > best[0]:
+            best = (length, metric)
+    if best is None:
+        return None
+    return best[1]
+
+
+def _normalize_ask(question: str) -> str:
+    return " ".join(question.lower().split()).rstrip("?.")
+
+
+def _holding_template_match(question: str) -> bool:
+    text = _normalize_ask(question)
+    return any(pattern.fullmatch(text) is not None for pattern in _HOLDING_TEMPLATES)
+
+
+def _remap_holding_metric(question: str, metric: MetricName) -> MetricName | None:
+    if _HOLDING_MENTION.search(question) is None:
+        return metric
+    if not _holding_template_match(question):
+        return None
+    return _HOLDING_METRIC.get(metric, metric)
+
+
+def _invalid_period_reason(question: str) -> str:
+    for match in _ISO_DATE.finditer(question):
+        year, month, day_number = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        try:
+            day = date(year, month, day_number)
+        except ValueError:
+            return "period is not a valid date"
+        if (day.month, day.day) not in _QUARTER_MONTH_DAYS:
+            return "period is not a quarter-end"
+    return ""
+
+
+def _metric_periods(question: str) -> _PeriodAsk:
+    reason = _invalid_period_reason(question)
+    if reason:
+        return _PeriodAsk((), False, reason)
+    found: list[date] = []
+    covered: set[int] = set()
+    named_quarter = False
+    for match in _QUARTER_END.finditer(question):
+        day = date.fromisoformat(match.group(0))
+        if day not in found:
+            found.append(day)
+        covered.add(day.year)
+        named_quarter = True
+    for match in _QUARTER_NAME.finditer(question):
+        quarter = int(match.group(1))
+        year = int(match.group(2))
+        month, day_number = _NAMED_QUARTER_END[quarter]
+        day = date(year, month, day_number)
+        if day not in found:
+            found.append(day)
+        covered.add(year)
+        named_quarter = True
+    for match in _COMPACT_QUARTER.finditer(question):
+        year = int(match.group(1))
+        quarter = int(match.group(2))
+        month, day_number = _NAMED_QUARTER_END[quarter]
+        day = date(year, month, day_number)
+        if day not in found:
+            found.append(day)
+        covered.add(year)
+        named_quarter = True
+    if named_quarter:
+        return _PeriodAsk(tuple(day.isoformat() for day in found), False)
+    for year in sorted(years_named(question)):
+        if year in covered:
+            continue
+        found.append(date(year, 12, 31))
+        covered.add(year)
+    return _PeriodAsk(tuple(day.isoformat() for day in found), bool(found))
+
+
+def _metric_calls(question: str, traces: Sequence[TraceStep]) -> list[ToolCall] | None:
+    if _NARRATIVE_ASK.search(question) is not None:
+        return None
+    if _NUMERIC_ASK.search(question) is None:
+        return None
+    metric = _metric_phrase(question)
+    if metric is None:
+        return None
+    metric = _remap_holding_metric(question, metric)
+    if metric is None:
+        return None
+    tickers = sorted(tickers_named(question))
+    if not tickers:
+        return None
+    asked = _metric_periods(question)
+    if asked.reason:
+        return []
+    periods = list(asked.periods)
+    if not periods:
+        return None
+    if asked.year_only and metric in _FLOW_METRICS:
+        return None
+    done = {
+        (str(step.args.get("ticker") or "").upper(), str(step.args.get("period") or ""))
+        for step in traces
+        if step.tool == "metric_query"
+    }
+    calls: list[ToolCall] = []
+    for ticker in tickers:
+        for period in periods:
+            if (ticker, period) in done:
+                continue
+            calls.append(
+                ToolCall(
+                    name="metric_query",
+                    args={
+                        "metric": metric.value,
+                        "group_by": GroupBy.QUARTER_AND_TICKER.value,
+                        "ticker": ticker,
+                        "period": period,
+                    },
+                )
+            )
+    return calls
+
+
 def _hits_for_question(question: str, hits: Sequence[Hit]) -> list[tuple[int, Hit]]:
+    metric_sections = frozenset(metric.value for metric in MetricName)
+    chosen: list[tuple[int, Hit]] = []
+    for index, hit in enumerate(hits, start=1):
+        if hit.chunk.section in metric_sections:
+            chosen.append((index, hit))
+    filing = [
+        (index, hit)
+        for index, hit in enumerate(hits, start=1)
+        if hit.chunk.section not in metric_sections
+    ]
+    chosen.extend(_pick_filing_hits(question, filing))
+    if not chosen and hits:
+        return [(1, hits[0])]
+    return chosen
+
+
+def _pick_filing_hits(question: str, indexed: Sequence[tuple[int, Hit]]) -> list[tuple[int, Hit]]:
     needed_tickers = tickers_named(question)
     needed_years = years_named(question)
     chosen: list[tuple[int, Hit]] = []
     seen_tickers: set[str] = set()
     seen_years: set[int] = set()
-    for index, hit in enumerate(hits, start=1):
+    for index, hit in indexed:
         ticker = hit.chunk.ticker.upper()
         year = hit.year
         take = False
@@ -251,8 +484,6 @@ def _hits_for_question(question: str, hits: Sequence[Hit]) -> list[tuple[int, Hi
         have_years = not needed_years or needed_years <= seen_years
         if chosen and have_tickers and have_years:
             break
-    if not chosen and hits:
-        return [(1, hits[0])]
     return chosen
 
 
@@ -316,7 +547,17 @@ def _plan_system_prompt() -> str:
         "Available tools: search_filings (query, optional ticker, form, period, k), "
         "xbrl_fact (ticker, concept, optional period), "
         "fdic_bankfind (query), calculator (expression), "
-        "graph_query (kind subsidiaries|parent|filings|metric|path, ticker or rssd). "
+        "graph_query (kind subsidiaries|parent|filings|metric|path, ticker or rssd), "
+        "metric_query (metric, group_by, ticker, period, optional entity_level). "
+        "Use metric_query for a numeric ask (what was/were/is/are, how much, value of) "
+        "of one governed metric, one ticker, and one named quarter-end. "
+        "ticker must be uppercase and match ^[A-Z][A-Z0-9]{0,5}$. "
+        "Do not use it for describe, discuss, explain, strategy, or risk wording, "
+        "or for year-only net_income. "
+        "Use a holding_company_ metric only when the whole question is a "
+        "holding template (JPM's BHC total assets in 2026Q2; JPM's total "
+        "assets for the holding company). Any other mention of holding "
+        "company, BHC, or parent is search_filings. "
         "Use graph_query for holding-company structure, RSSD, LEI, or subsidiary joins. "
         "For a comparison or multi-hop question, search each bank and year separately. "
         "When you have enough retrieved passages, return kind synthesize and no calls. "
