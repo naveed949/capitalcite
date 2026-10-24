@@ -2,8 +2,9 @@
 
 `capitalcite check` runs the PR regression pack against
 `evals/baselines/ci.json`. It scores quote-index sanity and fixture
-span-overlap, drives fake-model cite/refuse contracts, and runs
-`gate redteam`. The committed PR budget is zero item drops. `--live` without
+span-overlap, drives fake-model cite/refuse contracts, runs
+`gate redteam`, and re-runs the metrics exact-match suite. The committed
+PR budget is zero item drops. `--live` without
 `OPENAI_API_KEY` prints UNVERIFIED and still exits 0 when the
 deterministic pack passed. The twelve-filing compare is
 `capitalcite eval --baseline`, not this command.
@@ -11,7 +12,7 @@ deterministic pack passed. The twelve-filing compare is
 ## Sub-features
 
 - `check-help` lists `--baseline`, `--live`, `--write-baseline`, and `--out`.
-- `check-pack` exits 0, prints `ok=true`, and writes `check.json` with quote_sanity, fixture, redteam_failed=0, and both contracts ok.
+- `check-pack` exits 0, prints `ok=true`, and writes `check.json` with quote_sanity, fixture, the five metrics rates, redteam_failed=0, and both contracts ok.
 - `check-live` with an empty key prints `unverified:` and `OPENAI_API_KEY is empty`. That is UNVERIFIED live generation, not a product failure.
 
 ## How to get to it (user POV)
@@ -25,11 +26,12 @@ Preconditions:
 
 - `uv sync --frozen` has been run in this checkout.
 - `evals/baselines/ci.json` and `evals/golden/ci.jsonl` are present.
+- `dbt build --target ci` has written `dbt/target/ci.duckdb`. `WAREHOUSE_PATH` points at that file. `METRIC_QUERY_BACKEND=catalog`. `ASK_MODEL=fake`.
 - This path does not need uvicorn, Docker, live EDGAR, or `OPENAI_API_KEY`.
 - Doctor: `uv run capitalcite check --help` exits 0.
 
 - **Show help.** Run `uv run capitalcite check --help`. Exit code is `0`. Stdout mentions `--baseline` and `--live`.
-- **Run the pack.** Run `uv run capitalcite check --out $ART/check`. Exit code is `0`. Stdout includes `ok=true` and `redteam_failed=0`. `$ART/check/check.json` has `live.kind` `skipped`.
+- **Run the pack.** Run `WAREHOUSE_PATH=dbt/target/ci.duckdb METRIC_QUERY_BACKEND=catalog ASK_MODEL=fake uv run capitalcite check --out $ART/check`. Exit code is `0`. Stdout includes `ok=true`, `redteam_failed=0`, `agent_exact=`, and `v1_mart=`. `$ART/check/check.json` has `live.kind` `skipped`.
 - **Live OpenAI.** Run `uv run capitalcite check --live --out $ART/check-live`. If `OPENAI_API_KEY` is empty, exit code is `0` and stdout or stderr includes `unverified` and `OPENAI_API_KEY`. Record that as UNVERIFIED, not a pass of live generation.
 - **Bundled helper.** Run `./scripts/verify.sh`. It writes `check.help.out`, `check.out`, `check.exit`, and `check/check.json`, plus `check.live.unverified` when the key is missing.
 - **Proof.** Keep the CLI stdout, exit code, and `check.json`. Pytest is not this feature.

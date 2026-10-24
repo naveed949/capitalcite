@@ -1,0 +1,821 @@
+{
+  "suite": "metrics",
+  "git_sha": "4447164efb28f88e0a4ad2ddf301158d39bd3172",
+  "scores": [
+    {
+      "item_id": "m-001",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "20260630",
+        "field": "DEP"
+      },
+      "rendered": "2820284000"
+    },
+    {
+      "item_id": "m-001",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "20260630",
+        "field": "DEP"
+      },
+      "rendered": "2820284000"
+    },
+    {
+      "item_id": "m-002",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "20260630",
+        "field": "ASSET"
+      },
+      "rendered": "4091315000"
+    },
+    {
+      "item_id": "m-002",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "20260630",
+        "field": "ASSET"
+      },
+      "rendered": "4091315000"
+    },
+    {
+      "item_id": "m-003",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "20260630",
+        "field": "NIMY"
+      },
+      "rendered": "2.8818129149"
+    },
+    {
+      "item_id": "m-003",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "20260630",
+        "field": "NIMY"
+      },
+      "rendered": "2.8818129149"
+    },
+    {
+      "item_id": "m-004",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "19840331",
+        "field": "EEFFR"
+      },
+      "rendered": "0"
+    },
+    {
+      "item_id": "m-004",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "19840331",
+        "field": "EEFFR"
+      },
+      "rendered": "0"
+    },
+    {
+      "item_id": "m-005",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "19840331",
+        "field": "NETINC"
+      },
+      "rendered": "63598"
+    },
+    {
+      "item_id": "m-005",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "19840331",
+        "field": "NETINC"
+      },
+      "rendered": "63598"
+    },
+    {
+      "item_id": "m-006",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "20260630",
+        "field": "NETINC"
+      },
+      "rendered": "17361000"
+    },
+    {
+      "item_id": "m-006",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "628",
+        "repdte": "20260630",
+        "field": "NETINC"
+      },
+      "rendered": "17361000"
+    },
+    {
+      "item_id": "m-007",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "3511",
+        "repdte": "19840331",
+        "field": "NETINC"
+      },
+      "rendered": "-124158"
+    },
+    {
+      "item_id": "m-007",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "refused",
+      "source": {
+        "kind": "fdic",
+        "cert": "3511",
+        "repdte": "19840331",
+        "field": "NETINC"
+      },
+      "rendered": "-124158"
+    },
+    {
+      "item_id": "m-008",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "3511",
+        "repdte": "20200630",
+        "field": "NETINC"
+      },
+      "rendered": "-2918000"
+    },
+    {
+      "item_id": "m-008",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "refused",
+      "source": {
+        "kind": "fdic",
+        "cert": "3511",
+        "repdte": "20200630",
+        "field": "NETINC"
+      },
+      "rendered": "-2918000"
+    },
+    {
+      "item_id": "m-009",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic_deposits_qoq",
+        "cert": "628",
+        "repdte": "20250930"
+      },
+      "rendered": "-0.0073892133"
+    },
+    {
+      "item_id": "m-009",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic_deposits_qoq",
+        "cert": "628",
+        "repdte": "20250930"
+      },
+      "rendered": "-0.0073892133"
+    },
+    {
+      "item_id": "m-010",
+      "path": "agent",
+      "cell": "null",
+      "exact": false,
+      "refusal": true,
+      "outcome": "refused",
+      "source": {
+        "kind": "fdic_deposits_qoq",
+        "cert": "628",
+        "repdte": "19840331"
+      },
+      "rendered": null
+    },
+    {
+      "item_id": "m-010",
+      "path": "rag",
+      "cell": "null",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic_deposits_qoq",
+        "cert": "628",
+        "repdte": "19840331"
+      },
+      "rendered": null
+    },
+    {
+      "item_id": "m-011",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "sec",
+        "ticker": "JPM",
+        "accn": "0001628280-26-054343",
+        "concept": "Assets",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": "5015069000000"
+    },
+    {
+      "item_id": "m-011",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "sec",
+        "ticker": "JPM",
+        "accn": "0001628280-26-054343",
+        "concept": "Assets",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": "5015069000000"
+    },
+    {
+      "item_id": "m-012",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "sec",
+        "ticker": "BAC",
+        "accn": "0000070858-26-000394",
+        "concept": "Assets",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": "3499191000000"
+    },
+    {
+      "item_id": "m-012",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "refused",
+      "source": {
+        "kind": "sec",
+        "ticker": "BAC",
+        "accn": "0000070858-26-000394",
+        "concept": "Assets",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": "3499191000000"
+    },
+    {
+      "item_id": "m-013",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "sec",
+        "ticker": "WFC",
+        "accn": "0000072971-26-000302",
+        "concept": "Assets",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": "2282201000000"
+    },
+    {
+      "item_id": "m-013",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "refused",
+      "source": {
+        "kind": "sec",
+        "ticker": "WFC",
+        "accn": "0000072971-26-000302",
+        "concept": "Assets",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": "2282201000000"
+    },
+    {
+      "item_id": "m-014",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "sec",
+        "ticker": "C",
+        "accn": "0000831001-26-000011",
+        "concept": "Assets",
+        "end": "2025-12-31",
+        "unit": "USD"
+      },
+      "rendered": "2657202000000"
+    },
+    {
+      "item_id": "m-014",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "refused",
+      "source": {
+        "kind": "sec",
+        "ticker": "C",
+        "accn": "0000831001-26-000011",
+        "concept": "Assets",
+        "end": "2025-12-31",
+        "unit": "USD"
+      },
+      "rendered": "2657202000000"
+    },
+    {
+      "item_id": "m-015",
+      "path": "agent",
+      "cell": "null",
+      "exact": false,
+      "refusal": true,
+      "outcome": "refused",
+      "source": {
+        "kind": "sec",
+        "ticker": "JPM",
+        "accn": "0001628280-26-054343",
+        "concept": "Deposits",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": null
+    },
+    {
+      "item_id": "m-015",
+      "path": "rag",
+      "cell": "null",
+      "exact": false,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "sec",
+        "ticker": "JPM",
+        "accn": "0001628280-26-054343",
+        "concept": "Deposits",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": null
+    },
+    {
+      "item_id": "m-016",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "3510",
+        "repdte": "20260630",
+        "field": "DEP"
+      },
+      "rendered": "2121804000"
+    },
+    {
+      "item_id": "m-016",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "refused",
+      "source": {
+        "kind": "fdic",
+        "cert": "3510",
+        "repdte": "20260630",
+        "field": "DEP"
+      },
+      "rendered": "2121804000"
+    },
+    {
+      "item_id": "m-017",
+      "path": "agent",
+      "cell": "value",
+      "exact": true,
+      "refusal": false,
+      "outcome": "answered",
+      "source": {
+        "kind": "fdic",
+        "cert": "7213",
+        "repdte": "20260630",
+        "field": "ASSET"
+      },
+      "rendered": "1976180000"
+    },
+    {
+      "item_id": "m-017",
+      "path": "rag",
+      "cell": "value",
+      "exact": false,
+      "refusal": false,
+      "outcome": "refused",
+      "source": {
+        "kind": "fdic",
+        "cert": "7213",
+        "repdte": "20260630",
+        "field": "ASSET"
+      },
+      "rendered": "1976180000"
+    },
+    {
+      "item_id": "m-018",
+      "path": "agent",
+      "cell": "null",
+      "exact": false,
+      "refusal": true,
+      "outcome": "refused",
+      "source": {
+        "kind": "sec",
+        "ticker": "BAC",
+        "accn": "0000070858-26-000394",
+        "concept": "NetIncomeLoss",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": null
+    },
+    {
+      "item_id": "m-018",
+      "path": "rag",
+      "cell": "null",
+      "exact": false,
+      "refusal": true,
+      "outcome": "refused",
+      "source": {
+        "kind": "sec",
+        "ticker": "BAC",
+        "accn": "0000070858-26-000394",
+        "concept": "NetIncomeLoss",
+        "end": "2026-06-30",
+        "unit": "USD"
+      },
+      "rendered": null
+    }
+  ],
+  "coverage": {
+    "rows": [
+      {
+        "item_id": "cc-h-001",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-002",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-003",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-004",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-005",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-006",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-007",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-008",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-009",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-010",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-011",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-012",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-013",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-014",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-015",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-016",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-017",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-018",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-019",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-020",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-021",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-022",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-023",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-024",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-025",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-026",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-027",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-028",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-029",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-030",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-031",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-032",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-033",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-034",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-035",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-036",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-037",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-038",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-039",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-040",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-041",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-042",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-043",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-044",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-045",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-046",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-047",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-048",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-049",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-050",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-051",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-063",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-064",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-065",
+        "disposition": "GRAIN"
+      },
+      {
+        "item_id": "cc-h-066",
+        "disposition": "CONCEPT"
+      },
+      {
+        "item_id": "cc-h-068",
+        "disposition": "CONCEPT"
+      }
+    ],
+    "hits": 0,
+    "items": 56
+  },
+  "n": 18,
+  "agent": {
+    "exact": {
+      "hits": 15,
+      "items": 15,
+      "rate": 1.0
+    },
+    "refusal": {
+      "hits": 3,
+      "items": 3,
+      "rate": 1.0
+    }
+  },
+  "rag": {
+    "exact": {
+      "hits": 0,
+      "items": 15,
+      "rate": 0.0
+    },
+    "refusal": {
+      "hits": 1,
+      "items": 3,
+      "rate": 0.3333333333333333
+    }
+  }
+}

@@ -103,12 +103,13 @@ Stable handles (do not invent others):
 | CLI | `capitalcite gate bench` | exit 0 + `p95_ms`; no network |
 | File | `CAPITALCITE_TRACE_FILE` JSONL | after `capitalcite gate decide`, JSONL has deny spans with tool and reason; after fake `POST /ask`, JSONL has `ask` + `retrieve`; after `eval --small`, an `eval` span has `git_sha` and `config_hash`. Live Langfuse `:3000` is UNVERIFIED when down |
 | CLI | `capitalcite audit verify` | exit 0 on an intact chain; exit 1 after a mutated field or a removed last record; no network |
-| CLI | `capitalcite check` | exit 0 + `ok=true`; quote-index sanity and fixture recall vs `evals/baselines/ci.json` at zero item drop; `cc-ci-002` answered; `cc-u-001` refused; red-team `failed` 0. `--live` without `OPENAI_API_KEY` is UNVERIFIED |
+| CLI | `capitalcite check` | exit 0 + `ok=true`; quote-index sanity, fixture recall, and metrics exact/refusal vs `evals/baselines/ci.json` at zero item drop; `cc-ci-002` answered; `cc-u-001` refused; red-team `failed` 0. Needs the ci warehouse and `METRIC_QUERY_BACKEND=catalog`. `--live` without `OPENAI_API_KEY` is UNVERIFIED |
 | MCP | `capitalcite mcp` via official `Client(StdioServerParameters)` | `list_tools` is `search_filings`+`ask`+`metric_query`; extra keys `invalid_args`; `calculator` `unknown_tool`; fake `ask` writes audit JSONL and span JSONL |
 | CLI | `capitalcite eval --suite golden --small` | exit 0 + Recall@5 table; FakeEmbedder, no download |
 | CLI | `capitalcite graph load --backend memory` | exit 0 + `backend=memory` `banks=8`; no Neo4j |
 | CLI | `capitalcite graph query --kind subsidiaries --ticker JPM` | exit 0 + `852218` |
 | CLI | `capitalcite eval --suite graph --small` | exit 0 + `graph_exact=` and `fixture_substring_hit_rate=`; MemoryGraphStore, no Bolt |
+| CLI | `capitalcite eval --suite metrics` | exit 0 + `suite=metrics` and `agent_exact=` / `agent_refusal=` / `rag_exact=` / `rag_refusal=` / `v1_mart=`; Fake model, catalog backend, ci warehouse |
 | CLI | `capitalcite metrics extract --tickers JPM,BAC,WFC,C --fixtures` | exit 0 + `metrics extract xbrl=4 financials=4`. Each sidecar `sha256` matches its payload. Live BankFind and live companyfacts are outside this helper |
 | CLI | `uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci` | exit 0 + `Completed successfully`. Live `dev` extract is outside this helper |
 | CLI | `mf validate-configs`, the required `mf query`, and four saved queries | After that build, with `DBT_PROJECT_DIR`, `DBT_PROFILES_DIR`, and `DBT_TARGET=ci`. `mf` reads the compiled `semantic_manifest.json`. `validate-configs` exits 0. The query is `total_deposits` and `deposits_qoq_growth` grouped by `metric_time__quarter` and `bank__ticker` where `bank__entity_level` is `bank_subsidiary`. Each saved query exits 0. `pytest -m mf` matches `evals/results/metrics/mf-query.csv`. |
@@ -180,6 +181,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `writeup-numbers.out` / `writeup-numbers.err` / `writeup-numbers.exit` | `scripts/check_writeup_numbers.py`. Exit 0. Every number in `docs/writeup.md` is a README lexeme or a linked results projection |
 | `eval.help.out` / `eval.help.exit` | `capitalcite eval --help` (must list `--suite` and `--small`) |
 | `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |
+| `eval-metrics.out` / `eval-metrics.err` / `eval-metrics.exit` | Fake-model metrics suite after the ci warehouse. stdout contains `suite=metrics` and `v1_mart=` |
 | `graph.help.out` / `graph.load.out` / `graph.query.out` / `eval-graph-small.out` | Memory-backend graph load/query and `eval --suite graph --small`. Live Bolt is UNVERIFIED |
 | `metrics.help.out` / `metrics.out` / `metrics.exit` / `metrics.files.txt` | Offline `capitalcite metrics extract --fixtures`. stdout contains `metrics extract xbrl=4 financials=4`. Sidecar sha256 matches the payload. Live BankFind is outside this helper |
 | `dbt.out` / `dbt.exit` / `dbt-docs.out` / `dbt-docs.exit` / `dbt-shape.out` / `dbt-shape.exit` | `dbt build --target ci` and `dbt docs generate --target ci` on `tests/fixtures/metrics`. stdout contains `Completed successfully`. Shape query checks JPM 2026-06-30 holding-company Assets and the matching lead-bank Call Report cells |
@@ -260,8 +262,9 @@ Expected later handles (do not add empty stubs now):
 | dbt warehouse | `dbt build --target ci` (landed). `dev` against `data/raw` is outside this helper |
 | MetricFlow | `mf validate-configs`, the required deposits query, and four saved queries (landed). Live `dev` extract is outside this helper |
 | metric query | `metric_query` live cell for JPM deposits, catalog byte match, and fake `/ask/stream` for `2026Q2` (landed). Image remeasure after the warehouse copy is UNVERIFIED without Docker |
+| metrics eval | `capitalcite eval --suite metrics` (landed). Missing warehouse is UNVERIFIED |
 
-`./scripts/verify.sh` runs `capitalcite check`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. After the fixture warehouse build it runs `mf validate-configs`, the required deposits query, each saved query, and `pytest -m mf`. `--small` does not skip that block. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED.
+`./scripts/verify.sh` builds the ci warehouse before `capitalcite check`, then runs `capitalcite eval --suite metrics`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. After the fixture warehouse build it runs `mf validate-configs`, the required deposits query, each saved query, and `pytest -m mf`. `--small` does not skip that block. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED.
 
 ## Offer the maintenance loop
 

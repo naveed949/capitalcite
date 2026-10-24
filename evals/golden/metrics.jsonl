@@ -1,0 +1,18 @@
+{"id": "m-001", "question": "What were JPM's total deposits in 2026Q2?", "source": {"kind": "fdic", "cert": "628", "repdte": "20260630", "field": "DEP"}}
+{"id": "m-002", "question": "What were JPM's total assets in 2026Q2?", "source": {"kind": "fdic", "cert": "628", "repdte": "20260630", "field": "ASSET"}}
+{"id": "m-003", "question": "What was JPM's NIM in 2026Q2?", "source": {"kind": "fdic", "cert": "628", "repdte": "20260630", "field": "NIMY"}}
+{"id": "m-004", "question": "What was JPM's efficiency ratio in 1984Q1?", "source": {"kind": "fdic", "cert": "628", "repdte": "19840331", "field": "EEFFR"}}
+{"id": "m-005", "question": "What was JPM's net income in 1984Q1?", "source": {"kind": "fdic", "cert": "628", "repdte": "19840331", "field": "NETINC"}}
+{"id": "m-006", "question": "What was JPM's net income in 2026Q2?", "source": {"kind": "fdic", "cert": "628", "repdte": "20260630", "field": "NETINC"}}
+{"id": "m-007", "question": "What was Wells Fargo's net income in 1984Q1?", "source": {"kind": "fdic", "cert": "3511", "repdte": "19840331", "field": "NETINC"}}
+{"id": "m-008", "question": "What was WFC's net income in 2020Q2?", "source": {"kind": "fdic", "cert": "3511", "repdte": "20200630", "field": "NETINC"}}
+{"id": "m-009", "question": "What was JPM's deposit growth in 2025Q3?", "source": {"kind": "fdic_deposits_qoq", "cert": "628", "repdte": "20250930"}}
+{"id": "m-010", "question": "What was JPM's deposit growth in 1984Q1?", "source": {"kind": "fdic_deposits_qoq", "cert": "628", "repdte": "19840331"}}
+{"id": "m-011", "question": "What were JPM's holding company total assets in 2026Q2?", "source": {"kind": "sec", "ticker": "JPM", "accn": "0001628280-26-054343", "concept": "Assets", "end": "2026-06-30", "unit": "USD"}}
+{"id": "m-012", "question": "What were BAC's holding company total assets in 2026Q2?", "source": {"kind": "sec", "ticker": "BAC", "accn": "0000070858-26-000394", "concept": "Assets", "end": "2026-06-30", "unit": "USD"}}
+{"id": "m-013", "question": "What were WFC's holding company total assets in 2026Q2?", "source": {"kind": "sec", "ticker": "WFC", "accn": "0000072971-26-000302", "concept": "Assets", "end": "2026-06-30", "unit": "USD"}}
+{"id": "m-014", "question": "What were Citi's holding company total assets in 2025Q4?", "source": {"kind": "sec", "ticker": "C", "accn": "0000831001-26-000011", "concept": "Assets", "end": "2025-12-31", "unit": "USD"}}
+{"id": "m-015", "question": "What were JPM's holding company deposits in 2026Q2?", "source": {"kind": "sec", "ticker": "JPM", "accn": "0001628280-26-054343", "concept": "Deposits", "end": "2026-06-30", "unit": "USD"}}
+{"id": "m-016", "question": "What were Bank of America's total deposits in 2026Q2?", "source": {"kind": "fdic", "cert": "3510", "repdte": "20260630", "field": "DEP"}}
+{"id": "m-017", "question": "What were Citigroup's total assets in 2026Q2?", "source": {"kind": "fdic", "cert": "7213", "repdte": "20260630", "field": "ASSET"}}
+{"id": "m-018", "question": "What was BAC's holding company net income in 2026Q2?", "source": {"kind": "sec", "ticker": "BAC", "accn": "0000070858-26-000394", "concept": "NetIncomeLoss", "end": "2026-06-30", "unit": "USD"}}

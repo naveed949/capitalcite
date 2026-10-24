@@ -43,16 +43,29 @@ def _snapshot(
     embedder: str = "fake:deterministic",
     quote_drop: int = 0,
     fixture_drop: int = 0,
+    metrics_drop: int = 0,
+    agent_exact: TrackedRate | None = None,
+    agent_refusal: TrackedRate | None = None,
+    rag_exact: TrackedRate | None = None,
+    rag_refusal: TrackedRate | None = None,
+    v1_mart: TrackedRate | None = None,
 ) -> Baseline:
+    zero = TrackedRate(hits=0, items=0)
     return Baseline(
         quote_sanity=TrackedRate(hits=quote_hits, items=quote_items),
         fixture=TrackedRate(hits=fixture_hits, items=fixture_items),
+        metrics_agent_exact=zero if agent_exact is None else agent_exact,
+        metrics_agent_refusal=zero if agent_refusal is None else agent_refusal,
+        metrics_rag_exact=zero if rag_exact is None else rag_exact,
+        metrics_rag_refusal=zero if rag_refusal is None else rag_refusal,
+        metrics_v1_mart=zero if v1_mart is None else v1_mart,
         small_n_items=n_items,
         small_arms=arms,
         small_embedder_id=embedder,
         thresholds=Thresholds(
             quote_sanity_max_drop_items=quote_drop,
             fixture_max_drop_items=fixture_drop,
+            metrics_max_drop_items=metrics_drop,
         ),
     )
 
@@ -317,11 +330,25 @@ def test_committed_baseline_is_fake_embedder_snapshot() -> None:
     assert snap.small_n_items == 77
     assert snap.small_arms == 6
     assert snap.small_embedder_id == "fake:deterministic"
+    assert snap.schema_version == 2
     assert snap.thresholds.quote_sanity_max_drop_items == 0
     assert snap.thresholds.fixture_max_drop_items == 0
+    assert snap.thresholds.metrics_max_drop_items == 0
+    assert snap.metrics_agent_exact == TrackedRate(hits=15, items=15)
+    assert snap.metrics_agent_refusal == TrackedRate(hits=3, items=3)
+    assert snap.metrics_rag_exact == TrackedRate(hits=0, items=15)
+    assert snap.metrics_rag_refusal == TrackedRate(hits=1, items=3)
+    assert snap.metrics_v1_mart == TrackedRate(hits=0, items=56)
 
 
-def test_check_passes_committed_baseline(tmp_path: Path) -> None:
+def _warehouse_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ASK_MODEL", "fake")
+    monkeypatch.setenv("METRIC_QUERY_BACKEND", "catalog")
+    monkeypatch.setenv("WAREHOUSE_PATH", str(Path("dbt/target/ci.duckdb").resolve()))
+
+
+def test_check_passes_committed_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _warehouse_env(monkeypatch)
     result = runner.invoke(app, ["check", "--out", str(tmp_path / "out")])
     assert result.exit_code == 0, result.output
     assert "ok=true" in result.output
@@ -343,6 +370,7 @@ def test_check_live_without_key_is_unverified_then_inflated_baseline_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    _warehouse_env(monkeypatch)
     baseline = tmp_path / "ci.json"
     written = runner.invoke(
         app,

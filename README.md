@@ -129,6 +129,22 @@ Delta (graph minus fixture substring) = 1.000. Generated from [`evals/results/73
 
 <!-- END GRAPH EVAL -->
 
+### Metric exact match
+
+One question, one governed metric, one quarter. The figure comes from the fixture row the pointer names. Exact match is that figure as `render_figure` prints it. A null cell is a refusal, scored on its own denominator.
+
+<!-- BEGIN METRICS EVAL -->
+
+| Path | Model | n | Exact match | Correct refusals |
+|---|---|---:|---:|---:|
+| agent | fake | 18 | 1.000 | 1.000 |
+| rag | fake | 18 | 0.000 | 0.333 |
+
+Mart answers 0 of 56 handwritten numeric v1 items.
+Generated from [`evals/results/4447164efb28-metrics.json`](evals/results/4447164efb28-metrics.json).
+
+<!-- END METRICS EVAL -->
+
 ### Gate and safety
 
 | Test suite | Cases | Pass rate |
@@ -138,7 +154,7 @@ Delta (graph minus fixture substring) = 1.000. Generated from [`evals/results/73
 | Audit log integrity (hash chain verify) | [3](evals/results/7388ac3eea43-audit.json) | [1.00](evals/results/7388ac3eea43-audit.json) |
 | CI contract pack (`capitalcite check`) | [2 cite/refuse + 5 red-team](evals/results/7388ac3eea43-check.json) | [1.00](evals/results/7388ac3eea43-check.json) |
 
-`capitalcite check` also gates quote-index sanity (36/77) and fixture span-overlap (3/3) against [`evals/baselines/ci.json`](evals/baselines/ci.json) at zero item drop. Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Nightly live-corpus section/hybrid Recall@5 vs [`evals/baselines/nightly.json`](evals/baselines/nightly.json) allows one item of rank-boundary noise. Baseline file edits need the `eval-baseline` label.
+`capitalcite check` also gates quote-index sanity (36/77), fixture span-overlap (3/3), and the metrics suite (agent exact 15/15, agent refusal 3/3, RAG exact 0/15, RAG refusal 1/3, mart coverage 0/56) against [`evals/baselines/ci.json`](evals/baselines/ci.json) at zero item drop. Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Nightly live-corpus section/hybrid Recall@5 vs [`evals/baselines/nightly.json`](evals/baselines/nightly.json) allows one item of rank-boundary noise. Baseline file edits need the `eval-baseline` label.
 
 ### Latency and cost
 
@@ -292,7 +308,7 @@ pnpm --dir web check:api
 
 **MCP.** `uv run capitalcite mcp` speaks JSON-RPC on stdio. stdout is the wire. Logs go to stderr.
 
-**Eval and CI.** `uv run capitalcite eval --suite golden --small` (FakeEmbedder, no download). `uv run capitalcite check` vs [`evals/baselines/ci.json`](evals/baselines/ci.json). Full twelve-filing matrix: `QDRANT_PATH=... uv run capitalcite eval --suite golden --embedder bge-small`.
+**Eval and CI.** `uv run capitalcite eval --suite golden --small` (FakeEmbedder, no download). `WAREHOUSE_PATH=dbt/target/ci.duckdb METRIC_QUERY_BACKEND=catalog uv run capitalcite eval --suite metrics` (fake model, catalog cells). `uv run capitalcite check` vs [`evals/baselines/ci.json`](evals/baselines/ci.json). Full twelve-filing matrix: `QDRANT_PATH=... uv run capitalcite eval --suite golden --embedder bge-small`.
 
 **Azure.** `make infra-validate` compiles Bicep. `make deploy` is UNVERIFIED without `az` login. Design: [ADR 0012](docs/decisions/0012-azure-container-apps.md). Cost and roles: [`infra/README.md`](infra/README.md).
 
@@ -380,7 +396,7 @@ Dockerfile           multi-stage API image (`ASK_MODEL=fake` by default)
 infra/               bootstrap.bicep (identities + RBAC) and main.bicep (apps)
 ```
 
-Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR, plus `capitalcite check` and `eval --small`. A second workflow compiles Bicep, builds the image, and runs gitleaks. It does not log in to Azure.
+Tooling: `uv`, ruff, mypy, pytest. CI runs all three on every PR, plus `capitalcite check`, `eval --suite metrics`, and `eval --small`. A second workflow compiles Bicep, builds the image, and runs gitleaks. It does not log in to Azure.
 
 ## Why this exists
 

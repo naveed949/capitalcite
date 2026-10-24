@@ -39,13 +39,31 @@ jobs:
       - name: Type-check
         run: uv run mypy src tests
 
+      - name: dbt build (ci)
+        run: uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci
+
       - name: Tests
+        env:
+          WAREHOUSE_PATH: ${{ github.workspace }}/dbt/target/ci.duckdb
+          METRIC_QUERY_BACKEND: catalog
+          ASK_MODEL: fake
         run: uv run pytest -m "not mf"
 
       - name: Write-up number check
         run: uv run python scripts/check_writeup_numbers.py
 
+      - name: Metrics eval
+        env:
+          WAREHOUSE_PATH: ${{ github.workspace }}/dbt/target/ci.duckdb
+          METRIC_QUERY_BACKEND: catalog
+          ASK_MODEL: fake
+        run: uv run capitalcite eval --suite metrics --out "${RUNNER_TEMP}/eval-metrics"
+
       - name: Behavioral regression gate
+        env:
+          WAREHOUSE_PATH: ${{ github.workspace }}/dbt/target/ci.duckdb
+          METRIC_QUERY_BACKEND: catalog
+          ASK_MODEL: fake
         run: uv run capitalcite check --out "${RUNNER_TEMP}/check"
 
       - name: Retrieval eval (small)

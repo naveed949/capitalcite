@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import os
 import tempfile
-from collections.abc import AsyncIterator, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import Sequence
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
-from qdrant_client import AsyncQdrantClient
 
 from capitalcite.ask import (
     Answered,
@@ -21,25 +19,20 @@ from capitalcite.ask import (
     build_structured_model,
 )
 from capitalcite.chunking.models import ChunkerName
-from capitalcite.chunking.service import run_chunk
-from capitalcite.config import Settings
 from capitalcite.eval.baseline import Baseline, CompareReport, TrackedRate, compare
+from capitalcite.eval.fixture_index import (
+    FIXTURE_RETRIEVE_K,
+    FixtureIndexError,
+    fixture_settings,
+    indexed_fixture,
+)
 from capitalcite.eval.judge import recall_items, score_item
-from capitalcite.eval.runner import EvalUnverified, run_suite
+from capitalcite.eval.metrics_eval import run_metrics_suite
+from capitalcite.eval.runner import run_suite
 from capitalcite.gate.redteam import run_redteam
 from capitalcite.golden.models import GoldenItem
 from capitalcite.golden.store import ValidationError, load_items
-from capitalcite.ingest.store import FilingStore
-from capitalcite.retrieval import (
-    EmbedderName,
-    FakeEmbedder,
-    RetrievalError,
-    RetrievalMode,
-    RetrievalSetup,
-    build_index,
-    retrieve,
-    setup_retrieval,
-)
+from capitalcite.retrieval import RetrievalMode, RetrievalSetup, retrieve
 from capitalcite.retrieval.sanity import SanityUnavailable, run_quote_index_sanity
 from capitalcite.retrieval.types import Hit
 
@@ -47,7 +40,6 @@ _FIXTURE = Path("tests/fixtures/chunking/corpus")
 _CI_ITEMS = Path("evals/golden/ci.jsonl")
 _GOLDEN = Path("evals/golden")
 DEFAULT_BASELINE = Path("evals/baselines/ci.json")
-_RETRIEVE_K = 10
 _UNANSWERABLE_ID = "cc-u-001"
 _UNANSWERABLE_Q = "What CET1 ratio did Wells Fargo disclose for year-end 2026?"
 
@@ -107,10 +99,14 @@ async def run_check(
     except SanityUnavailable as exc:
         raise CheckFailed(str(exc)) from exc
     ci_items = _ci_items(ci_path)
-    async with _indexed_fixture(fixture_root) as setup:
-        fixture_rate, hits_by_id = await _score_fixture(setup, ci_items)
-        contracts = await _contracts(setup, ci_items, hits_by_id)
-        live_status = await _live(live, setup, ci_items)
+    try:
+        async with indexed_fixture(fixture_root) as setup:
+            fixture_rate, hits_by_id = await _score_fixture(setup, ci_items)
+            contracts = await _contracts(setup, ci_items, hits_by_id)
+            live_status = await _live(live, setup, ci_items)
+    except FixtureIndexError as exc:
+        raise CheckFailed(str(exc)) from exc
+    metrics = await run_metrics_suite(out_dir=None)
     with tempfile.TemporaryDirectory(prefix="capitalcite-check-small-") as tmp:
         small = await run_suite(
             suite="golden",
@@ -122,12 +118,21 @@ async def run_check(
             modes=(RetrievalMode.DENSE, RetrievalMode.BM25, RetrievalMode.HYBRID),
             embedder=None,
             k=5,
-            settings=_settings(),
+            settings=fixture_settings(),
             write=False,
         )
     snapshot = Baseline(
+        schema_version=2,
         quote_sanity=TrackedRate(hits=sanity.hits, items=sanity.items),
         fixture=fixture_rate,
+        metrics_agent_exact=metrics.agent.exact,
+        metrics_agent_refusal=metrics.agent.refusal,
+        metrics_rag_exact=metrics.rag.exact,
+        metrics_rag_refusal=metrics.rag.refusal,
+        metrics_v1_mart=TrackedRate(
+            hits=metrics.coverage.hits,
+            items=metrics.coverage.items,
+        ),
         small_n_items=small.n_items,
         small_arms=len(small.arms),
         small_embedder_id=small.embedder_id,
@@ -160,7 +165,7 @@ async def _score_fixture(
     scored = []
     hits_by_id: dict[str, list[Hit]] = {}
     for item in items:
-        hits = await retrieve(setup, item.question, mode=RetrievalMode.HYBRID, k=_RETRIEVE_K)
+        hits = await retrieve(setup, item.question, mode=RetrievalMode.HYBRID, k=FIXTURE_RETRIEVE_K)
         hits_by_id[item.id] = hits
         scored.append(score_item(item, hits))
     totals = TrackedRate(
@@ -178,7 +183,9 @@ async def _contracts(
     by_id = {item.id: item for item in items}
     answered = by_id["cc-ci-002"]
     got = await ask(hits_by_id[answered.id], answered.question, FakeStructuredModel())
-    un_hits = await retrieve(setup, _UNANSWERABLE_Q, mode=RetrievalMode.HYBRID, k=_RETRIEVE_K)
+    un_hits = await retrieve(
+        setup, _UNANSWERABLE_Q, mode=RetrievalMode.HYBRID, k=FIXTURE_RETRIEVE_K
+    )
     refused = await ask(un_hits, _UNANSWERABLE_Q, FakeStructuredModel())
     return (
         _contract("cc-ci-002", "answered", got),
@@ -198,7 +205,7 @@ async def _live(live: bool, setup: RetrievalSetup, items: Sequence[GoldenItem]) 
         return LiveStatus(kind="unverified", detail=str(exc))
     item = {row.id: row for row in items}["cc-ci-002"]
     try:
-        hits = await retrieve(setup, item.question, mode=RetrievalMode.HYBRID, k=_RETRIEVE_K)
+        hits = await retrieve(setup, item.question, mode=RetrievalMode.HYBRID, k=FIXTURE_RETRIEVE_K)
         got = await ask(hits, item.question, model)
     except ModelUnavailable as exc:
         return LiveStatus(kind="failed", detail=str(exc))
@@ -238,56 +245,3 @@ def _ci_items(path: Path) -> tuple[GoldenItem, ...]:
     if not recall:
         raise CheckFailed(f"{path} has no items")
     return recall
-
-
-@asynccontextmanager
-async def _indexed_fixture(root: Path) -> AsyncIterator[RetrievalSetup]:
-    if not (root / "raw" / "edgar").is_dir():
-        raise EvalUnverified(f"missing raw/edgar under {root}")
-    with tempfile.TemporaryDirectory(prefix="capitalcite-check-") as tmp:
-        work = Path(tmp)
-        summary = run_chunk(
-            input_root=root,
-            output=FilingStore(work),
-            chunker=ChunkerName.SECTION,
-            size=512,
-            overlap=64,
-        )
-        if summary.failed:
-            raise CheckFailed("fixture chunk failed")
-        if summary.files == 0:
-            raise EvalUnverified(f"no filings to chunk under {root}")
-        settings = _settings()
-        client = AsyncQdrantClient(location=":memory:", timeout=5, check_compatibility=False)
-        setup = setup_retrieval(
-            settings.model_copy(
-                update={
-                    "chunker": ChunkerName.SECTION,
-                    "embedder": EmbedderName.BGE_SMALL.value,
-                    "qdrant_collection": "check",
-                    "search_k": _RETRIEVE_K,
-                    "qdrant_url": ":memory:",
-                    "qdrant_path": None,
-                }
-            ),
-            client=client,
-            embedder=FakeEmbedder(),
-        )
-        try:
-            await build_index(setup, work)
-            yield setup
-        except RetrievalError as exc:
-            raise EvalUnverified(str(exc)) from exc
-        finally:
-            await setup.aclose()
-
-
-def _settings() -> Settings:
-    return Settings(
-        sec_user_agent="capitalcite-eval eval@example.com",
-        chunker=ChunkerName.SECTION,
-        chunk_size=512,
-        chunk_overlap=64,
-        embedder="bge-small",
-        qdrant_url=":memory:",
-    )
