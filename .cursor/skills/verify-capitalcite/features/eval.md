@@ -31,7 +31,7 @@ Preconditions:
 - **Show help.** Run `uv run capitalcite eval --help`. Exit code is `0`. Stdout mentions `--suite`, `--small`, `--from-results`, and `--baseline`.
 - **Small matrix.** Run `uv run capitalcite eval --suite golden --small --out $ART/eval-small`. Exit code is `0`. Stdout includes `items=` and a markdown table with `Recall@5`. The out directory contains a `*-small.json` file with `config_hash` on every arm.
 - **Corpus matrix.** After ingest, run `uv run capitalcite eval --suite golden --input-dir $INGEST_DIR --out $ART/eval --chunker section --chunker fixed --embedder bge-small --k 5` with `QDRANT_PATH` set to a directory this run owns. Exit code is `0`. Stdout includes the six-row table (two chunkers, three modes), a `cc-h-013` probe line, and an Agent vs RAG recall line on comparison/multi-hop items labelled `fake/heuristic planner`. Exit 2 is UNVERIFIED. Answer-quality cells stay UNVERIFIED.
-- **Bundled helper.** Run `./scripts/verify.sh`. It writes `eval.help.out`, `eval-small.out`, and either `eval.out` plus `eval.table.md` or `eval.skipped`.
+- **Bundled helper.** Run `./scripts/verify.sh`. It writes `eval.help.out`, `eval-small.out`, and either `eval.out` plus `eval.table.md` or `eval.skipped`. The corpus arm uses `$ART/eval-qdrant` so it does not lock the uvicorn store.
 - **Proof.** Keep the CLI stdout, exit code, and the JSON. Pytest is not this feature. Quote-index sanity is not this feature.
 
 ## Gotchas
