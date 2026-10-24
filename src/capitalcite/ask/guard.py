@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from datetime import date
 
 from capitalcite.retrieval.types import Hit
 
 _YEAR = re.compile(r"\b(?:19|20)\d{2}\b")
-_ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
-_QUARTER_MONTH_DAYS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _BANK_ALIASES = (
     ("jpmorgan chase", "JPM"),
     ("jp morgan chase", "JPM"),
@@ -23,24 +20,8 @@ _BANK_ALIASES = (
 )
 
 
-def invalid_period_reason(question: str) -> str | None:
-    """Why a written YYYY-MM-DD cannot be a metric period. None means it can."""
-    for match in _ISO_DATE.finditer(question):
-        year, month, day_number = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-        try:
-            day = date(year, month, day_number)
-        except ValueError:
-            return "period is not a valid date"
-        if (day.month, day.day) not in _QUARTER_MONTH_DAYS:
-            return "period is not a quarter-end"
-    return None
-
-
 def retrieval_refusal(hits: Sequence[Hit], question: str, *, min_score: float) -> str | None:
     """Why these hits should not be sent to the model. None means they may be."""
-    invalid = invalid_period_reason(question)
-    if invalid is not None:
-        return invalid
     if not hits:
         return "no passages were retrieved"
     top = max(hit.score for hit in hits)

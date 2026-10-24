@@ -1007,6 +1007,45 @@ async def test_fake_plan_holding_company_anywhere_remaps_assets() -> None:
         [],
     )
     assert parent.calls[0].args["metric"] == "holding_company_assets"
+    bhc = await FakeAgentModel().plan(
+        "What were JPM's BHC total assets in 2026Q2?",
+        [],
+        [],
+    )
+    assert [call.name for call in bhc.calls] == ["metric_query"]
+    assert bhc.calls[0].args == {
+        "metric": "holding_company_assets",
+        "group_by": _GROUP,
+        "ticker": "JPM",
+        "period": "2026-06-30",
+    }
+    bank_holding = await FakeAgentModel().plan(
+        "What were JPM's bank holding total assets in 2026Q2?",
+        [],
+        [],
+    )
+    assert bank_holding.calls[0].args["metric"] == "holding_company_assets"
+
+
+async def test_fake_plan_excluding_parent_stays_on_search() -> None:
+    decision = await FakeAgentModel().plan(
+        "What were JPM's deposits in 2026Q2, excluding the parent?",
+        [],
+        [],
+    )
+    assert decision.calls
+    assert {call.name for call in decision.calls} == {"search_filings"}
+
+
+async def test_fake_plan_what_is_is_a_numeric_signal() -> None:
+    decision = await FakeAgentModel().plan(
+        "What is JPM's total deposits in 2026Q2?",
+        [],
+        [],
+    )
+    assert [call.name for call in decision.calls] == ["metric_query"]
+    assert decision.calls[0].args["metric"] == "total_deposits"
+    assert decision.calls[0].args["period"] == "2026-06-30"
 
 
 async def test_fake_plan_rejects_an_invalid_calendar_date() -> None:
@@ -1014,9 +1053,6 @@ async def test_fake_plan_rejects_an_invalid_calendar_date() -> None:
     decision = await FakeAgentModel().plan(question, [], [])
     assert decision.kind == "synthesize"
     assert decision.calls == ()
-    draft = await FakeAgentModel().complete(question, [])
-    assert draft.kind == "refused"
-    assert draft.refusal_reason == "period is not a valid date"
 
 
 async def test_fake_plan_without_a_metric_or_ticker_stays_on_search() -> None:

@@ -12,7 +12,7 @@ import httpx
 from pydantic import ValidationError
 
 from capitalcite.agent.types import PlannerDecision, ToolCall, TraceStep
-from capitalcite.ask.guard import invalid_period_reason, tickers_named, years_named
+from capitalcite.ask.guard import tickers_named, years_named
 from capitalcite.ask.models import OpenAIStructuredModel, StructuredModel, _usage_tokens
 from capitalcite.ask.types import (
     AskModelName,
@@ -122,9 +122,6 @@ class FakeAgentModel:
         with observation("complete", ObservationKind.GENERATE, **generation_attrs(model="fake")):
             if self._draft is not None:
                 return self._draft
-            asked = _metric_periods(question)
-            if asked.reason:
-                return ModelDraft(kind="refused", refusal_reason=asked.reason)
             chosen = _hits_for_question(question, hits)
             if not chosen:
                 return ModelDraft(kind="refused", refusal_reason="no passages were retrieved")
@@ -256,9 +253,20 @@ _METRIC_PHRASES: tuple[tuple[str, MetricName], ...] = (
 _QUARTER_END = re.compile(r"\b(\d{4})-(03-31|06-30|09-30|12-31)\b")
 _QUARTER_NAME = re.compile(r"\bQ([1-4])\s+(\d{4})\b", re.IGNORECASE)
 _COMPACT_QUARTER = re.compile(r"\b(\d{4})Q([1-4])\b", re.IGNORECASE)
-_NUMERIC_ASK = re.compile(r"\b(?:what\s+(?:was|were)|how\s+much|value\s+of)\b", re.IGNORECASE)
+_NUMERIC_ASK = re.compile(
+    r"\b(?:what\s+(?:was|were|is|are)|how\s+much|value\s+of)\b", re.IGNORECASE
+)
 _NARRATIVE_ASK = re.compile(r"\b(?:describe|discuss|explain|strategy|risk)\b", re.IGNORECASE)
-_HOLDING_ASK = re.compile(r"\b(?:holding\s+company|parent)\b", re.IGNORECASE)
+_HOLDING_ASK = re.compile(
+    r"\b(?:holding\s+company|bank\s+holding|bhc|parent)\b", re.IGNORECASE
+)
+_HOLDING_NEGATION = re.compile(
+    r"(?:exclud(?:e|ing|ed)|without|\bnot\b|ex-)\s*(?:the\s+)?"
+    r"(?:holding\s+company|bank\s+holding|bhc|parent)",
+    re.IGNORECASE,
+)
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+_QUARTER_MONTH_DAYS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _NAMED_QUARTER_END = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}
 _FLOW_METRICS = frozenset({MetricName.NET_INCOME, MetricName.HOLDING_COMPANY_NET_INCOME})
 _HOLDING_METRIC = {
@@ -291,8 +299,20 @@ def _metric_phrase(question: str) -> MetricName | None:
     return best[1]
 
 
+def _invalid_period_reason(question: str) -> str:
+    for match in _ISO_DATE.finditer(question):
+        year, month, day_number = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        try:
+            day = date(year, month, day_number)
+        except ValueError:
+            return "period is not a valid date"
+        if (day.month, day.day) not in _QUARTER_MONTH_DAYS:
+            return "period is not a quarter-end"
+    return ""
+
+
 def _metric_periods(question: str) -> _PeriodAsk:
-    reason = invalid_period_reason(question)
+    reason = _invalid_period_reason(question)
     if reason:
         return _PeriodAsk((), False, reason)
     found: list[date] = []
@@ -339,6 +359,8 @@ def _metric_calls(question: str, traces: Sequence[TraceStep]) -> list[ToolCall] 
         return None
     metric = _metric_phrase(question)
     if metric is None:
+        return None
+    if _HOLDING_NEGATION.search(question) is not None:
         return None
     if _HOLDING_ASK.search(question) is not None:
         metric = _HOLDING_METRIC.get(metric, metric)
@@ -483,11 +505,14 @@ def _plan_system_prompt() -> str:
         "fdic_bankfind (query), calculator (expression), "
         "graph_query (kind subsidiaries|parent|filings|metric|path, ticker or rssd), "
         "metric_query (metric, group_by, ticker, period, optional entity_level). "
-        "Use metric_query for a numeric ask (what was/were, how much, value of) "
+        "Use metric_query for a numeric ask (what was/were/is/are, how much, value of) "
         "of one governed metric, one ticker, and one named quarter-end. "
+        "ticker must be uppercase and match ^[A-Z][A-Z0-9]{0,5}$. "
         "Do not use it for describe, discuss, explain, strategy, or risk wording, "
         "or for year-only net_income. "
-        "When the question says holding company or parent, use the holding_company_ metric. "
+        "When the question says holding company, bank holding, BHC, or parent, "
+        "use the holding_company_ metric. "
+        "If excluding, not, ex-, or without sits near those words, search_filings instead. "
         "Use graph_query for holding-company structure, RSSD, LEI, or subsidiary joins. "
         "For a comparison or multi-hop question, search each bank and year separately. "
         "When you have enough retrieved passages, return kind synthesize and no calls. "

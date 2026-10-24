@@ -39,7 +39,9 @@ is a parse error. `parse_metric_query` fills `entity_level` from the
 metric's lock, so a caller cannot ask `total_deposits` at the holding
 company.
 
-`max_calls` is 4. `max_arg_bytes` is 1024.
+`max_calls` is 4. `max_arg_bytes` is 1024. The gate ticker
+`pattern` is `^[A-Z][A-Z0-9]{0,5}$`. A real-model planner must send an
+uppercase ticker; `jpm` is `invalid args` before the runner.
 
 ## Why the demo runs a precompiled catalog
 
