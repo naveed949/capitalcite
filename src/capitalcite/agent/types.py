@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from capitalcite.ask.types import Answer
 from capitalcite.retrieval.types import Hit
@@ -42,7 +42,15 @@ class PlannerDecision(BaseModel):
     model_config = ConfigDict(frozen=True)
     kind: Literal["plan", "synthesize"]
     calls: tuple[ToolCall, ...] = ()
-    refusal_reason: str = ""
+    refusal_reason: str = Field(default="", max_length=32)
+
+    @field_validator("refusal_reason", mode="before")
+    @classmethod
+    def known_refusal_reason(cls, value: object) -> str:
+        allowed = {"", "period is not a valid date", "period is not a quarter-end"}
+        if value in allowed:
+            return str(value)
+        return ""
 
     @model_validator(mode="after")
     def legal_shape(self) -> PlannerDecision:

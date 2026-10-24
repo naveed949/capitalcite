@@ -41,10 +41,15 @@ company.
 
 `max_calls` is 4. `max_arg_bytes` is 1024. The gate ticker
 `pattern` is `^[A-Z][A-Z0-9]{0,5}$`. A real-model planner must send an
-uppercase ticker; `jpm` is `invalid args` before the runner. A question
-that names a holding company, bank holding, BHC, or parent, and also
-contains any exclusion word, stays on `search_filings`. A wrong parent
-cell is worse than a filing search.
+uppercase ticker; `jpm` is `invalid args` before the runner.
+
+Holding-company routing is an allowlist, not a negation denylist. The
+fake planner remaps to `holding_company_*` only when a holding word
+directly modifies the metric: `BHC total assets`, `assets for the
+holding company`, or `at the (bank) holding company level`. Any other
+question that mentions holding company, BHC, or parent stays on
+`search_filings`. A missed exclusion word on a denylist returned the
+parent cell. A wrong figure costs more than a search fallback.
 
 ## Why the demo runs a precompiled catalog
 
