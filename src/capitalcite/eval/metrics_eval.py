@@ -130,7 +130,7 @@ class V1Row(BaseModel):
 
 
 class V1Coverage(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="ignore")
     rows: tuple[V1Row, ...]
 
     @computed_field  # type: ignore[prop-decorator]
@@ -145,7 +145,7 @@ class V1Coverage(BaseModel):
 
 
 class MetricsEvalReport(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="ignore")
     suite: Literal["metrics"] = "metrics"
     git_sha: str = Field(min_length=1)
     scores: tuple[ItemScore, ...]

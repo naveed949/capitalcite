@@ -22,7 +22,9 @@ from capitalcite.eval.metrics_eval import (
     V1Row,
     cover_v1,
     figure_token_in,
+    load_metrics_report,
     score_answer,
+    update_readme_metrics,
 )
 from capitalcite.eval.metrics_gold import (
     FdicField,
@@ -47,6 +49,31 @@ _ITEM = MetricGoldItem(
     question="What were JPM's total deposits in 2026Q2?",
     source=_SOURCE,
 )
+
+
+def test_from_results_reloads_dumped_computed_fields(tmp_path: Path) -> None:
+    path = Path("evals/results/3231cd4138ba-metrics.json")
+    report = load_metrics_report(path)
+    assert report.n == 18
+    assert report.agent.exact == TrackedRate(hits=15, items=15)
+    assert report.rag.exact == TrackedRate(hits=0, items=15)
+    assert report.coverage.hits == 0
+    assert report.coverage.items == 56
+    result = CliRunner().invoke(
+        app,
+        ["eval", "--suite", "metrics", "--from-results", str(path)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "agent_exact=15/15" in result.output
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        "pre\n<!-- BEGIN METRICS EVAL -->\n\nold\n<!-- END METRICS EVAL -->\npost\n",
+        encoding="utf-8",
+    )
+    update_readme_metrics(readme, report)
+    text = readme.read_text(encoding="utf-8")
+    assert "3231cd4138ba-metrics.json" in text
+    assert "| agent | fake | 18 | 1.000 | 1.000 |" in text
 
 
 def test_metrics_suite_rejects_retrieval_flags() -> None:
