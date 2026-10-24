@@ -1160,6 +1160,57 @@ _ROUTING_CASES: list[tuple[str, str, str, str | None, str | None, str]] = [
         "",
     ),
     (
+        "not-the-holding-company-total-assets",
+        "What were JPM's total assets in 2026Q2, not the holding company total assets?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "excluding-parent-company-assets",
+        "What were JPM's total assets in 2026Q2, excluding parent company assets?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "excluding-holding-companys-total-assets",
+        "What were JPM's total assets in 2026Q2, excluding the holding company's total assets?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "not-at-the-holding-company-level",
+        "What were JPM's total assets in 2026Q2 at the bank, not at the holding company level?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "dont-include-holding-company-total-assets",
+        (
+            "What were JPM's total assets in 2026Q2? "
+            "Don't include the holding company total assets."
+        ),
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
+        "without-bhc-total-assets",
+        "What were JPM's total assets in 2026Q2 without BHC total assets?",
+        "search_filings",
+        None,
+        None,
+        "",
+    ),
+    (
         "filed-on-10q",
         "What did JPMorgan say in the 10-Q filed 2025-11-04 about liquidity?",
         "search_filings",
