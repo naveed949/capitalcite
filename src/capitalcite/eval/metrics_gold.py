@@ -224,8 +224,6 @@ def _resolve_sec(pointer: SecPointer, query: MetricQuery, root: Path) -> Resolve
         if len(hits) != 1:
             raise MetricGoldError("sec Assets point is missing")
         return ResolvedValue(value=hits[0], query=query)
-    # A raw NetIncomeLoss or Deposits val is not a quarter. These fixtures
-    # have no flow points, so a present concept is an oracle error, not a cell.
     named = _matching(concepts.get(pointer.concept, ()), pointer.accn, end)
     if named:
         raise MetricGoldError("sec flow derivation is not in the fixture oracle")

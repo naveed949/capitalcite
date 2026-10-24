@@ -1,5 +1,3 @@
-"""Score metric answers against a resolved cell, and count v1 rows the mart can answer."""
-
 from __future__ import annotations
 
 import os
@@ -206,7 +204,6 @@ def score_answer(
     path: LiteralPath,
     item: MetricGoldItem,
 ) -> ItemScore:
-    """outcome is response.kind. Text is response.answer, or empty when refused."""
     outcome = response.kind
     text = response.answer or ""
     if isinstance(resolved, ResolvedValue):
@@ -254,7 +251,6 @@ async def run_metrics_suite(
 ) -> MetricsEvalReport:
     """Ask both paths and write `<sha12>-metrics.json` when out_dir is set."""
     items = await load_metric_gold(items_path)
-    # Importing the ask route builds the app, which requires a user agent.
     os.environ.setdefault("SEC_USER_AGENT", "capitalcite-eval eval@example.com")
     settings = _metrics_settings()
     with tempfile.TemporaryDirectory(prefix="capitalcite-metrics-") as tmp:

@@ -209,7 +209,6 @@ def project_file(data: Mapping[str, object], readme: frozenset[str]) -> frozense
 
 
 def _project_metrics(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
-    """Recount booleans. A stored rate float is not a source."""
     scores = data.get("scores")
     if not isinstance(scores, list):
         return frozenset()

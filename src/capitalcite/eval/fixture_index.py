@@ -1,9 +1,3 @@
-"""Section-chunk the fixture corpus into an in-memory index.
-
-check and the metrics suite share this setup. The retrieval pack stays
-FakeEmbedder, section chunks, and :memory: Qdrant.
-"""
-
 from __future__ import annotations
 
 import tempfile
@@ -32,7 +26,7 @@ _CORPUS = Path("tests/fixtures/chunking/corpus")
 
 
 class FixtureIndexError(Exception):
-    """The fixture corpus did not chunk. Callers map this to their own failure."""
+    pass
 
 
 def fixture_settings() -> Settings:

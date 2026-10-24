@@ -51,8 +51,6 @@ write() {
   printf '%s\n' "$*" >"${ART}/${file}"
 }
 
-# capitalcite check and eval --suite metrics need the fixture warehouse.
-# Build once; later warehouse steps reuse the same dbt.out.
 build_ci_warehouse() {
   export DBT_PROJECT_DIR="${ROOT}/dbt"
   if [[ -f "${ART}/dbt.exit" && -f "${ROOT}/dbt/target/ci.duckdb" ]]; then
