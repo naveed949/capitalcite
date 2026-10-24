@@ -2921,8 +2921,10 @@ else
   )
   printf '%s\n' "${EVAL_CMD[*]}" >"${ART}/eval.cmd"
   log "verify: ${EVAL_CMD[*]}"
+  EVAL_QDRANT="${ART}/eval-qdrant"
+  mkdir -p "${EVAL_QDRANT}"
   set +e
-  "${EVAL_CMD[@]}" >"${ART}/eval.out" 2>"${ART}/eval.err"
+  QDRANT_PATH="${EVAL_QDRANT}" "${EVAL_CMD[@]}" >"${ART}/eval.out" 2>"${ART}/eval.err"
   eval_rc=$?
   set -e
   write eval.exit "${eval_rc}"
