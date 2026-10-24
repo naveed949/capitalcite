@@ -129,6 +129,22 @@ Delta (graph minus fixture substring) = 1.000. Generated from [`evals/results/73
 
 <!-- END GRAPH EVAL -->
 
+### Metric exact match
+
+One question, one governed metric, one quarter. The figure comes from the fixture row the pointer names. Exact match is that figure as `render_figure` prints it. A null cell is a refusal, scored on its own denominator.
+
+<!-- BEGIN METRICS EVAL -->
+
+| Path | Model | n | Exact match | Correct refusals |
+|---|---|---:|---:|---:|
+| agent | fake | 18 | 1.000 | 1.000 |
+| rag | fake | 18 | 0.000 | 0.333 |
+
+Mart answers 0 of 56 handwritten numeric v1 items.
+Generated from [`evals/results/3231cd4138ba-metrics.json`](evals/results/3231cd4138ba-metrics.json).
+
+<!-- END METRICS EVAL -->
+
 ### Gate and safety
 
 | Test suite | Cases | Pass rate |
