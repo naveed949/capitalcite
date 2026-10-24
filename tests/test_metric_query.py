@@ -1193,10 +1193,7 @@ _ROUTING_CASES: list[tuple[str, str, str, str | None, str | None, str]] = [
     ),
     (
         "dont-include-holding-company-total-assets",
-        (
-            "What were JPM's total assets in 2026Q2? "
-            "Don't include the holding company total assets."
-        ),
+        ("What were JPM's total assets in 2026Q2? Don't include the holding company total assets."),
         "search_filings",
         None,
         None,
