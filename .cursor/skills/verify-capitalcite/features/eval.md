@@ -8,7 +8,7 @@ corpus, `FakeEmbedder`, and in-memory Qdrant.
 
 ## Sub-features
 
-- `eval-help` lists `--suite`, `--small`, `--out`, `--chunker`, `--mode`, `--from-results`, `--baseline`, `--write-baseline`, and `--print-cache-key`.
+- `eval-help` lists `--suite`, `--small`, `--out`, `--chunker`, `--mode`, `--from-results`, `--baseline`, `--write-baseline`, and `--print-cache-key`. `--suite` is `golden`, `graph`, or `metrics`. The metrics suite is [metrics-eval.md](./metrics-eval.md).
 - `eval-small` runs the matrix on `tests/fixtures/chunking/corpus` with no model download.
 - `eval-corpus` re-chunks the twelve ingested 10-Ks, embeds with `bge-small`, and scores dense, BM25, and hybrid on section and fixed.
 - `eval-report` prints recall@k, MRR, and nDCG from the JSON. README numbers come from that file.

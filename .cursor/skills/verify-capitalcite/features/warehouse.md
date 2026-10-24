@@ -31,7 +31,7 @@ Preconditions:
 - **Build the fixture warehouse.** Run `uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci`. Exit 0. stdout contains `Completed successfully`. The command does not need `DBT_PROJECT_DIR` when the working directory is the repo root.
 - **Check the fixture cells.** In `dbt/target/ci.duckdb`, JPM holding company on 2026-06-30 has `assets_usd` 5015069000000 and null Deposits and quarterly NetIncomeLoss. JPM bank on 2026-06-30 has `assets_usd_thousands` 4091315000 and `net_income_ytd_usd_thousands` 31335000.
 - **Generate docs.** Run `uv run --group metrics dbt docs generate --project-dir dbt --profiles-dir dbt --target ci`. Exit 0.
-- **Bundled helper.** `./scripts/verify.sh` writes `dbt.out`, `dbt.err`, `dbt.exit`, `dbt-docs.out`, `dbt-docs.err`, `dbt-docs.exit`, `dbt-shape.out`, and `dbt-shape.exit`.
+- **Bundled helper.** `./scripts/verify.sh` builds the ci warehouse before `capitalcite check` and writes `dbt.out`, `dbt.err`, `dbt.exit`, `dbt-docs.out`, `dbt-docs.err`, `dbt-docs.exit`, `dbt-shape.out`, and `dbt-shape.exit`.
 - **Proof.** Keep the CLI stdout, the exit code, the model and test counts, and the shape query. Pytest is not this feature. A null cell in the fact is shown as null.
 
 ## Gotchas
