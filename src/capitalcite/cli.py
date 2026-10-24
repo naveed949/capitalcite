@@ -34,6 +34,13 @@ from capitalcite.eval.check import (
     write_baseline,
 )
 from capitalcite.eval.graph_eval import render_graph_markdown, run_graph_suite, update_readme_graph
+from capitalcite.eval.metrics_eval import (
+    MetricSuiteError,
+    load_metrics_report,
+    render_metrics_markdown,
+    run_metrics_suite,
+    update_readme_metrics,
+)
 from capitalcite.eval.models import EvalReport
 from capitalcite.eval.report import load_reports, render_markdown, update_readme
 from capitalcite.eval.runner import EvalFailed, EvalUnverified, run_suite
@@ -740,7 +747,7 @@ def index_cmd(
 
 @app.command("eval")
 def eval_cmd(
-    suite: str = typer.Option(..., "--suite", help="golden or graph."),
+    suite: str = typer.Option(..., "--suite", help="golden, graph, or metrics."),
     small: bool = typer.Option(
         False,
         "--small",
@@ -808,6 +815,17 @@ def eval_cmd(
     Full mode re-chunks raw filings, embeds them, and writes
     ``evals/results/<sha12>.json``. ``--small`` is the CI path.
     """
+    if suite == "metrics":
+        _reject_metrics_flags(
+            small=small,
+            chunker=chunker,
+            mode=mode,
+            embedder=embedder,
+            k=k,
+            baseline=baseline,
+            write_baseline=write_baseline_file,
+            print_cache_key=print_cache_key,
+        )
     if small and (baseline is not None or write_baseline_file):
         typer.echo("error: --small does not take --baseline", err=True)
         raise typer.Exit(code=1)
@@ -834,6 +852,9 @@ def eval_cmd(
             raise typer.Exit(code=1) from exc
         typer.echo(key)
         raise typer.Exit(code=0)
+    if from_results is not None and suite == "metrics":
+        _render_metrics_file(from_results, readme)
+        return
     if from_results is not None:
         try:
             reports = load_reports(from_results)
@@ -849,6 +870,10 @@ def eval_cmd(
                     typer.echo(f"error: {exc}", err=True)
                     raise typer.Exit(code=1) from exc
             _gate_nightly(stored, baseline=baseline, write_baseline=write_baseline_file)
+        return
+
+    if suite == "metrics":
+        _run_metrics_eval(out, readme)
         return
 
     settings = _eval_settings(small)
@@ -1096,6 +1121,87 @@ def _gate_nightly(
         for failure in compared.failures:
             typer.echo(f"fail {failure.metric}: {failure.detail}", err=True)
         raise typer.Exit(code=1)
+
+
+def _reject_metrics_flags(
+    *,
+    small: bool,
+    chunker: list[ChunkerName] | None,
+    mode: list[str] | None,
+    embedder: EmbedderName | None,
+    k: int,
+    baseline: Path | None,
+    write_baseline: bool,
+    print_cache_key: bool,
+) -> None:
+    flagged: list[str] = []
+    if small:
+        flagged.append("--small")
+    if chunker:
+        flagged.append("--chunker")
+    if mode:
+        flagged.append("--mode")
+    if embedder is not None:
+        flagged.append("--embedder")
+    if k != 5:
+        flagged.append("--k")
+    if baseline is not None:
+        flagged.append("--baseline")
+    if write_baseline:
+        flagged.append("--write-baseline")
+    if print_cache_key:
+        flagged.append("--print-cache-key")
+    if not flagged:
+        return
+    typer.echo(f"error: metrics suite does not take {', '.join(flagged)}", err=True)
+    raise typer.Exit(code=1)
+
+
+def _render_metrics_file(path: Path, readme: Path | None) -> None:
+    try:
+        report = load_metrics_report(path)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(render_metrics_markdown(report), nl=False)
+    if readme is None:
+        return
+    try:
+        update_readme_metrics(readme, report)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+
+def _run_metrics_eval(out: Path, readme: Path | None) -> None:
+    try:
+        report = asyncio.run(run_metrics_suite(out_dir=out))
+    except EvalUnverified as exc:
+        typer.echo(f"unverified: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except (OSError, ValueError, MetricSuiteError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        shutdown()
+    typer.echo(
+        "eval "
+        f"suite=metrics n={report.n} "
+        f"agent_exact={report.agent.exact.hits}/{report.agent.exact.items} "
+        f"agent_refusal={report.agent.refusal.hits}/{report.agent.refusal.items} "
+        f"rag_exact={report.rag.exact.hits}/{report.rag.exact.items} "
+        f"rag_refusal={report.rag.refusal.hits}/{report.rag.refusal.items} "
+        f"v1_mart={report.coverage.hits}/{report.coverage.items} "
+        f"out={out}"
+    )
+    typer.echo(render_metrics_markdown(report), nl=False)
+    if readme is None:
+        return
+    try:
+        update_readme_metrics(readme, report)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 def _eval_settings(small: bool) -> Settings:

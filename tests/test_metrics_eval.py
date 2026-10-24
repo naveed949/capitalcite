@@ -7,9 +7,11 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
+from typer.testing import CliRunner
 
 from capitalcite.api.ask_models import AskResponse
 from capitalcite.ask.types import Citation
+from capitalcite.cli import app
 from capitalcite.eval.metrics_eval import (
     DEFAULT_V1,
     CoverageClass,
@@ -44,6 +46,15 @@ _ITEM = MetricGoldItem(
     question="What were JPM's total deposits in 2026Q2?",
     source=_SOURCE,
 )
+
+
+def test_metrics_suite_rejects_retrieval_flags() -> None:
+    result = CliRunner().invoke(app, ["eval", "--suite", "metrics", "--small"])
+    assert result.exit_code == 1
+    assert "--small" in result.output
+    help_text = CliRunner().invoke(app, ["eval", "--help"])
+    assert help_text.exit_code == 0
+    assert "metrics" in help_text.stdout
 
 
 def test_figure_token_respects_minus_zero_scale_and_percent() -> None:
