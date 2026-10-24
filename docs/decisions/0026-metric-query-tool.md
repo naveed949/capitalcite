@@ -43,15 +43,14 @@ company.
 `pattern` is `^[A-Z][A-Z0-9]{0,5}$`. A real-model planner must send an
 uppercase ticker; `jpm` is `invalid args` before the runner.
 
-Holding-company routing is an allowlist plus a veto. The fake planner
-remaps to `holding_company_*` only when exactly one holding word sits
-inside a positive modifier form (`BHC total assets`, `assets for the
-holding company`, `at the (bank) holding company level`) and the
-question has no exclusion or contrast cue. A cue anywhere, a second
-holding mention, or a mention outside the allowed form stays on
-`search_filings`. An allowlist `.search()` still remapped when the
-allowed form appeared after a negation. A wrong figure costs more than
-a search fallback.
+Holding-company routing is a closed grammar. The fake model is a
+deterministic demo planner, so it remaps to `holding_company_*` only
+when the whole normalized question `fullmatch`es a small set of
+templates (`JPM's BHC total assets in 2026Q2`, `JPM's total assets for
+the holding company`). Extra words fail the template and stay on
+`search_filings`. Open-ended phrasing belongs to a real LLM planner
+behind the same gate. The gate's typed args stay the safety boundary
+either way. A wrong figure costs more than a search fallback.
 
 ## Why the demo runs a precompiled catalog
 

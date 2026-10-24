@@ -265,19 +265,33 @@ _HOLDING_MENTION = re.compile(
     r"parent\s+company|parent|bhc)\b",
     re.IGNORECASE,
 )
+_TICKER_TOKEN = r"[a-z][a-z0-9]{0,5}"
 _HOLDING_ENTITY = r"(?:holding\s+company|bank\s+holding\s+company|bhc|parent(?:\s+company)?)"
 _METRIC_NOUN = r"(?:(?:total\s+)?(?:deposits|assets)|net\s+income)"
-_HOLDING_PREFIX = re.compile(rf"\b{_HOLDING_ENTITY}(?:'s)?\s+{_METRIC_NOUN}\b", re.IGNORECASE)
-_HOLDING_OF = re.compile(
-    rf"\b{_METRIC_NOUN}\s+(?:of|for|at)\s+the\s+{_HOLDING_ENTITY}(?:\s+level)?\b",
-    re.IGNORECASE,
-)
-_HOLDING_LEVEL = re.compile(r"\bat\s+the\s+(?:bank\s+)?holding\s+company\s+level\b", re.IGNORECASE)
-_HOLDING_VETO = re.compile(
-    r"(?:exclud\w*|\bwithout\b|w/o|\bnot\b|n't|\bnever\b|\bsans\b|\bexcept\b|"
-    r"other\s+than|rather\s+than|instead\s+of|apart\s+from|\bless\b|\bminus\b|"
-    r"leav\w*\s+out|omit\w*|exclusive\s+of)",
-    re.IGNORECASE,
+_BALANCE_NOUN = r"(?:total\s+)?(?:deposits|assets)"
+_PERIOD_TOKEN = r"(?:\d{4}q[1-4]|q[1-4]\s+\d{4}|\d{4}-\d{2}-\d{2}|\d{4})"
+_WHEN = rf"(?:\s+(?:in|for|at|as\s+of)\s+{_PERIOD_TOKEN})?"
+_WHAT = r"what\s+(?:was|were|is|are)"
+_HOW_MUCH = r"how\s+much(?:\s+(?:was|were|is|are))?"
+_HOLDING_TEMPLATES = (
+    re.compile(
+        rf"^{_WHAT}\s+(?:the\s+)?{_TICKER_TOKEN}(?:'s)?\s+"
+        rf"{_HOLDING_ENTITY}(?:'s)?\s+{_METRIC_NOUN}{_WHEN}$"
+    ),
+    re.compile(
+        rf"^{_WHAT}\s+(?:the\s+)?{_TICKER_TOKEN}(?:'s)?\s+"
+        rf"{_METRIC_NOUN}\s+(?:of|for|at)\s+the\s+"
+        rf"{_HOLDING_ENTITY}(?:\s+level)?{_WHEN}$"
+    ),
+    re.compile(
+        rf"^{_HOW_MUCH}\s+(?:the\s+)?{_TICKER_TOKEN}(?:'s)?\s+"
+        rf"{_HOLDING_ENTITY}(?:'s)?\s+{_BALANCE_NOUN}{_WHEN}$"
+    ),
+    re.compile(
+        rf"^{_HOW_MUCH}\s+(?:the\s+)?{_TICKER_TOKEN}(?:'s)?\s+"
+        rf"{_BALANCE_NOUN}\s+(?:of|for|at)\s+the\s+"
+        rf"{_HOLDING_ENTITY}(?:\s+level)?{_WHEN}$"
+    ),
 )
 _ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _QUARTER_MONTH_DAYS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
@@ -313,21 +327,19 @@ def _metric_phrase(question: str) -> MetricName | None:
     return best[1]
 
 
-def _mention_in_allowed_form(question: str, mention: re.Match[str]) -> bool:
-    for pattern in (_HOLDING_PREFIX, _HOLDING_OF, _HOLDING_LEVEL):
-        for form in pattern.finditer(question):
-            if form.start() <= mention.start() and mention.end() <= form.end():
-                return True
-    return False
+def _normalize_ask(question: str) -> str:
+    return " ".join(question.lower().split()).rstrip("?.")
+
+
+def _holding_template_match(question: str) -> bool:
+    text = _normalize_ask(question)
+    return any(pattern.fullmatch(text) is not None for pattern in _HOLDING_TEMPLATES)
 
 
 def _remap_holding_metric(question: str, metric: MetricName) -> MetricName | None:
-    mentions = list(_HOLDING_MENTION.finditer(question))
-    if not mentions:
+    if _HOLDING_MENTION.search(question) is None:
         return metric
-    if _HOLDING_VETO.search(question) is not None:
-        return None
-    if len(mentions) != 1 or not _mention_in_allowed_form(question, mentions[0]):
+    if not _holding_template_match(question):
         return None
     return _HOLDING_METRIC.get(metric, metric)
 
@@ -542,11 +554,10 @@ def _plan_system_prompt() -> str:
         "ticker must be uppercase and match ^[A-Z][A-Z0-9]{0,5}$. "
         "Do not use it for describe, discuss, explain, strategy, or risk wording, "
         "or for year-only net_income. "
-        "Use a holding_company_ metric only when exactly one holding word "
-        "directly modifies the metric (BHC total assets; assets for the "
-        "holding company; at the holding company level) and the question has "
-        "no exclusion or contrast cue. Any other mention of holding company, "
-        "BHC, or parent is search_filings. "
+        "Use a holding_company_ metric only when the whole question is a "
+        "holding template (JPM's BHC total assets in 2026Q2; JPM's total "
+        "assets for the holding company). Any other mention of holding "
+        "company, BHC, or parent is search_filings. "
         "Use graph_query for holding-company structure, RSSD, LEI, or subsidiary joins. "
         "For a comparison or multi-hop question, search each bank and year separately. "
         "When you have enough retrieved passages, return kind synthesize and no calls. "
