@@ -260,7 +260,11 @@ _NUMERIC_ASK = re.compile(
     r"\b(?:what\s+(?:was|were|is|are)|how\s+much|value\s+of)\b", re.IGNORECASE
 )
 _NARRATIVE_ASK = re.compile(r"\b(?:describe|discuss|explain|strategy|risk)\b", re.IGNORECASE)
-_HOLDING_WORD = re.compile(r"\b(?:holding\s+company|bank\s+holding|bhc|parent)\b", re.IGNORECASE)
+_HOLDING_MENTION = re.compile(
+    r"\b(?:bank\s+holding\s+company|holding\s+company|bank\s+holding|"
+    r"parent\s+company|parent|bhc)\b",
+    re.IGNORECASE,
+)
 _HOLDING_ENTITY = r"(?:holding\s+company|bank\s+holding\s+company|bhc|parent(?:\s+company)?)"
 _METRIC_NOUN = r"(?:(?:total\s+)?(?:deposits|assets)|net\s+income)"
 _HOLDING_PREFIX = re.compile(rf"\b{_HOLDING_ENTITY}(?:'s)?\s+{_METRIC_NOUN}\b", re.IGNORECASE)
@@ -269,6 +273,12 @@ _HOLDING_OF = re.compile(
     re.IGNORECASE,
 )
 _HOLDING_LEVEL = re.compile(r"\bat\s+the\s+(?:bank\s+)?holding\s+company\s+level\b", re.IGNORECASE)
+_HOLDING_VETO = re.compile(
+    r"(?:exclud\w*|\bwithout\b|w/o|\bnot\b|n't|\bnever\b|\bsans\b|\bexcept\b|"
+    r"other\s+than|rather\s+than|instead\s+of|apart\s+from|\bless\b|\bminus\b|"
+    r"leav\w*\s+out|omit\w*|exclusive\s+of)",
+    re.IGNORECASE,
+)
 _ISO_DATE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 _QUARTER_MONTH_DAYS = frozenset({(3, 31), (6, 30), (9, 30), (12, 31)})
 _NAMED_QUARTER_END = {1: (3, 31), 2: (6, 30), 3: (9, 30), 4: (12, 31)}
@@ -303,12 +313,23 @@ def _metric_phrase(question: str) -> MetricName | None:
     return best[1]
 
 
-def _holding_modifies_metric(question: str) -> bool:
-    return (
-        _HOLDING_PREFIX.search(question) is not None
-        or _HOLDING_OF.search(question) is not None
-        or _HOLDING_LEVEL.search(question) is not None
-    )
+def _mention_in_allowed_form(question: str, mention: re.Match[str]) -> bool:
+    for pattern in (_HOLDING_PREFIX, _HOLDING_OF, _HOLDING_LEVEL):
+        for form in pattern.finditer(question):
+            if form.start() <= mention.start() and mention.end() <= form.end():
+                return True
+    return False
+
+
+def _remap_holding_metric(question: str, metric: MetricName) -> MetricName | None:
+    mentions = list(_HOLDING_MENTION.finditer(question))
+    if not mentions:
+        return metric
+    if _HOLDING_VETO.search(question) is not None:
+        return None
+    if len(mentions) != 1 or not _mention_in_allowed_form(question, mentions[0]):
+        return None
+    return _HOLDING_METRIC.get(metric, metric)
 
 
 def _invalid_period_reason(question: str) -> str:
@@ -372,9 +393,8 @@ def _metric_calls(question: str, traces: Sequence[TraceStep]) -> list[ToolCall] 
     metric = _metric_phrase(question)
     if metric is None:
         return None
-    if _holding_modifies_metric(question):
-        metric = _HOLDING_METRIC.get(metric, metric)
-    elif _HOLDING_WORD.search(question) is not None:
+    metric = _remap_holding_metric(question, metric)
+    if metric is None:
         return None
     tickers = sorted(tickers_named(question))
     if not tickers:
@@ -522,9 +542,10 @@ def _plan_system_prompt() -> str:
         "ticker must be uppercase and match ^[A-Z][A-Z0-9]{0,5}$. "
         "Do not use it for describe, discuss, explain, strategy, or risk wording, "
         "or for year-only net_income. "
-        "Use a holding_company_ metric only when a holding word directly modifies "
-        "the metric (BHC total assets; assets for the holding company; "
-        "at the holding company level). Any other mention of holding company, "
+        "Use a holding_company_ metric only when exactly one holding word "
+        "directly modifies the metric (BHC total assets; assets for the "
+        "holding company; at the holding company level) and the question has "
+        "no exclusion or contrast cue. Any other mention of holding company, "
         "BHC, or parent is search_filings. "
         "Use graph_query for holding-company structure, RSSD, LEI, or subsidiary joins. "
         "For a comparison or multi-hop question, search each bank and year separately. "

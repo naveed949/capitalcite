@@ -43,13 +43,15 @@ company.
 `pattern` is `^[A-Z][A-Z0-9]{0,5}$`. A real-model planner must send an
 uppercase ticker; `jpm` is `invalid args` before the runner.
 
-Holding-company routing is an allowlist, not a negation denylist. The
-fake planner remaps to `holding_company_*` only when a holding word
-directly modifies the metric: `BHC total assets`, `assets for the
-holding company`, or `at the (bank) holding company level`. Any other
-question that mentions holding company, BHC, or parent stays on
-`search_filings`. A missed exclusion word on a denylist returned the
-parent cell. A wrong figure costs more than a search fallback.
+Holding-company routing is an allowlist plus a veto. The fake planner
+remaps to `holding_company_*` only when exactly one holding word sits
+inside a positive modifier form (`BHC total assets`, `assets for the
+holding company`, `at the (bank) holding company level`) and the
+question has no exclusion or contrast cue. A cue anywhere, a second
+holding mention, or a mention outside the allowed form stays on
+`search_filings`. An allowlist `.search()` still remapped when the
+allowed form appeared after a negation. A wrong figure costs more than
+a search fallback.
 
 ## Why the demo runs a precompiled catalog
 
