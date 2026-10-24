@@ -257,9 +257,7 @@ _NUMERIC_ASK = re.compile(
     r"\b(?:what\s+(?:was|were|is|are)|how\s+much|value\s+of)\b", re.IGNORECASE
 )
 _NARRATIVE_ASK = re.compile(r"\b(?:describe|discuss|explain|strategy|risk)\b", re.IGNORECASE)
-_HOLDING_ASK = re.compile(
-    r"\b(?:holding\s+company|bank\s+holding|bhc|parent)\b", re.IGNORECASE
-)
+_HOLDING_ASK = re.compile(r"\b(?:holding\s+company|bank\s+holding|bhc|parent)\b", re.IGNORECASE)
 _HOLDING_NEGATION = re.compile(
     r"(?:exclud(?:e|ing|ed)|without|\bnot\b|ex-)\s*(?:the\s+)?"
     r"(?:holding\s+company|bank\s+holding|bhc|parent)",
