@@ -900,6 +900,8 @@ def bench_provenance(
     label = endpoint.label
     if label.model_id != pin.openai_model:
         raise ValueError("endpoint model does not match the pin")
+    if label.host_class == "other" or label.provider == "compatible":
+        raise EvalUnverified("bench refuses a third-party chat host; cost is unknown")
     if label.provider == "local":
         return BenchProvenance(
             provider="local",

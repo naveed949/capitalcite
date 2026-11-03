@@ -486,6 +486,16 @@ def test_local_pin_refuses_paid_and_a_hosted_url(monkeypatch: pytest.MonkeyPatch
         _bench_settings(pin, paid=False)
 
 
+def test_bench_provenance_refuses_a_third_party_host() -> None:
+    from capitalcite.ask.endpoint import parse_chat_endpoint
+    from capitalcite.eval.bench import bench_provenance
+
+    pin = load_pin(Path("evals/bench/pin-lfm3-local.json"))
+    endpoint = parse_chat_endpoint("https://example.com/v1", "sk-secret", pin.openai_model)
+    with pytest.raises(EvalUnverified, match="third-party"):
+        bench_provenance(endpoint, pin, Path("evals/bench/pin-lfm3-local.json"))
+
+
 def test_local_report_json_has_no_url(tmp_path: Path) -> None:
     from typer.testing import CliRunner
 
