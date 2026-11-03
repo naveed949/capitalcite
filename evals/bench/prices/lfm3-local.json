@@ -1,0 +1,14 @@
+{
+  "id": "lfm3-local",
+  "source": "local model, no per-token cost",
+  "retrieved": "2026-11-03",
+  "label": "Local Chat Completions server. Rates are zero. Not a hosted OpenAI list price.",
+  "currency": "USD",
+  "billing": "local",
+  "models": {
+    "lfm3:latest": {
+      "input_usd_per_1m": 0,
+      "output_usd_per_1m": 0
+    }
+  }
+}

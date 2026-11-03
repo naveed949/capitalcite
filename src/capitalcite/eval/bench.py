@@ -9,11 +9,13 @@ import tempfile
 from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from capitalcite.agent import run_agent_loop, set_compile_once
+from capitalcite.ask.endpoint import ChatEndpoint, chat_endpoint_for, host_class_for
+from capitalcite.ask.types import AskModelName, ModelNotConfigured
 from capitalcite.atomic import atomic_write_text
 from capitalcite.config import Settings
 from capitalcite.eval.bootstrap import MeanCI, paired_mean_ci, percentile
@@ -27,7 +29,7 @@ from capitalcite.eval.metrics_gold import (
     resolve,
 )
 from capitalcite.eval.phases import PhaseTimes, fold_phases
-from capitalcite.eval.prices import DEFAULT_PRICES, PriceTable, cost_usd, load_prices
+from capitalcite.eval.prices import DEFAULT_PRICES, PriceTable, bench_cost_usd, load_prices
 from capitalcite.eval.runner import EvalUnverified, git_revision
 from capitalcite.eval.tokens import (
     TOKENIZER_NAME,
@@ -71,6 +73,7 @@ class BenchPin(BaseModel):
     n_items: int = Field(ge=1)
     sets: dict[str, int]
     model: Literal["fake", "openai"] = "fake"
+    host_class: Literal["localhost", "openai"] | None = None
     openai_model: str
     seed: int
     temperature: float
@@ -80,6 +83,15 @@ class BenchPin(BaseModel):
     bootstrap_B: int = Field(ge=1)
     bootstrap_seed: int
     paid_run: dict[str, object]
+
+    @model_validator(mode="after")
+    def paid_run_has_no_url(self) -> BenchPin:
+        for key, item in self.paid_run.items():
+            if key == "command":
+                continue
+            _reject_url_stamp(key, where="paid_run")
+            _reject_url_stamp(item, where="paid_run")
+        return self
 
 
 class IdentityRow(BaseModel):
@@ -177,6 +189,61 @@ class RecallReport(BaseModel):
         return self
 
 
+class BenchProvenance(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider: Literal["fake", "local", "hosted"]
+    host_class: Literal["none", "localhost", "openai"]
+    model_id: str = Field(min_length=1)
+    pin_name: str = Field(min_length=1)
+    comparable_to_hosted: bool
+    latency_scope: Literal["process_fake", "host_hardware", "provider_api"]
+
+    @model_validator(mode="after")
+    def one_story(self) -> BenchProvenance:
+        if "://" in self.model_id or "://" in self.pin_name:
+            raise ValueError("provenance must not contain a URL")
+        if "/" in self.pin_name or self.pin_name in {".", ".."}:
+            raise ValueError("pin_name is a file name")
+        if (
+            self.provider == "fake"
+            and self.host_class == "none"
+            and self.model_id == "fake"
+            and not self.comparable_to_hosted
+            and self.latency_scope == "process_fake"
+        ):
+            return self
+        if (
+            self.provider == "local"
+            and self.host_class == "localhost"
+            and not self.comparable_to_hosted
+            and self.latency_scope == "host_hardware"
+        ):
+            return self
+        if (
+            self.provider == "hosted"
+            and self.host_class == "openai"
+            and self.comparable_to_hosted
+            and self.latency_scope == "provider_api"
+        ):
+            return self
+        raise ValueError("provenance does not match one run story")
+
+
+_FAKE_PROVENANCE = {
+    "provider": "fake",
+    "host_class": "none",
+    "model_id": "fake",
+    "pin_name": "pin.json",
+    "comparable_to_hosted": False,
+    "latency_scope": "process_fake",
+}
+
+
+def _legacy_provenance() -> BenchProvenance:
+    return BenchProvenance.model_validate(dict(_FAKE_PROVENANCE))
+
+
 class BenchReport(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
     suite: Literal["bench"] = "bench"
@@ -185,6 +252,7 @@ class BenchReport(BaseModel):
     corpus: LiteralCorpus = "fixture"
     pin: BenchPin
     prices: PriceTable
+    provenance: BenchProvenance = Field(default_factory=_legacy_provenance)
     n_items: int = Field(ge=1)
     queries: tuple[QueryRecord, ...]
     identity_digest: str = Field(min_length=64, max_length=64)
@@ -277,18 +345,17 @@ async def run_bench_suite(
     out_dir: Path | None = None,
     compile_once: bool = True,
     pin_path: Path | None = None,
-    stem_suffix: str = "-bench",
     corpus: LiteralCorpus = "fixture",
     paid: bool = False,
     input_dir: Path | None = None,
 ) -> BenchReport:
     """Ask rag, graph, and loop on the 77+18 item union."""
     os.environ.setdefault("SEC_USER_AGENT", "capitalcite-eval eval@example.com")
-    pin = load_pin(pin_path)
-    if paid:
-        pin = pin.model_copy(update={"model": "openai"})
-    prices = load_prices(Path(pin.prices) if pin.prices else DEFAULT_PRICES)
-    settings = _bench_settings(pin, paid=paid)
+    ready = resolve_bench_run(pin_path, paid=paid)
+    pin = ready.pin
+    prices = ready.prices
+    settings = ready.settings
+    provenance = ready.provenance
     v1 = recall_items(load_items(DEFAULT_V1))
     metrics = await load_metric_gold()
     if len(v1) + len(metrics) != pin.n_items:
@@ -317,6 +384,7 @@ async def run_bench_suite(
                                     exporter,
                                     prices,
                                     pin,
+                                    provenance,
                                     measure_recall=measure_recall,
                                 )
                             )
@@ -324,7 +392,14 @@ async def run_bench_suite(
                         for arm in arms:
                             queries.append(
                                 await _score_metric(
-                                    metric, arm, setup, asking, exporter, prices, pin
+                                    metric,
+                                    arm,
+                                    setup,
+                                    asking,
+                                    exporter,
+                                    prices,
+                                    pin,
+                                    provenance,
                                 )
                             )
             except FixtureIndexError as exc:
@@ -349,6 +424,7 @@ async def run_bench_suite(
         corpus=corpus,
         pin=pin,
         prices=prices,
+        provenance=provenance,
         n_items=len(v1) + len(metrics),
         queries=ordered,
         identity_digest=identity_digest(ordered),
@@ -360,7 +436,8 @@ async def run_bench_suite(
     )
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
-        stem = _result_stem(revision, stem_suffix)
+        suffix = bench_stem_suffix(compile_once=compile_once, provenance=provenance)
+        stem = _result_stem(revision, suffix)
         atomic_write_text(out_dir / f"{stem}.json", report.model_dump_json(indent=2) + "\n")
     return report
 
@@ -418,7 +495,7 @@ def render_bench_markdown(report: BenchReport) -> str:
                 f"graph-loop accuracy delta={acc.point:.3f} "
                 f"95% CI [{acc.lo:.3f}, {acc.hi:.3f}] B={acc.B} seed={acc.seed}"
             ),
-            "Generated from a fake-model run. Paid OpenAI numbers are UNVERIFIED.",
+            provenance_sentence(report.provenance),
             "",
         ]
     )
@@ -456,7 +533,8 @@ def update_readme_bench(readme: Path, report: BenchReport) -> None:
 
 
 def _readme_table(report: BenchReport) -> str:
-    sha = _result_stem(report.git_sha, "")
+    suffix = bench_stem_suffix(compile_once=report.compile_once, provenance=report.provenance)
+    stem = _result_stem(report.git_sha, suffix)
     lines = [
         "| Arm | n | Recall@5 | Accuracy | p50 ms | p95 ms | cost/query |",
         "|---|---:|---:|---:|---:|---:|---:|",
@@ -475,7 +553,8 @@ def _readme_table(report: BenchReport) -> str:
             _recall_delta_line(report),
             (f"graph-loop accuracy delta={acc.point:.3f} (95% CI {acc.lo:.3f} to {acc.hi:.3f})."),
             f"Bottleneck on the graph arm is **{report.bottleneck_phase}**.",
-            f"Generated from [`evals/results/{sha}-bench.json`](evals/results/{sha}-bench.json).",
+            f"Generated from [`evals/results/{stem}.json`](evals/results/{stem}.json).",
+            provenance_sentence(report.provenance),
             "",
         ]
     )
@@ -490,6 +569,7 @@ async def _score_v1(
     exporter: MemoryExporter,
     prices: PriceTable,
     pin: BenchPin,
+    provenance: BenchProvenance,
     *,
     measure_recall: bool,
 ) -> QueryRecord:
@@ -506,6 +586,7 @@ async def _score_v1(
         phases,
         prices,
         pin,
+        provenance,
         recall,
         accurate,
         exporter,
@@ -520,6 +601,7 @@ async def _score_metric(
     exporter: MemoryExporter,
     prices: PriceTable,
     pin: BenchPin,
+    provenance: BenchProvenance,
 ) -> QueryRecord:
     response, hits, phases = await _run_arm(item.question, arm, setup, settings, exporter)
     resolved = resolve(item.source, DEFAULT_FIXTURE_ROOT)
@@ -536,6 +618,7 @@ async def _score_metric(
         phases,
         prices,
         pin,
+        provenance,
         None,
         accurate,
         exporter,
@@ -591,6 +674,7 @@ def _record(
     phases: PhaseTimes,
     prices: PriceTable,
     pin: BenchPin,
+    provenance: BenchProvenance,
     recall_at_5: bool | None,
     accurate: bool,
     exporter: MemoryExporter,
@@ -609,7 +693,6 @@ def _record(
     text = response.answer or response.refusal_reason or ""
     tokens_out = count_tokens(text)
     tokens_in_api, tokens_out_api = _api_tokens(exporter)
-    billed = pin.model != "fake"
     return QueryRecord(
         item_id=item_id,
         item_set=item_set,
@@ -622,12 +705,12 @@ def _record(
         tokens_out=tokens_out,
         tokens_in_api=tokens_in_api,
         tokens_out_api=tokens_out_api,
-        cost_usd=cost_usd(
+        cost_usd=bench_cost_usd(
             prices,
+            provenance,
             model_id=pin.openai_model,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
-            billed=billed,
         ),
         recall_at_5=recall_at_5,
         accurate=accurate,
@@ -699,18 +782,44 @@ def _api_tokens(exporter: MemoryExporter) -> tuple[int | None, int | None]:
     return inn, out
 
 
-def _bench_settings(pin: BenchPin, *, paid: bool) -> Settings:
+class _BenchReady(NamedTuple):
+    pin: BenchPin
+    prices: PriceTable
+    settings: Settings
+    endpoint: ChatEndpoint | None
+    provenance: BenchProvenance
+
+
+def resolve_bench_run(pin_path: Path | None, *, paid: bool) -> _BenchReady:
+    path = pin_path if pin_path is not None else DEFAULT_PIN
+    pin = load_pin(path)
+    if paid:
+        pin = pin.model_copy(update={"model": "openai"})
+    return _ready(pin, path, paid=paid)
+
+
+def _bench_settings(pin: BenchPin, *, paid: bool) -> _BenchReady:
+    return _ready(pin, DEFAULT_PIN, paid=paid)
+
+
+def _ready(pin: BenchPin, pin_path: Path, *, paid: bool) -> _BenchReady:
+    prices = load_prices(Path(pin.prices) if pin.prices else DEFAULT_PRICES)
+    settings, endpoint = _open_bench(pin, paid=paid)
+    provenance = bench_provenance(endpoint, pin, pin_path)
+    return _BenchReady(pin, prices, settings, endpoint, provenance)
+
+
+def _open_bench(pin: BenchPin, *, paid: bool) -> tuple[Settings, ChatEndpoint | None]:
     settings = Settings(sec_user_agent="capitalcite-eval eval@example.com")
-    if settings.ask_model == "openai" and not paid:
-        raise EvalUnverified("ASK_MODEL=openai requires --paid")
-    if paid and settings.ask_model != "openai":
-        raise EvalUnverified("--paid requires ASK_MODEL=openai")
     if settings.ask_model not in {"fake", "openai"}:
         raise EvalUnverified("ASK_MODEL must be fake or openai")
-    if settings.ask_model == "openai":
-        key = (settings.openai_api_key or "").strip()
-        if not key:
-            raise EvalUnverified("ASK_MODEL=openai requires OPENAI_API_KEY")
+    endpoint: ChatEndpoint | None
+    if settings.ask_model == "fake":
+        if pin.host_class is not None:
+            raise EvalUnverified("pin host_class requires ASK_MODEL=openai")
+        gate_paid(None, paid=paid, ask_model="fake")
+        endpoint = None
+    else:
         settings = settings.model_copy(
             update={
                 "ask_openai_model": pin.openai_model,
@@ -718,9 +827,140 @@ def _bench_settings(pin: BenchPin, *, paid: bool) -> Settings:
                 "ask_temperature": pin.temperature,
             }
         )
+        actual = host_class_for(settings.ask_openai_base_url)
+        if actual == "other":
+            raise EvalUnverified("bench refuses a third-party chat host; cost is unknown")
+        _require_pin_host(pin, actual)
+        if actual == "openai" and not paid:
+            raise EvalUnverified("hosted OpenAI requires --paid")
+        if actual != "openai" and paid:
+            raise EvalUnverified("--paid does not apply to a local chat endpoint")
+        try:
+            endpoint = chat_endpoint_for(settings, "openai")
+        except ModelNotConfigured as exc:
+            raise EvalUnverified(str(exc)) from exc
+        gate_paid(endpoint, paid=paid, ask_model=settings.ask_model)
     if settings.metric_query_backend != "catalog":
         raise EvalUnverified("METRIC_QUERY_BACKEND must be catalog")
     warehouse = settings.warehouse_path
     if warehouse is None or not warehouse.is_file():
         raise EvalUnverified("warehouse is missing")
-    return settings
+    return settings, endpoint
+
+
+def _require_pin_host(pin: BenchPin, host_class: str) -> None:
+    recorded = pin.host_class
+    if recorded is None:
+        if host_class != "openai":
+            raise EvalUnverified("a local chat endpoint requires pin host_class")
+        return
+    if recorded != host_class:
+        raise EvalUnverified(
+            f"pin host_class {recorded} does not match chat host class {host_class}"
+        )
+
+
+def gate_paid(
+    endpoint: ChatEndpoint | None,
+    *,
+    paid: bool,
+    ask_model: AskModelName,
+) -> None:
+    if ask_model == "fake":
+        if paid:
+            raise EvalUnverified("--paid requires ASK_MODEL=openai")
+        return
+    if endpoint is None:
+        raise EvalUnverified("ASK_MODEL=openai requires OPENAI_API_KEY")
+    if endpoint.label.host_class == "other":
+        raise EvalUnverified("bench refuses a third-party chat host; cost is unknown")
+    if endpoint.label.billed:
+        if not paid:
+            raise EvalUnverified("hosted OpenAI requires --paid")
+        return
+    if paid:
+        raise EvalUnverified("--paid does not apply to a local chat endpoint")
+
+
+def bench_provenance(
+    endpoint: ChatEndpoint | None,
+    pin: BenchPin,
+    pin_path: Path,
+) -> BenchProvenance:
+    name = pin_path.name
+    if endpoint is None:
+        return BenchProvenance(
+            provider="fake",
+            host_class="none",
+            model_id="fake",
+            pin_name=name,
+            comparable_to_hosted=False,
+            latency_scope="process_fake",
+        )
+    label = endpoint.label
+    if label.model_id != pin.openai_model:
+        raise ValueError("endpoint model does not match the pin")
+    if label.host_class == "other" or label.provider == "compatible":
+        raise EvalUnverified("bench refuses a third-party chat host; cost is unknown")
+    if label.provider == "local":
+        return BenchProvenance(
+            provider="local",
+            host_class=label.host_class,
+            model_id=label.model_id,
+            pin_name=name,
+            comparable_to_hosted=False,
+            latency_scope="host_hardware",
+        )
+    return BenchProvenance(
+        provider="hosted",
+        host_class="openai",
+        model_id=label.model_id,
+        pin_name=name,
+        comparable_to_hosted=True,
+        latency_scope="provider_api",
+    )
+
+
+def bench_stem_suffix(*, compile_once: bool, provenance: BenchProvenance) -> str:
+    base = "-bench" if compile_once else "-bench-before"
+    if provenance.provider != "local":
+        return base
+    if provenance.host_class == "localhost":
+        return f"{base}-localhost"
+    raise ValueError("local provenance needs host class localhost")
+
+
+def baseline_refusal(provenance: BenchProvenance) -> str | None:
+    if provenance.provider == "fake":
+        return None
+    return "--baseline and --write-baseline require a fake-model run"
+
+
+def provenance_sentence(provenance: BenchProvenance) -> str:
+    if provenance.provider == "fake":
+        return "Generated from a fake-model run. Paid OpenAI numbers are UNVERIFIED."
+    named = (
+        f"provider {provenance.provider}, host class {provenance.host_class}, "
+        f"model {provenance.model_id}, and pin {provenance.pin_name}"
+    )
+    if provenance.provider == "local":
+        return (
+            f"This run used {named}. It is not comparable to hosted gpt-4o-mini. "
+            "Latency is the machine that served the model."
+        )
+    return f"This run used {named}."
+
+
+def _reject_url_stamp(value: object, *, where: str) -> None:
+    if isinstance(value, str):
+        if "://" in value:
+            raise ValueError(f"{where} must not contain a URL")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _reject_url_stamp(key, where=where)
+            _reject_url_stamp(item, where=where)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _reject_url_stamp(item, where=where)

@@ -831,7 +831,7 @@ def eval_cmd(
     paid: bool = typer.Option(
         False,
         "--paid",
-        help="Allow ASK_MODEL=openai for bench. Omit this flag in every workflow.",
+        help="Allow a hosted OpenAI bench. A local chat endpoint must not pass this flag.",
     ),
     no_compile_once: bool = typer.Option(
         False,
@@ -1274,13 +1274,24 @@ def _run_bench_eval(
     corpus: str = "fixture",
     input_dir: Path | None = None,
 ) -> None:
+    from capitalcite.eval.bench import baseline_refusal, resolve_bench_run
+
+    if baseline is not None or write_baseline:
+        try:
+            preview = resolve_bench_run(pin_path, paid=paid)
+        except EvalUnverified as exc:
+            typer.echo(f"unverified: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        refused = baseline_refusal(preview.provenance)
+        if refused is not None:
+            typer.echo(f"error: {refused}", err=True)
+            raise typer.Exit(code=1)
     try:
         report = asyncio.run(
             run_bench_suite(
                 out_dir=out,
                 compile_once=compile_once,
                 pin_path=pin_path,
-                stem_suffix="-bench" if compile_once else "-bench-before",
                 corpus=corpus,  # type: ignore[arg-type]
                 paid=paid,
                 input_dir=input_dir,
@@ -1324,6 +1335,12 @@ def _gate_bench(
     if not write_baseline and baseline is None:
         return
     assert isinstance(report, BenchReport)
+    from capitalcite.eval.bench import baseline_refusal
+
+    refused = baseline_refusal(report.provenance)
+    if refused is not None:
+        typer.echo(f"error: {refused}", err=True)
+        raise typer.Exit(code=1)
     snapshot = snapshot_bench(report)
     target = baseline if baseline is not None else DEFAULT_BENCH_BASELINE
     if write_baseline:

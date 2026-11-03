@@ -181,6 +181,20 @@ The optimization in this change is compile-once. Before, `run_agent` compiled a 
 
 Nightly gates the same-run graph p95 / rag p95 ratio and cost per query against [`evals/baselines/bench.json`](evals/baselines/bench.json) at a 2x band on that ratio and a 0 absolute cost budget. When compile_once is true it also fails if mean graph compile_ms is 0.5 or higher. Absolute millisecond p95 is host-dependent.
 
+To run the same 95 items against a local Chat Completions server, start Ollama and pass the local pin. Do not pass `--paid` or `--baseline`. This command is UNVERIFIED against a live `lfm3:latest` server. The results file is `<sha12>-bench-localhost.json`. It records `provider` `local`, `host_class` `localhost`, the model id, and the pin file name. It does not store the base URL. Latency is the machine that served the model and is not comparable to hosted `gpt-4o-mini` or to the fake-model table above.
+
+```shell
+ollama serve
+ASK_MODEL=openai \
+  ASK_OPENAI_BASE_URL=http://localhost:11434/v1 \
+  ASK_OPENAI_MODEL=lfm3:latest \
+  uv run capitalcite eval --suite bench \
+  --pin evals/bench/pin-lfm3-local.json \
+  --out evals/results
+```
+
+The pin is [`evals/bench/pin-lfm3-local.json`](evals/bench/pin-lfm3-local.json). Rates in [`evals/bench/prices/lfm3-local.json`](evals/bench/prices/lfm3-local.json) are zero. A non-loopback, non-OpenAI host is a third-party Chat Completions server: `POST /ask` can call it, the bench refuses it because the cost is unknown, and the result is not $0.
+
 ### Latency and cost
 
 | Path | p50 latency | p95 latency | Cost / query |

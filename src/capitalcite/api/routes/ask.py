@@ -55,6 +55,7 @@ from capitalcite.api.ask_models import (
     tool_fact,
 )
 from capitalcite.api.routes.search import get_setup
+from capitalcite.ask.endpoint import chat_endpoint_for
 from capitalcite.ask.models import FakeStructuredModel, StructuredModel, build_structured_model
 from capitalcite.ask.service import ask
 from capitalcite.ask.types import (
@@ -438,8 +439,7 @@ async def _run_agent(
     selected = body.model if body.model is not None else settings.ask_model
     model = build_agent_model(
         selected,
-        api_key=settings.openai_api_key,
-        openai_model=settings.ask_openai_model,
+        endpoint=chat_endpoint_for(settings, selected),
         seed=settings.ask_seed,
         temperature=settings.ask_temperature,
     )
@@ -512,8 +512,7 @@ def _model_for(body: AskRequest, settings: Settings, *, hits_exist: bool) -> Str
     selected = body.model if body.model is not None else settings.ask_model
     return build_structured_model(
         selected,
-        api_key=settings.openai_api_key,
-        openai_model=settings.ask_openai_model,
+        endpoint=chat_endpoint_for(settings, selected),
         seed=settings.ask_seed,
         temperature=settings.ask_temperature,
     )

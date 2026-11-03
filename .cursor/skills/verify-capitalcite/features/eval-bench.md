@@ -36,6 +36,6 @@ Preconditions:
 
 ## Gotchas
 
-- `--suite bench` rejects `--small`, `--chunker`, `--mode`, `--embedder`, `--k` other than 5, and `--print-cache-key`. `--baseline` and `--write-baseline` are the graph/rag p95-ratio, cost, and compile_ms gate. `--paid` is required for `ASK_MODEL=openai` and is never used in CI. tiktoken is in the eval/dev groups; first `o200k_base` use may download the encoding.
+- `--suite bench` rejects `--small`, `--chunker`, `--mode`, `--embedder`, `--k` other than 5, and `--print-cache-key`. `--baseline` and `--write-baseline` are the graph/rag p95-ratio, cost, and compile_ms gate, and they require a fake-model run. `--paid` is required for hosted OpenAI and is never used in CI. A local pin does not take `--paid`. A non-loopback, non-OpenAI base URL is refused. tiktoken is in the eval/dev groups; first `o200k_base` use may download the encoding.
 - Fake-model generate time is not live model latency. The paid command in `evals/bench/pin.json` is UNVERIFIED.
 - `CliRunner().invoke(...)` in pytest is not this feature.

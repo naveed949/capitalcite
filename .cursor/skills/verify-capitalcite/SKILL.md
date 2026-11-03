@@ -113,6 +113,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite eval --suite graph --small` | exit 0 + `graph_exact=` and `fixture_substring_hit_rate=`; MemoryGraphStore, no Bolt |
 | CLI | `capitalcite eval --suite metrics` | exit 0 + `suite=metrics` and `agent_exact=` / `agent_refusal=` / `rag_exact=` / `rag_refusal=` / `v1_mart=`; Fake model, catalog backend, ci warehouse |
 | CLI | `capitalcite eval --suite bench` | exit 0 + `suite=bench` and `identity=` / `bottleneck=`; Fake model, catalog backend, ci warehouse. Paid OpenAI is UNVERIFIED. The helper also passes `--baseline evals/baselines/bench.json` |
+| HTTP | `POST /ask` against a loopback Chat Completions stub | HTTP 200, stub saw `/v1/chat/completions` for `lfm3:latest` with no `Authorization`, artifact `ask.local.label` is `local`. A closed port returns HTTP 503 within 10 seconds and names host class `localhost`. Real Ollama is UNVERIFIED. The helper then restores `ASK_MODEL=fake` |
 | CLI | `capitalcite metrics extract --tickers JPM,BAC,WFC,C --fixtures` | exit 0 + `metrics extract xbrl=4 financials=4`. Each sidecar `sha256` matches its payload. Live BankFind and live companyfacts are outside this helper |
 | CLI | `uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci` | exit 0 + `Completed successfully`. Live `dev` extract is outside this helper |
 | CLI | `mf validate-configs`, the required `mf query`, and four saved queries | After that build, with `DBT_PROJECT_DIR`, `DBT_PROFILES_DIR`, and `DBT_TARGET=ci`. `mf` reads the compiled `semantic_manifest.json`. `validate-configs` exits 0. The query is `total_deposits` and `deposits_qoq_growth` grouped by `metric_time__quarter` and `bank__ticker` where `bank__entity_level` is `bank_subsidiary`. Each saved query exits 0. `pytest -m mf` matches `evals/results/metrics/mf-query.csv`. |
@@ -252,6 +253,7 @@ Landed handles (do not add empty stubs):
 | Golden Q&A set | `capitalcite golden validate` |
 | Retrieval eval | `capitalcite eval --suite golden` |
 | Structured answers | `POST /ask` |
+| Local Chat Completions | `POST /ask` with `ASK_OPENAI_BASE_URL` on a loopback stub. Real Ollama is UNVERIFIED |
 | Streaming answers | `POST /ask/stream` |
 | Plan-then-act agent | `POST /ask` `path=agent` |
 | Fail-closed tool gate | `capitalcite gate decide` |

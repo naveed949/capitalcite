@@ -38,6 +38,7 @@ ART="${ROOT}/artifacts/verify/${TS}"
 mkdir -p "$ART"
 
 UVICORN_PID=""
+STUB_PID=""
 LIMIT_PID=""
 NEXT_PID=""
 
@@ -109,6 +110,143 @@ stop_main_uvicorn() {
   UVICORN_PID=""
 }
 
+drive_compatible_chat() {
+  local question_json="$1"
+  log "verify: local chat stub"
+  stop_main_uvicorn
+  local stub_log="${ART}/ask.local.stub.log"
+  local stub_port_file="${ART}/ask.local.stub.port"
+  : >"${stub_log}"
+  uv run python "${ROOT}/scripts/chat_completions_stub.py" "${stub_log}" >"${stub_port_file}" &
+  STUB_PID=$!
+  local stub_port=""
+  local i=0
+  while [[ "${i}" -lt 50 ]]; do
+    if [[ -s "${stub_port_file}" ]]; then
+      stub_port="$(tr -d '[:space:]' <"${stub_port_file}")"
+      break
+    fi
+    if ! kill -0 "${STUB_PID}" 2>/dev/null; then
+      log "verify: chat stub exited before it printed a port"
+      exit 1
+    fi
+    i=$((i + 1))
+    sleep 0.05
+  done
+  if [[ -z "${stub_port}" ]]; then
+    log "verify: chat stub did not print a port"
+    exit 1
+  fi
+
+  local saved_key="${OPENAI_API_KEY-}"
+  export ASK_MODEL=openai
+  export ASK_OPENAI_BASE_URL="http://127.0.0.1:${stub_port}/v1"
+  export ASK_OPENAI_MODEL="lfm3:latest"
+  unset OPENAI_API_KEY
+  start_main_uvicorn
+  log "verify: POST /ask against the local chat stub"
+  post_ask ask.local "${question_json}"
+  uv run python - "${stub_log}" "${ART}/spans.jsonl" "${ART}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+log_path, spans_path, art = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+rows = [
+    json.loads(line)
+    for line in log_path.read_text(encoding="utf-8").splitlines()
+    if line.strip()
+]
+if not rows:
+    sys.stderr.write("verify: local stub received no Chat Completions request\n")
+    sys.exit(1)
+row = rows[-1]
+if row.get("path") != "/v1/chat/completions":
+    sys.stderr.write(f"verify: stub path {row.get('path')!r}\n")
+    sys.exit(1)
+if row.get("authorization") not in (None, ""):
+    sys.stderr.write("verify: stub received Authorization\n")
+    sys.exit(1)
+if row.get("model") != "lfm3:latest":
+    sys.stderr.write(f"verify: stub model {row.get('model')!r}\n")
+    sys.exit(1)
+if spans_path.is_file():
+    spans = [
+        json.loads(line)
+        for line in spans_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    matched = [item for item in spans if item.get("name") == "chat lfm3:latest"]
+    if not matched:
+        sys.stderr.write("verify: span JSONL missing chat lfm3:latest\n")
+        sys.exit(1)
+    provider = (matched[-1].get("attributes") or {}).get("gen_ai.provider.name")
+    if provider != "local":
+        sys.stderr.write(f"verify: chat span provider {provider!r}\n")
+        sys.exit(1)
+(art / "ask.local.label").write_text("local\n", encoding="utf-8")
+(art / "ask.local.note").write_text(
+    "Loopback Chat Completions stub. Not hosted OpenAI. Real Ollama is UNVERIFIED.\n",
+    encoding="utf-8",
+)
+print("ask.local stub provider=local model=lfm3:latest")
+PY
+
+  stop_main_uvicorn
+  stop_pid "${STUB_PID}"
+  STUB_PID=""
+
+  local closed
+  closed="$(uv run python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+  export ASK_OPENAI_BASE_URL="http://127.0.0.1:${closed}/v1"
+  start_main_uvicorn
+  log "verify: POST /ask against a closed local port"
+  set +e
+  local closed_http
+  closed_http="$(
+    curl -sS --max-time 10 \
+      -o "${ART}/ask.local.closed.body.json" \
+      -w "%{http_code}" \
+      -H 'content-type: application/json' \
+      -d "${question_json}" \
+      "http://127.0.0.1:${PORT}/ask"
+  )"
+  local closed_rc=$?
+  set -e
+  write ask.local.closed.http "${closed_http}"
+  write ask.local.closed.exit "${closed_rc}"
+  if [[ "${closed_rc}" -ne 0 || "${closed_http}" != "503" ]]; then
+    log "verify: closed local chat expected HTTP 503 within 10s, got exit ${closed_rc} HTTP ${closed_http}"
+    cat "${ART}/ask.local.closed.body.json" >&2 || true
+    exit 1
+  fi
+  uv run python - "${ART}/ask.local.closed.body.json" "${closed}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+body = Path(sys.argv[1]).read_text(encoding="utf-8")
+port = sys.argv[2]
+if "host class localhost" not in body or "connection failed" not in body:
+    sys.stderr.write(f"verify: closed-port body did not name host class localhost: {body}\n")
+    sys.exit(1)
+if "://" in body or port in body:
+    sys.stderr.write("verify: closed-port body contained a URL or the port\n")
+    sys.exit(1)
+print("ask.local closed HTTP 503 host_class=localhost")
+PY
+
+  stop_main_uvicorn
+  export ASK_MODEL=fake
+  unset ASK_OPENAI_BASE_URL
+  unset ASK_OPENAI_MODEL
+  if [[ -n "${saved_key}" ]]; then
+    export OPENAI_API_KEY="${saved_key}"
+  fi
+  start_main_uvicorn
+  log "verify: restored ASK_MODEL=fake after the local chat stub"
+}
+
 start_main_uvicorn() {
   uv run uvicorn capitalcite.api:app --host 127.0.0.1 --port "${PORT}" \
     >>"${ART}/uvicorn.log" 2>&1 &
@@ -176,6 +314,7 @@ cleanup() {
   local rc=$?
   stop_next
   stop_pid "${UVICORN_PID}"
+  stop_pid "${STUB_PID}"
   stop_pid "${LIMIT_PID}"
   if [[ "${rc}" -ne 0 ]]; then
     log "verify: FAILED (exit ${rc}). evidence kept at ${ART}"
@@ -1636,6 +1775,8 @@ PY
     write spans.skipped "fixture /ask did not write span JSONL"
     log "verify: ask span tree UNVERIFIED (empty file)"
   fi
+  ASK_LOCAL='{"question":"What CET1 ratio did JPMorgan disclose?","k":10,"ticker":"JPM","model":"openai"}'
+  drive_compatible_chat "${ASK_LOCAL}"
 elif [[ -f "${ART}/ingest.unreachable" ]]; then
   write search.unreachable "live ingest unreachable; embedded index needs JPM FY24 and WFC FY25 chunks"
   write ask.unreachable "POST /search was unverified; POST /ask needs the same index"
@@ -2094,6 +2235,7 @@ for needle in ("Bearer ", "sk-lf-", "Authorization"):
 print(f"spans ask+retrieve+chat fake n={len(records)}")
 PY
   log "verify: span JSONL has ask, retrieve, and chat fake"
+  drive_compatible_chat "${ASK_OPENAI}"
 
   AGENT055='{"question":"Which bank had the higher Standardized CET1 ratio at year-end 2024, JPMorgan or Bank of America?","k":10,"path":"agent","model":"fake"}'
   AGENT061='{"question":"Did JPMorgan'\''s year-end 2024 Standardized CET1 ratio exceed its 12.3% requirement including buffers?","k":10,"path":"agent","model":"fake"}'
