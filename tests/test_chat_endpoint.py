@@ -78,8 +78,7 @@ def test_other_host_is_compatible_and_unbilled() -> None:
         assert endpoint.headers() == {}
         assert host_class_for(base) == "other"
     assert (
-        normalize_chat_base_url("https://openrouter.ai/api/v1/")
-        == "https://openrouter.ai/api/v1"
+        normalize_chat_base_url("https://openrouter.ai/api/v1/") == "https://openrouter.ai/api/v1"
     )
 
 
