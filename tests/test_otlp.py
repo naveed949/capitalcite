@@ -1,5 +1,3 @@
-"""OTLP HTTP export. The collector is in-process. Answers do not wait on it."""
-
 from __future__ import annotations
 
 import asyncio

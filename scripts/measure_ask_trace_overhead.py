@@ -1,5 +1,3 @@
-"""Time POST /ask with OTLP off and on. Writes evals/results/<sha12>-otel-overhead.json."""
-
 from __future__ import annotations
 
 import asyncio

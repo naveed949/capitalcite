@@ -11,13 +11,11 @@ import pytest
 os.environ.setdefault("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
-# Lifespan calls configure(). The SDK exports OTLP, which the httpx block does not catch.
 os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 os.environ["NEO4J_URI"] = ""
 os.environ["NEO4J_PASSWORD"] = ""
-# OTLP uses requests. The httpx block below does not see those posts.
 os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
 os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = ""
 os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = ""

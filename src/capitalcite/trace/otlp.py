@@ -1,5 +1,3 @@
-"""OTLP HTTP export on a private provider. The request path only enqueues."""
-
 from __future__ import annotations
 
 import logging
@@ -23,12 +21,6 @@ _Pending = tuple[int, int]
 
 
 class _PinnedIdGenerator(IdGenerator):
-    """Hand the SDK the ids observation() already assigned.
-
-    start_span asks the generator for ids. A field on this object would race
-    when two requests begin spans at once. The pending pair is per task.
-    """
-
     def __init__(self) -> None:
         self._pending: ContextVar[_Pending | None] = ContextVar(
             "capitalcite_otlp_ids",
@@ -58,10 +50,8 @@ class _PinnedIdGenerator(IdGenerator):
 
 
 class OtlpExporter:
-    """Map finished spans onto OTLP without installing a process tracer.
-
-    Langfuse 5 mints its own OTel ids. A global TracerProvider would collide
-    with that. BatchSpanProcessor queues the HTTP post on a worker thread.
+    """Langfuse 5 mints its own OTel ids. A global TracerProvider would collide
+    with that.
     """
 
     def __init__(self, *, endpoint: str, timeout_s: float, service_name: str) -> None:

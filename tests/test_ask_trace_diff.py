@@ -1,5 +1,3 @@
-"""112 golden questions. Tracing on and off must return the same answer."""
-
 from __future__ import annotations
 
 import os

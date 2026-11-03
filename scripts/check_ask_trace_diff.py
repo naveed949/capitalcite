@@ -1,5 +1,3 @@
-"""Compare POST /ask answers with tracing off and on. Exit 1 on any diff."""
-
 from __future__ import annotations
 
 import asyncio
