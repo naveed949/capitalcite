@@ -712,7 +712,11 @@ def _bench_settings(pin: BenchPin, *, paid: bool) -> Settings:
         if not key:
             raise EvalUnverified("ASK_MODEL=openai requires OPENAI_API_KEY")
         settings = settings.model_copy(
-            update={"ask_seed": pin.seed, "ask_temperature": pin.temperature}
+            update={
+                "ask_openai_model": pin.openai_model,
+                "ask_seed": pin.seed,
+                "ask_temperature": pin.temperature,
+            }
         )
     if settings.metric_query_backend != "catalog":
         raise EvalUnverified("METRIC_QUERY_BACKEND must be catalog")

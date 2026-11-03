@@ -3,14 +3,17 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 import pytest
 
 from capitalcite.eval.bench import (
+    DEFAULT_PIN,
     RECALL_NOT_MEASURED,
     BenchPin,
     BenchReport,
     QueryRecord,
     RecallReport,
+    load_pin,
 )
 from capitalcite.eval.bench_gate import (
     BenchBaseline,
@@ -292,6 +295,71 @@ def test_openai_requires_paid(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     with pytest.raises(Unverified, match="ASK_MODEL=openai requires --paid"):
         _bench_settings(_pin(), paid=False)
+
+
+async def test_paid_sends_pin_model_seed_and_temperature(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from capitalcite.ask.models import build_structured_model
+    from capitalcite.chunking.models import Chunk, ChunkerName
+    from capitalcite.eval.bench import _bench_settings
+    from capitalcite.retrieval.types import Hit
+
+    warehouse = tmp_path / "ci.duckdb"
+    warehouse.write_bytes(b"")
+    monkeypatch.setenv("ASK_MODEL", "openai")
+    monkeypatch.setenv("ASK_OPENAI_MODEL", "gpt-not-from-pin")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-a-real-key")
+    monkeypatch.setenv("METRIC_QUERY_BACKEND", "catalog")
+    monkeypatch.setenv("WAREHOUSE_PATH", str(warehouse))
+    pin = load_pin(DEFAULT_PIN)
+    seen: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        content = json.dumps(
+            {
+                "kind": "answered",
+                "answer": "tier one capital buffer",
+                "citations": [{"index": 1, "quote": "tier one capital"}],
+            }
+        )
+        return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+
+    settings = _bench_settings(pin, paid=True)
+    model = build_structured_model(
+        "openai",
+        api_key=settings.openai_api_key,
+        openai_model=settings.ask_openai_model,
+        seed=settings.ask_seed,
+        temperature=settings.ask_temperature,
+        transport=httpx.MockTransport(handler),
+    )
+    hit = Hit(
+        score=1.0,
+        chunk=Chunk(
+            doc_id="doc-jpm",
+            section="Item 15",
+            start=10,
+            end=40,
+            offset=10,
+            source_url="https://www.sec.gov/Archives/edgar/data/19617/jpm.htm",
+            text="tier one capital buffer",
+            token_count=4,
+            chunker=ChunkerName.SECTION,
+            ticker="JPM",
+            form="10-K",
+            period="2023-12-31",
+            accession="doc-jpm",
+        ),
+    )
+    await model.complete("What buffer is described?", [hit])
+    assert seen
+    body = seen[0]
+    assert body["model"] == pin.openai_model
+    assert body["seed"] == pin.seed
+    assert body["temperature"] == pin.temperature
+    assert body["model"] != "gpt-not-from-pin"
 
 
 async def test_full_corpus_missing_filings(tmp_path: Path) -> None:
