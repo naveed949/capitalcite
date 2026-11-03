@@ -264,6 +264,117 @@ def test_readme_overhead_block_rejects_unprojected_ms(tmp_path: Path) -> None:
     assert "OTLP overhead block" in proc.stdout
 
 
+def _write_result(tree: Path, name: str, git_sha: str, results: dict[str, object]) -> None:
+    payload = {"git_sha": git_sha, "small": False, **results}
+    (tree / "evals" / "results" / name).write_text(
+        json.dumps(payload) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _bench_p50_results(total_ms: float, compile_ms: float) -> dict[str, object]:
+    queries: list[dict[str, object]] = []
+    for arm in ("rag", "graph", "loop"):
+        queries.append(
+            {
+                "item_id": "cc-h-001",
+                "arm": arm,
+                "recall_at_5": True,
+                "accurate": True,
+                "cost_usd": 0.0,
+                "phases": {"total_ms": total_ms, "compile_ms": compile_ms},
+            }
+        )
+    return {"suite": "bench", "n_items": 1, "queries": queries}
+
+
+def _overhead_plus_bench_tree(
+    tree: Path,
+    *,
+    readme_block_ms: str,
+    adr_block_ms: str | None = None,
+) -> None:
+    sha = "abcabcabcabcdeadbeef"
+    overhead_name = "abcabcabcabc-otel-overhead.json"
+    bench_name = "abcabcabcabc-bench.json"
+    oh = f"evals/results/{overhead_name}"
+    bh = f"evals/results/{bench_name}"
+    _write_tree(
+        tree,
+        readme=(
+            f"OTLP on was 2.6 ms. Graph p50 is 9.7 ms and compile is 6.9 ms. "
+            f"See [{oh}]({oh}) and [{bh}]({bh}).\n"
+            "<!-- BEGIN OTEL OVERHEAD -->\n"
+            f"On was {readme_block_ms}.\n"
+            "<!-- END OTEL OVERHEAD -->\n"
+        ),
+        writeup=(
+            f"OTLP on was 2.6 ms [{oh}]({oh}). "
+            f"Graph p50 is 9.7 ms and compile is 6.9 ms [{bh}]({bh}).\n"
+        ),
+        results={
+            "off": {"samples_ms": [2.2] * 20},
+            "on": {"samples_ms": [2.6] * 20},
+        },
+        result_name=overhead_name,
+        git_sha=sha,
+    )
+    _write_result(tree, bench_name, sha, _bench_p50_results(9.7, 6.9))
+    if adr_block_ms is not None:
+        dest = tree / "docs" / "decisions"
+        dest.mkdir()
+        (dest / "0028-otel-tracing.md").write_text(
+            (f"<!-- BEGIN OTEL OVERHEAD -->\nOn was {adr_block_ms}.\n<!-- END OTEL OVERHEAD -->\n"),
+            encoding="utf-8",
+        )
+
+
+def test_readme_overhead_block_rejects_bench_p50_9_7(tmp_path: Path) -> None:
+    _overhead_plus_bench_tree(tmp_path, readme_block_ms="9.7 ms")
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1, proc.stdout
+    assert "9.7 ms" in proc.stdout
+    assert "OTLP overhead block" in proc.stdout
+
+
+def test_readme_overhead_block_rejects_bench_p50_6_9(tmp_path: Path) -> None:
+    _overhead_plus_bench_tree(tmp_path, readme_block_ms="6.9 ms")
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1, proc.stdout
+    assert "6.9 ms" in proc.stdout
+    assert "OTLP overhead block" in proc.stdout
+
+
+def test_adr_overhead_block_rejects_bench_p50_9_7(tmp_path: Path) -> None:
+    _overhead_plus_bench_tree(tmp_path, readme_block_ms="2.6 ms", adr_block_ms="9.7 ms")
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1, proc.stdout
+    assert "9.7 ms" in proc.stdout
+    assert "0028-otel-tracing.md" in proc.stdout
+
+
+def test_adr_overhead_block_rejects_bench_p50_6_9(tmp_path: Path) -> None:
+    _overhead_plus_bench_tree(tmp_path, readme_block_ms="2.6 ms", adr_block_ms="6.9 ms")
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1, proc.stdout
+    assert "6.9 ms" in proc.stdout
+    assert "0028-otel-tracing.md" in proc.stdout
+
+
+def test_readme_bench_block_rejects_overhead_on_p50(tmp_path: Path) -> None:
+    _overhead_plus_bench_tree(tmp_path, readme_block_ms="2.6 ms")
+    readme = tmp_path / "README.md"
+    readme.write_text(
+        readme.read_text(encoding="utf-8")
+        + "<!-- BEGIN BENCH EVAL -->\nGraph p50 is 2.6 ms\n<!-- END BENCH EVAL -->\n",
+        encoding="utf-8",
+    )
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1, proc.stdout
+    assert "2.6 ms" in proc.stdout
+    assert "README bench block" in proc.stdout
+
+
 def test_adr_overhead_block_rejects_unprojected_ms(tmp_path: Path) -> None:
     name = "abcabcabcabc-otel-overhead.json"
     link = f"[overhead](evals/results/{name})"
