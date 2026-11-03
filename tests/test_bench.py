@@ -465,6 +465,38 @@ def test_pin_rejects_userinfo_and_non_loopback_command_urls() -> None:
         },
     )
     assert "localhost:11434" in str(ok.paid_run["command"])
+    quoted = _rebuild_pin(
+        **local_base,
+        paid_run={
+            "status": "UNVERIFIED",
+            "command": 'ASK_OPENAI_BASE_URL="http://localhost:11434/v1" uv run x',
+        },
+    )
+    assert "localhost:11434" in str(quoted.paid_run["command"])
+
+
+def test_ftp_command_url_is_refused_and_absent_from_results() -> None:
+    from capitalcite.eval.bench import _redact_command_urls
+
+    local_base = {
+        "model": "openai",
+        "host_class": "localhost",
+        "openai_model": "lfm3:latest",
+        "prices": "evals/bench/prices/lfm3-local.json",
+    }
+    ftp_tail = "# mirror ftp://remote.example:2121/weights"
+    local_cmd = f"ASK_OPENAI_BASE_URL=http://localhost:11434/v1 uv run x {ftp_tail}"
+    hosted_cmd = f"ASK_MODEL=openai uv run x {ftp_tail}"
+    with pytest.raises(ValidationError, match="loopback"):
+        _rebuild_pin(**local_base, paid_run={"status": "UNVERIFIED", "command": local_cmd})
+    with pytest.raises(ValidationError, match="local pin"):
+        _rebuild_pin(paid_run={"status": "UNVERIFIED", "command": hosted_cmd})
+    for command in (local_cmd, hosted_cmd):
+        redacted = _redact_command_urls(command)
+        assert "ftp://" not in redacted
+        assert "://" not in redacted
+        assert "remote.example" not in redacted
+        assert "2121" not in redacted
 
 
 def test_local_cost_is_zero_and_not_comparable() -> None:

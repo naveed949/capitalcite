@@ -977,7 +977,7 @@ def provenance_sentence(provenance: BenchProvenance) -> str:
 
 
 _USERINFO_URL = re.compile(r"://[^/\s]*@")
-_HTTP_URL = re.compile(r"https?://[^\s]+", re.IGNORECASE)
+_COMMAND_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S+")
 
 
 def _reject_url_stamp(value: object, *, where: str) -> None:
@@ -1010,8 +1010,17 @@ def _reject_userinfo(value: object, *, where: str) -> None:
             _reject_userinfo(item, where=where)
 
 
+def _unwrap_command_url(raw: str) -> str:
+    url = raw
+    if url[:1] in {'"', "'"}:
+        url = url[1:]
+    if url[-1:] in {'"', "'"}:
+        url = url[:-1]
+    return url
+
+
 def _allow_local_command(command: str, *, host_class: str | None) -> None:
-    urls = _HTTP_URL.findall(command)
+    urls = [_unwrap_command_url(raw) for raw in _COMMAND_URL.findall(command)]
     if not urls:
         return
     if host_class != "localhost":
@@ -1027,13 +1036,18 @@ def _allow_local_command(command: str, *, host_class: str | None) -> None:
 
 def _redact_command_urls(command: str) -> str:
     def replace(match: re.Match[str]) -> str:
-        url = match.group(0)
+        raw = match.group(0)
+        url = _unwrap_command_url(raw)
+        token: str
         try:
-            return host_class_for(url)
+            token = host_class_for(url)
         except ValueError:
-            return "redacted"
+            token = "redacted"
+        if raw.endswith(('"', "'")) and url != raw:
+            return token + raw[-1]
+        return token
 
-    return _HTTP_URL.sub(replace, command)
+    return _COMMAND_URL.sub(replace, command)
 
 
 def _redact_results_pin(data: object) -> object:

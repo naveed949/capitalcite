@@ -77,11 +77,13 @@ that host is a later change.
 
 The local pin's `paid_run.command` is the recipe, so it may contain one
 loopback Chat Completions prefix such as
-`ASK_OPENAI_BASE_URL=http://localhost:11434/v1`. A URL with userinfo
-(`user:pass@`) is refused in every pin field, including `command`. A
-non-loopback URL in `command` is refused. Other pin fields still reject
-any URL. Results JSON copies that command with the URL replaced by
-`host_class`, so the file has no `://` and no port.
+`ASK_OPENAI_BASE_URL=http://localhost:11434/v1`. A quoted loopback prefix
+is the same URL. Command scanning matches any scheme, including
+`ftp://`, not only `http`/`https`. A URL with userinfo (`user:pass@`) is
+refused in every pin field, including `command`. A non-loopback URL in
+`command` is refused. Other pin fields still reject any URL. Results
+JSON copies that command with each URL replaced by `host_class` or
+`redacted`, so the file has no `://` and no port.
 
 `response_format` `json_object` stays on every chat call. Whether a
 given local model honors it is UNVERIFIED until someone runs that
