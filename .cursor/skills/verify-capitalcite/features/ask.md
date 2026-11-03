@@ -35,7 +35,7 @@ Preconditions:
 
 ## Gotchas
 
-- `ASK_MODEL=fake` does not read `OPENAI_API_KEY`. `model` `openai` without a key is HTTP 503.
+- `ASK_MODEL=fake` does not read `OPENAI_API_KEY`. `model` `openai` without a key is HTTP 503 when `ASK_OPENAI_BASE_URL` is empty. A loopback base URL is the local Chat Completions feature and does not send the key.
 - `scripts/verify.sh` forces `ASK_MODEL=fake` on the uvicorn it starts. The OpenAI check sends `model` in the JSON body.
 - `cc-u-001` must be `refused`. A fake extractive answer on WFC FY2025 chunks is a failed proof.
 - An empty `point_count` on `cc-h-013` is a failed proof. If ingest could not run, record `ask.unreachable`. Do not report that skip as passed.
