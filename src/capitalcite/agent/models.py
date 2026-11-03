@@ -12,25 +12,18 @@ import httpx
 from pydantic import ValidationError
 
 from capitalcite.agent.types import PlannerDecision, ToolCall, TraceStep
+from capitalcite.ask.endpoint import ChatEndpoint, post_chat_completion
 from capitalcite.ask.guard import tickers_named, years_named
-from capitalcite.ask.models import (
-    OpenAIStructuredModel,
-    StructuredModel,
-    _chat_body,
-    _usage_tokens,
-)
+from capitalcite.ask.models import OpenAIStructuredModel, StructuredModel
 from capitalcite.ask.types import (
     AskModelName,
     DraftCite,
     ModelDraft,
     ModelNotConfigured,
-    ModelUnavailable,
 )
 from capitalcite.metric_query.query import GroupBy, MetricName
 from capitalcite.retrieval.types import Hit
 from capitalcite.trace import ObservationKind, chat_span_name, generation_attrs, observation
-
-_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
 
 class AgentModel(Protocol):
@@ -152,16 +145,14 @@ class OpenAIAgentModel:
     def __init__(
         self,
         inner: OpenAIStructuredModel,
-        api_key: str,
-        model: str,
+        endpoint: ChatEndpoint,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
         seed: int | None = None,
         temperature: float | None = None,
     ) -> None:
         self._inner = inner
-        self._api_key = api_key
-        self._model = model
+        self._endpoint = endpoint
         self._transport = transport
         self._seed = seed
         self._temperature = temperature
@@ -190,7 +181,13 @@ class OpenAIAgentModel:
                 )
             content: str | None = None
             try:
-                content = await self._post(messages)
+                content = await post_chat_completion(
+                    self._endpoint,
+                    messages,
+                    seed=self._seed,
+                    temperature=self._temperature,
+                    transport=self._transport,
+                )
                 return _decision_from_content(content)
             except ValueError as exc:
                 failure = str(exc)
@@ -201,69 +198,28 @@ class OpenAIAgentModel:
     async def complete(self, question: str, hits: Sequence[Hit]) -> ModelDraft:
         return await self._inner.complete(question, hits)
 
-    async def _post(self, messages: list[dict[str, str]]) -> str:
-        with observation(
-            chat_span_name(self._model),
-            ObservationKind.GENERATE,
-            **generation_attrs(model=self._model),
-        ) as span:
-            try:
-                async with httpx.AsyncClient(timeout=30.0, transport=self._transport) as client:
-                    response = await client.post(
-                        _CHAT_URL,
-                        headers={"Authorization": f"Bearer {self._api_key}"},
-                        json=_chat_body(
-                            self._model,
-                            messages,
-                            seed=self._seed,
-                            temperature=self._temperature,
-                        ),
-                    )
-            except httpx.HTTPError as exc:
-                raise ModelUnavailable("openai chat completion request failed") from exc
-            if response.status_code != 200:
-                raise ModelUnavailable(f"openai chat completion HTTP {response.status_code}")
-            try:
-                payload = response.json()
-            except json.JSONDecodeError as exc:
-                raise ModelUnavailable("openai chat completion response was not JSON") from exc
-            content = _message_content(payload)
-            input_tokens, output_tokens = _usage_tokens(payload)
-            span.set(
-                **generation_attrs(
-                    model=self._model,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                )
-            )
-            return content
-
 
 def build_agent_model(
     name: AskModelName,
     *,
-    api_key: str | None,
-    openai_model: str,
+    endpoint: ChatEndpoint | None,
     transport: httpx.AsyncBaseTransport | None = None,
     seed: int | None = None,
     temperature: float | None = None,
 ) -> AgentModel:
     if name == "fake":
         return FakeAgentModel()
-    key = (api_key or "").strip()
-    if not key:
+    if endpoint is None:
         raise ModelNotConfigured("ASK_MODEL=openai requires OPENAI_API_KEY")
     inner = OpenAIStructuredModel(
-        key,
-        openai_model,
+        endpoint,
         transport=transport,
         seed=seed,
         temperature=temperature,
     )
     return OpenAIAgentModel(
         inner,
-        key,
-        openai_model,
+        endpoint,
         transport=transport,
         seed=seed,
         temperature=temperature,
@@ -636,21 +592,3 @@ def _decision_from_content(content: str) -> PlannerDecision:
         return PlannerDecision.model_validate(payload)
     except ValidationError as exc:
         raise ValueError(str(exc)) from exc
-
-
-def _message_content(payload: object) -> str:
-    if not isinstance(payload, dict):
-        raise ModelUnavailable("openai chat completion response was not an object")
-    choices = payload.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise ModelUnavailable("openai chat completion response missing choices")
-    first = choices[0]
-    if not isinstance(first, dict):
-        raise ModelUnavailable("openai chat completion choice was not an object")
-    message = first.get("message")
-    if not isinstance(message, dict):
-        raise ModelUnavailable("openai chat completion choice missing message")
-    content = message.get("content")
-    if not isinstance(content, str):
-        raise ValueError("openai chat completion content was not a string")
-    return content

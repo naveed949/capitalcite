@@ -27,6 +27,7 @@ from capitalcite.ask import (
     build_structured_model,
     retrieval_refusal,
 )
+from capitalcite.ask.endpoint import parse_chat_endpoint
 from capitalcite.ask.types import AskModelName
 from capitalcite.chunking.models import Chunk, ChunkerName
 from capitalcite.config import Settings, get_settings
@@ -49,6 +50,13 @@ from capitalcite.trace.types import SpanRecord
 
 _JPM_URL = "https://www.sec.gov/Archives/edgar/data/19617/jpm.htm"
 _CHAT_URL = "https://api.openai.com/v1/chat/completions"
+
+
+def _openai_model(
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> OpenAIStructuredModel:
+    endpoint = parse_chat_endpoint(None, "test-key", "gpt-4o-mini")
+    return OpenAIStructuredModel(endpoint, transport=transport)
 
 
 async def test_ask_empty_hits_does_not_call_the_model() -> None:
@@ -164,10 +172,10 @@ async def test_ask_refuses_an_invalid_scripted_draft() -> None:
 
 
 def test_fake_model_does_not_read_a_key() -> None:
-    model = build_structured_model("fake", api_key=None, openai_model="gpt-4o-mini")
+    model = build_structured_model("fake", endpoint=None)
     assert isinstance(model, FakeStructuredModel)
     with pytest.raises(ModelNotConfigured, match="OPENAI_API_KEY"):
-        build_structured_model("openai", api_key="  ", openai_model="gpt-4o-mini")
+        build_structured_model("openai", endpoint=None)
 
 
 def test_ask_model_names_match_settings() -> None:
@@ -176,29 +184,8 @@ def test_ask_model_names_match_settings() -> None:
 
 
 def test_openai_repr_hides_the_key() -> None:
-    model = OpenAIStructuredModel("test-key", "gpt-4o-mini")
+    model = _openai_model()
     assert "test-key" not in repr(model)
-
-
-def test_chat_body_includes_seed_and_temperature() -> None:
-    from capitalcite.ask.models import _chat_body
-
-    body = _chat_body(
-        "gpt-4o-mini",
-        [{"role": "user", "content": "hi"}],
-        seed=20261103,
-        temperature=0.0,
-    )
-    assert body["seed"] == 20261103
-    assert body["temperature"] == 0.0
-    omitted = _chat_body(
-        "gpt-4o-mini",
-        [{"role": "user", "content": "hi"}],
-        seed=None,
-        temperature=None,
-    )
-    assert "seed" not in omitted
-    assert "temperature" not in omitted
 
 
 async def test_openai_retries_invalid_json_once() -> None:
@@ -218,7 +205,7 @@ async def test_openai_retries_invalid_json_once() -> None:
             )
         return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
 
-    model = OpenAIStructuredModel("test-key", "gpt-4o-mini", transport=httpx.MockTransport(handler))
+    model = _openai_model(httpx.MockTransport(handler))
     draft = await model.complete("What buffer is described?", [_hit()])
     assert draft.kind == "answered"
     assert draft.citations[0].quote == "tier one capital"
@@ -244,7 +231,7 @@ async def test_openai_refuses_after_two_invalid_payloads() -> None:
         calls["n"] += 1
         return httpx.Response(200, json={"choices": [{"message": {"content": "{"}}]})
 
-    model = OpenAIStructuredModel("test-key", "gpt-4o-mini", transport=httpx.MockTransport(handler))
+    model = _openai_model(httpx.MockTransport(handler))
     draft = await model.complete("What buffer is described?", [_hit()])
     assert calls["n"] == 2
     assert isinstance(draft, ModelDraft)
@@ -259,7 +246,7 @@ async def test_openai_http_error_does_not_retry() -> None:
         calls["n"] += 1
         return httpx.Response(502, json={"error": "down"})
 
-    model = OpenAIStructuredModel("test-key", "gpt-4o-mini", transport=httpx.MockTransport(handler))
+    model = _openai_model(httpx.MockTransport(handler))
     with pytest.raises(ModelUnavailable, match="HTTP 502"):
         await model.complete("What buffer is described?", [_hit()])
     assert calls["n"] == 1
@@ -279,14 +266,14 @@ async def test_grounding_failure_does_not_retry_openai() -> None:
         )
         return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
 
-    model = OpenAIStructuredModel("test-key", "gpt-4o-mini", transport=httpx.MockTransport(handler))
+    model = _openai_model(httpx.MockTransport(handler))
     answer = await ask([_hit()], "What was CET1?", model)
     assert isinstance(answer, Refused)
     assert calls["n"] == 1
 
 
 async def test_openai_without_transport_is_blocked() -> None:
-    model = OpenAIStructuredModel("test-key", "gpt-4o-mini")
+    model = _openai_model()
     with pytest.raises(RuntimeError, match="live network is forbidden"):
         await model.complete("What buffer is described?", [_hit()])
 

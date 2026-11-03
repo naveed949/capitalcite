@@ -304,6 +304,7 @@ def test_openai_requires_paid(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_paid_sends_pin_model_seed_and_temperature(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    from capitalcite.ask.endpoint import chat_endpoint_for
     from capitalcite.ask.models import build_structured_model
     from capitalcite.chunking.models import Chunk, ChunkerName
     from capitalcite.eval.bench import _bench_settings
@@ -333,8 +334,7 @@ async def test_paid_sends_pin_model_seed_and_temperature(
     settings = _bench_settings(pin, paid=True)
     model = build_structured_model(
         "openai",
-        api_key=settings.openai_api_key,
-        openai_model=settings.ask_openai_model,
+        endpoint=chat_endpoint_for(settings, "openai"),
         seed=settings.ask_seed,
         temperature=settings.ask_temperature,
         transport=httpx.MockTransport(handler),

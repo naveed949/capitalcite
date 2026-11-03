@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from capitalcite.agent.tools import SearchFn, ToolFn
 from capitalcite.agent.types import ToolResult
+from capitalcite.ask.endpoint import chat_endpoint_for
 from capitalcite.ask.models import FakeStructuredModel, StructuredModel, build_structured_model
 from capitalcite.ask.service import ask
 from capitalcite.ask.types import Answer, Answered, AskModelName, Refused
@@ -94,8 +95,7 @@ def _model_for(
     selected = requested if requested is not None else settings.ask_model
     return build_structured_model(
         selected,
-        api_key=settings.openai_api_key,
-        openai_model=settings.ask_openai_model,
+        endpoint=chat_endpoint_for(settings, selected),
         seed=settings.ask_seed,
         temperature=settings.ask_temperature,
     )

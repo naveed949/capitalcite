@@ -21,6 +21,8 @@ from capitalcite.ask.endpoint import (
 )
 from capitalcite.ask.types import ModelNotConfigured, ModelUnavailable
 from capitalcite.config import Settings
+from capitalcite.retrieval.embedders import OpenAIEmbedder, spec_for
+from capitalcite.retrieval.types import EmbedderName
 from capitalcite.trace import MemoryExporter, configure_for_tests
 
 _ORIGINAL_ASYNC = httpx.AsyncHTTPTransport.handle_async_request
@@ -283,3 +285,87 @@ async def test_timeout_names_host_class_and_returns(monkeypatch: pytest.MonkeyPa
     finally:
         server.shutdown()
         thread.join(timeout=2)
+
+
+async def test_embeddings_stay_on_openai_when_chat_base_is_local(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str] = []
+
+    class _Client:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            _ = args, kwargs
+
+        async def __aenter__(self) -> _Client:
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            _ = args
+            return False
+
+        async def post(
+            self,
+            url: str,
+            headers: dict[str, str] | None = None,
+            json: object | None = None,
+        ) -> httpx.Response:
+            _ = json
+            seen.append(url)
+            assert headers is not None
+            assert headers["Authorization"] == "Bearer sk-embed"
+            return httpx.Response(
+                200,
+                json={"data": [{"index": 0, "embedding": [0.0] * 1536}]},
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    monkeypatch.setenv("ASK_OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+    embedder = OpenAIEmbedder(spec_for(EmbedderName.OPENAI_SMALL), "sk-embed")
+    await embedder._embed(["tier one capital"])
+    assert seen == ["https://api.openai.com/v1/embeddings"]
+
+
+async def test_check_live_ignores_ask_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    from capitalcite.eval.check import _live
+    from capitalcite.golden.models import Evidence, GoldenItem, ItemSource, QuestionType
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-live")
+    monkeypatch.setenv("ASK_OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+    seen: dict[str, object] = {}
+
+    def build(name: str, *, endpoint: object, **kwargs: object) -> object:
+        _ = name, kwargs
+        from capitalcite.ask.endpoint import ChatEndpoint
+
+        assert isinstance(endpoint, ChatEndpoint)
+        seen["host"] = endpoint.label.host_class
+        seen["auth"] = endpoint.headers().get("Authorization")
+        from capitalcite.ask.models import FakeStructuredModel
+
+        return FakeStructuredModel()
+
+    async def retrieve(*args: object, **kwargs: object) -> list[object]:
+        _ = args, kwargs
+        return []
+
+    async def ask(*args: object, **kwargs: object) -> object:
+        _ = args, kwargs
+        from capitalcite.ask.types import Refused
+
+        return Refused(refusal_reason="unused")
+
+    monkeypatch.setattr("capitalcite.eval.check.build_structured_model", build)
+    monkeypatch.setattr("capitalcite.eval.check.retrieve", retrieve)
+    monkeypatch.setattr("capitalcite.eval.check.ask", ask)
+    item = GoldenItem(
+        id="cc-ci-002",
+        question="What was CET1?",
+        answer="15.7%",
+        type=QuestionType.EXTRACTIVE,
+        answerable=True,
+        source=ItemSource.HANDWRITTEN,
+        evidence=[Evidence(doc_id="doc", section="Item 1", quote="15.7%")],
+    )
+    await _live(True, object(), (item,))  # type: ignore[arg-type]
+    assert seen["host"] == "openai"
+    assert seen["auth"] == "Bearer sk-live"

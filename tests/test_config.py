@@ -115,7 +115,7 @@ def test_ask_model_openai_env_is_not_rewritten_to_fake(monkeypatch: pytest.Monke
     settings = Settings()
     assert settings.ask_model == "openai"
     with pytest.raises(ModelNotConfigured, match="OPENAI_API_KEY"):
-        build_structured_model("openai", api_key=None, openai_model="gpt-4o-mini")
+        build_structured_model("openai", endpoint=None)
 
 
 def test_cors_origins_strip_blanks(monkeypatch: pytest.MonkeyPatch) -> None:

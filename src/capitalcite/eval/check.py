@@ -18,6 +18,7 @@ from capitalcite.ask import (
     ask,
     build_structured_model,
 )
+from capitalcite.ask.endpoint import parse_chat_endpoint
 from capitalcite.chunking.models import ChunkerName
 from capitalcite.eval.baseline import Baseline, CompareReport, TrackedRate, compare
 from capitalcite.eval.fixture_index import (
@@ -200,7 +201,8 @@ async def _live(live: bool, setup: RetrievalSetup, items: Sequence[GoldenItem]) 
     if not key:
         return LiveStatus(kind="unverified", detail="OPENAI_API_KEY is empty")
     try:
-        model = build_structured_model("openai", api_key=key, openai_model="gpt-4o-mini")
+        endpoint = parse_chat_endpoint(None, key, "gpt-4o-mini")
+        model = build_structured_model("openai", endpoint=endpoint)
     except ModelNotConfigured as exc:
         return LiveStatus(kind="unverified", detail=str(exc))
     item = {row.id: row for row in items}["cc-ci-002"]
