@@ -73,7 +73,7 @@ class BenchPin(BaseModel):
     n_items: int = Field(ge=1)
     sets: dict[str, int]
     model: Literal["fake", "openai"] = "fake"
-    host_class: Literal["localhost", "openai", "other"] | None = None
+    host_class: Literal["localhost", "openai"] | None = None
     openai_model: str
     seed: int
     temperature: float
@@ -86,7 +86,11 @@ class BenchPin(BaseModel):
 
     @model_validator(mode="after")
     def paid_run_has_no_url(self) -> BenchPin:
-        _reject_url_stamp(self.paid_run, where="paid_run")
+        for key, item in self.paid_run.items():
+            if key == "command":
+                continue
+            _reject_url_stamp(key, where="paid_run")
+            _reject_url_stamp(item, where="paid_run")
         return self
 
 
@@ -189,7 +193,7 @@ class BenchProvenance(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     provider: Literal["fake", "local", "hosted"]
-    host_class: Literal["none", "localhost", "openai", "other"]
+    host_class: Literal["none", "localhost", "openai"]
     model_id: str = Field(min_length=1)
     pin_name: str = Field(min_length=1)
     comparable_to_hosted: bool
@@ -211,7 +215,7 @@ class BenchProvenance(BaseModel):
             return self
         if (
             self.provider == "local"
-            and self.host_class in {"localhost", "other"}
+            and self.host_class == "localhost"
             and not self.comparable_to_hosted
             and self.latency_scope == "host_hardware"
         ):
@@ -824,6 +828,8 @@ def _open_bench(pin: BenchPin, *, paid: bool) -> tuple[Settings, ChatEndpoint | 
             }
         )
         actual = host_class_for(settings.ask_openai_base_url)
+        if actual == "other":
+            raise EvalUnverified("bench refuses a third-party chat host; cost is unknown")
         _require_pin_host(pin, actual)
         if actual == "openai" and not paid:
             raise EvalUnverified("hosted OpenAI requires --paid")
@@ -866,6 +872,8 @@ def gate_paid(
         return
     if endpoint is None:
         raise EvalUnverified("ASK_MODEL=openai requires OPENAI_API_KEY")
+    if endpoint.label.host_class == "other":
+        raise EvalUnverified("bench refuses a third-party chat host; cost is unknown")
     if endpoint.label.billed:
         if not paid:
             raise EvalUnverified("hosted OpenAI requires --paid")
@@ -917,9 +925,7 @@ def bench_stem_suffix(*, compile_once: bool, provenance: BenchProvenance) -> str
         return base
     if provenance.host_class == "localhost":
         return f"{base}-localhost"
-    if provenance.host_class == "other":
-        return f"{base}-other"
-    raise ValueError("local provenance needs host class localhost or other")
+    raise ValueError("local provenance needs host class localhost")
 
 
 def baseline_refusal(provenance: BenchProvenance) -> str | None:

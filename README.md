@@ -193,7 +193,7 @@ ASK_MODEL=openai \
   --out evals/results
 ```
 
-The pin is [`evals/bench/pin-lfm3-local.json`](evals/bench/pin-lfm3-local.json). Rates in [`evals/bench/prices/lfm3-local.json`](evals/bench/prices/lfm3-local.json) are zero. A non-loopback host uses the stem `-bench-other` and the same unbilled rule.
+The pin is [`evals/bench/pin-lfm3-local.json`](evals/bench/pin-lfm3-local.json). Rates in [`evals/bench/prices/lfm3-local.json`](evals/bench/prices/lfm3-local.json) are zero. A non-loopback, non-OpenAI host is a third-party Chat Completions server: `POST /ask` can call it, the bench refuses it because the cost is unknown, and the result is not $0.
 
 ### Latency and cost
 

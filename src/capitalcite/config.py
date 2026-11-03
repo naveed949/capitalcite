@@ -95,6 +95,11 @@ class Settings(BaseSettings):
         min_length=1,
         description="Chat model id sent when ASK_MODEL=openai. Hosted or local.",
     )
+    ask_openai_timeout_s: float = Field(
+        default=30.0,
+        gt=0.0,
+        description="Seconds for one Chat Completions POST. Hosted or local.",
+    )
     ask_seed: int | None = Field(
         default=None,
         description="Optional OpenAI chat seed. Empty omits seed from the request body.",

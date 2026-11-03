@@ -12,7 +12,7 @@ from capitalcite.ask.types import AskModelName, ModelNotConfigured, ModelUnavail
 from capitalcite.trace import ObservationKind, chat_span_name, generation_attrs, observation
 
 HostClass = Literal["localhost", "openai", "other"]
-ProviderName = Literal["local", "hosted"]
+ProviderName = Literal["local", "hosted", "compatible"]
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 _HOSTED_BASE = "https://api.openai.com/v1"
@@ -30,10 +30,11 @@ class RunLabel(BaseModel):
 
     @model_validator(mode="after")
     def policy_matches_class(self) -> RunLabel:
-        local = self.host_class in {"localhost", "other"}
-        if local and self.provider == "local" and not self.billed:
+        if self.host_class == "localhost" and self.provider == "local" and not self.billed:
             return self
         if self.host_class == "openai" and self.provider == "hosted" and self.billed:
+            return self
+        if self.host_class == "other" and self.provider == "compatible" and not self.billed:
             return self
         raise ValueError("run label does not match host class")
 
@@ -63,6 +64,7 @@ class ChatConfig(Protocol):
     ask_openai_base_url: str | None
     openai_api_key: str | None
     ask_openai_model: str
+    ask_openai_timeout_s: float
 
 
 def normalize_chat_base_url(value: str | None) -> str:
@@ -93,8 +95,8 @@ def normalize_chat_base_url(value: str | None) -> str:
         if path not in {"", "/v1"}:
             raise ValueError("chat base URL path must be /v1")
         path = "/v1"
-    elif path != "/v1":
-        raise ValueError("chat base URL path must be /v1")
+    elif not path.endswith("/v1"):
+        raise ValueError("chat base URL path must end in /v1")
     port = parts.port
     if (scheme == "https" and port == 443) or (scheme == "http" and port == 80):
         port = None
@@ -114,6 +116,8 @@ def parse_chat_endpoint(
     timeout_s: float = 30.0,
 ) -> ChatEndpoint:
     """Config boundary for a live openai model. None base_url is hosted OpenAI."""
+    if timeout_s <= 0:
+        raise ValueError("chat timeout must be greater than 0")
     parts = _parts(base_url)
     provider, host_class, billed = _classify(parts)
     key = (api_key or "").strip() or None
@@ -150,6 +154,7 @@ def chat_endpoint_for(settings: ChatConfig, selected: AskModelName) -> ChatEndpo
         settings.ask_openai_base_url,
         settings.openai_api_key,
         settings.ask_openai_model,
+        timeout_s=settings.ask_openai_timeout_s,
     )
 
 
@@ -165,7 +170,7 @@ async def post_chat_completion(
     with observation(
         chat_span_name(label.model_id),
         ObservationKind.GENERATE,
-        **generation_attrs(model=label.model_id, provider=label.provider),
+        **generation_attrs(model=label.model_id, provider=_span_provider(label)),
     ) as span:
         try:
             async with httpx.AsyncClient(
@@ -199,7 +204,7 @@ async def post_chat_completion(
         span.set(
             **generation_attrs(
                 model=label.model_id,
-                provider=label.provider,
+                provider=_span_provider(label),
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
             )
@@ -224,7 +229,15 @@ def _classify(parts: SplitResult) -> tuple[ProviderName, HostClass, bool]:
         return "hosted", "openai", True
     if host in _LOOPBACK:
         return "local", "localhost", False
-    return "local", "other", False
+    return "compatible", "other", False
+
+
+def _span_provider(label: RunLabel) -> str:
+    if label.host_class == "openai":
+        return "openai"
+    if label.host_class == "localhost":
+        return "local"
+    return "openai-compatible"
 
 
 def _hostname(parts: SplitResult) -> str:

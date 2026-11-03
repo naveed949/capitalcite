@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from capitalcite.ask.endpoint import host_class_for
 from capitalcite.eval.bench import (
     DEFAULT_PIN,
     RECALL_NOT_MEASURED,
@@ -385,7 +386,35 @@ def test_shipped_pins_keep_prompt_hash_and_host_class() -> None:
     assert local.host_class == "localhost"
     assert local.openai_model == "lfm3:latest"
     assert local.model == "openai"
-    assert "://" not in json.dumps(local.paid_run)
+    rest = {key: value for key, value in local.paid_run.items() if key != "command"}
+    assert "://" not in json.dumps(rest)
+
+
+def _pin_command_env(command: str) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for token in command.split():
+        if "=" not in token:
+            break
+        key, _, value = token.partition("=")
+        if not key.isidentifier():
+            break
+        env[key] = value
+    return env
+
+
+def test_pin_commands_match_host_class() -> None:
+    for path in (DEFAULT_PIN, Path("evals/bench/pin-lfm3-local.json")):
+        pin = load_pin(path)
+        command = pin.paid_run["command"]
+        assert isinstance(command, str)
+        env = _pin_command_env(command)
+        actual = host_class_for(env.get("ASK_OPENAI_BASE_URL"))
+        if pin.host_class is None:
+            assert actual == "openai"
+            assert "ASK_OPENAI_BASE_URL" not in env
+        else:
+            assert actual == pin.host_class
+            assert env["ASK_OPENAI_BASE_URL"]
 
 
 def test_local_cost_is_zero_and_not_comparable() -> None:
@@ -419,8 +448,6 @@ def test_local_cost_is_zero_and_not_comparable() -> None:
     assert provenance.comparable_to_hosted is False
     assert provenance.latency_scope == "host_hardware"
     assert bench_stem_suffix(compile_once=True, provenance=provenance) == "-bench-localhost"
-    other = provenance.model_copy(update={"host_class": "other"})
-    assert bench_stem_suffix(compile_once=False, provenance=other) == "-bench-before-other"
     sentence = provenance_sentence(provenance)
     assert "://" not in sentence
     assert "cost" not in sentence.lower()
@@ -453,6 +480,9 @@ def test_local_pin_refuses_paid_and_a_hosted_url(monkeypatch: pytest.MonkeyPatch
         _bench_settings(pin, paid=True)
     monkeypatch.delenv("ASK_OPENAI_BASE_URL")
     with pytest.raises(EvalUnverified, match="does not match chat host class openai"):
+        _bench_settings(pin, paid=False)
+    monkeypatch.setenv("ASK_OPENAI_BASE_URL", "https://example.com/v1")
+    with pytest.raises(EvalUnverified, match="third-party"):
         _bench_settings(pin, paid=False)
 
 

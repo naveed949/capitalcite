@@ -23,7 +23,7 @@ from capitalcite.config import Settings
 from capitalcite.retrieval.embedders import OpenAIEmbedder, spec_for
 from capitalcite.retrieval.service import RetrievalSetup
 from capitalcite.retrieval.types import EmbedderName
-from capitalcite.trace import MemoryExporter, configure_for_tests
+from capitalcite.trace import MemoryExporter, configure_for_tests, generation_attrs
 
 _ORIGINAL_ASYNC = httpx.AsyncHTTPTransport.handle_async_request
 _ORIGINAL_SYNC = httpx.HTTPTransport.handle_request
@@ -65,13 +65,22 @@ def test_loopback_names_are_localhost_and_drop_the_key() -> None:
     assert normalize_chat_base_url(bare) == bare
 
 
-def test_other_host_is_local_and_unbilled() -> None:
-    endpoint = parse_chat_endpoint("https://example.com/v1", "sk-secret", "lfm3:latest")
-    assert endpoint.label.provider == "local"
-    assert endpoint.label.host_class == "other"
-    assert endpoint.label.billed is False
-    assert endpoint.headers() == {}
-    assert host_class_for("https://example.com/v1") == "other"
+def test_other_host_is_compatible_and_unbilled() -> None:
+    for base in (
+        "https://example.com/v1",
+        "http://0.0.0.0:11434/v1",
+        "https://openrouter.ai/api/v1",
+    ):
+        endpoint = parse_chat_endpoint(base, "sk-secret", "lfm3:latest")
+        assert endpoint.label.provider == "compatible"
+        assert endpoint.label.host_class == "other"
+        assert endpoint.label.billed is False
+        assert endpoint.headers() == {}
+        assert host_class_for(base) == "other"
+    assert (
+        normalize_chat_base_url("https://openrouter.ai/api/v1/")
+        == "https://openrouter.ai/api/v1"
+    )
 
 
 def test_hosted_blank_key_uses_the_existing_message() -> None:
@@ -105,6 +114,8 @@ def test_userinfo_query_and_fragment_are_rejected_without_the_url() -> None:
 def test_api_openai_empty_path_normalizes_to_v1() -> None:
     assert normalize_chat_base_url("https://API.OpenAI.com") == "https://api.openai.com/v1"
     assert normalize_chat_base_url("https://api.openai.com/v1") == "https://api.openai.com/v1"
+    with pytest.raises(ValueError, match="must be /v1"):
+        normalize_chat_base_url("https://api.openai.com/api/v1")
 
 
 def test_settings_rejects_a_bad_base_url_at_load(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -172,9 +183,31 @@ async def test_hosted_post_uses_bearer_and_the_openai_url() -> None:
     assert body["temperature"] == 0.0
     assert body["response_format"] == {"type": "json_object"}
     span = exporter.finished()[-1]
-    assert span.attributes["gen_ai.provider.name"] == "hosted"
+    assert span.attributes["gen_ai.provider.name"] == "openai"
     assert span.attributes["gen_ai.usage.input_tokens"] == 4
     assert "capitalcite.cost_usd" in span.attributes
+
+
+async def test_hosted_span_matches_main_generation_attrs() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        _ = request
+        return _completion("{}")
+
+    endpoint = parse_chat_endpoint(None, "sk-test", "gpt-4o-mini")
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    await post_chat_completion(
+        endpoint,
+        [{"role": "user", "content": "hi"}],
+        seed=None,
+        temperature=None,
+        transport=httpx.MockTransport(handler),
+    )
+    span = exporter.finished()[-1]
+    expected = generation_attrs(model="gpt-4o-mini", input_tokens=4, output_tokens=2)
+    assert expected["gen_ai.provider.name"] == "openai"
+    for key, value in expected.items():
+        assert span.attributes[key] == value
 
 
 async def test_local_post_omits_authorization_even_when_a_key_is_set() -> None:
@@ -370,3 +403,21 @@ async def test_check_live_ignores_ask_base_url(monkeypatch: pytest.MonkeyPatch) 
     await _live(True, setup, (item,))
     assert seen["host"] == "openai"
     assert seen["auth"] == "Bearer sk-live"
+
+
+def test_settings_timeout_is_positive() -> None:
+    settings = _settings()
+    assert settings.ask_openai_timeout_s == 30.0
+    endpoint = chat_endpoint_for(
+        _settings(
+            ask_openai_base_url="http://127.0.0.1:11434/v1",
+            ask_openai_timeout_s="12.5",
+        ),
+        "openai",
+    )
+    assert endpoint is not None
+    assert endpoint.timeout_s == 12.5
+    with pytest.raises(ValidationError):
+        _settings(ask_openai_timeout_s="0")
+    with pytest.raises(ValueError, match="timeout"):
+        parse_chat_endpoint(None, "sk-test", "gpt-4o-mini", timeout_s=0)

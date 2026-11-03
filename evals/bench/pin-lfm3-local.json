@@ -25,7 +25,7 @@
     "tokenizer": "o200k_base",
     "prices": "evals/bench/prices/lfm3-local.json",
     "host_class": "localhost",
-    "command": "ASK_MODEL=openai ASK_OPENAI_MODEL=lfm3:latest uv run capitalcite eval --suite bench --pin evals/bench/pin-lfm3-local.json --out evals/results",
+    "command": "ASK_MODEL=openai ASK_OPENAI_BASE_URL=http://localhost:11434/v1 ASK_OPENAI_MODEL=lfm3:latest uv run capitalcite eval --suite bench --pin evals/bench/pin-lfm3-local.json --out evals/results",
     "estimated_tokens_per_item": {
       "tokens_in": 1374.9684210526316,
       "tokens_out": 47.90526315789474,
