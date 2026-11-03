@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -251,6 +252,11 @@ def test_snapshot_bench_uses_same_run_graph_over_rag() -> None:
     assert snap.mean_cost_usd == 0.0
     assert snap.n_items == 1
     assert snap.schema_version == 2
+    assert report.arms["graph"].recall_at_5 is None
+    dumped = json.loads(report.model_dump_json())
+    assert dumped["arms"]["graph"]["recall_at_5"] is None
+    assert dumped["arms"]["rag"]["recall_at_5"] is None
+    assert dumped["arms"]["loop"]["recall_at_5"] is None
 
 
 def test_paid_requires_openai_model() -> None:

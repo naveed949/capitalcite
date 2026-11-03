@@ -138,7 +138,7 @@ class ArmSummary(BaseModel):
     model_config = ConfigDict(frozen=True)
     arm: LiteralArm
     n: int = Field(ge=0)
-    recall_at_5: float
+    recall_at_5: float | None
     recall_hits: int = Field(ge=0)
     recall_items: int = Field(ge=0)
     accuracy: float
@@ -240,7 +240,7 @@ def summarize_arm(queries: Sequence[QueryRecord], arm: LiteralArm) -> ArmSummary
     return ArmSummary(
         arm=arm,
         n=len(rows),
-        recall_at_5=(recall_hits / len(recall_rows)) if recall_rows else 0.0,
+        recall_at_5=(recall_hits / len(recall_rows)) if recall_rows else None,
         recall_hits=recall_hits,
         recall_items=len(recall_rows),
         accuracy=(accurate / len(rows)) if rows else 0.0,
@@ -426,7 +426,7 @@ def render_bench_markdown(report: BenchReport) -> str:
 
 
 def _recall_cell(report: BenchReport, arm: ArmSummary) -> str:
-    if report.recall.status != "measured":
+    if report.recall.status != "measured" or arm.recall_at_5 is None:
         return "not measured"
     return f"{arm.recall_at_5:.3f}"
 
