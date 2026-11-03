@@ -2,6 +2,7 @@
 #
 #   docker compose up -d          # Qdrant + Langfuse stack
 #   docker compose up -d qdrant   # vectors only (use Langfuse Cloud via LANGFUSE_HOST)
+#   docker compose --profile otel up -d otel-collector  # OTLP HTTP on 127.0.0.1:4318
 #
 # Langfuse self-host is the current architecture (web, worker, Postgres,
 # ClickHouse, Redis, MinIO). See docs/decisions/0001-scaffold.md.

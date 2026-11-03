@@ -1,3 +1,4 @@
+# Local OTLP HTTP receiver. Started only with `docker compose --profile otel`.
 receivers:
   otlp:
     protocols:
