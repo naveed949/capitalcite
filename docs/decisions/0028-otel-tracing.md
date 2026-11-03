@@ -30,9 +30,9 @@ A generation uses operation `chat`. A tool span uses operation `execute_tool` an
 
 Measured on this 4-core machine, one in-memory chunk, `ASK_MODEL=fake`, 40 timed `POST /ask` calls per side.
 <!-- BEGIN OTEL OVERHEAD -->
-Off was 2.2 ms p50 and 2.9 ms p95. On was 2.6 ms p50 and 3.5 ms p95. The difference is 0.4 ms at p50 and 0.6 ms at p95. Per-round p50 differences were 0.16 ms and 0.54 ms. Tracing was slower in both rounds.
+Off was 2.1 ms p50 and 2.5 ms p95. On was 2.4 ms p50 and 2.8 ms p95. The difference is 0.3 ms at p50 and 0.2 ms at p95. Per-round p50 differences were 0.29 ms and 0.38 ms. Tracing was slower in both rounds.
 <!-- END OTEL OVERHEAD -->
-The timer does not include the collector round trip. The file is `evals/results/701e39b7489a-otel-overhead.json`.
+The timer does not include the collector round trip. The file is `evals/results/ea65853a10be-otel-overhead.json`.
 
 ## HTTP protobuf, not gRPC
 
