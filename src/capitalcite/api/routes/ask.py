@@ -440,6 +440,8 @@ async def _run_agent(
         selected,
         api_key=settings.openai_api_key,
         openai_model=settings.ask_openai_model,
+        seed=settings.ask_seed,
+        temperature=settings.ask_temperature,
     )
     search_k = body.k if body.k is not None else setup.search_k
 
@@ -512,6 +514,8 @@ def _model_for(body: AskRequest, settings: Settings, *, hits_exist: bool) -> Str
         selected,
         api_key=settings.openai_api_key,
         openai_model=settings.ask_openai_model,
+        seed=settings.ask_seed,
+        temperature=settings.ask_temperature,
     )
 
 

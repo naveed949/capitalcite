@@ -823,12 +823,45 @@ def eval_cmd(
         "--print-cache-key",
         help="Print the eval Qdrant cache key (config hash + accessions) and exit.",
     ),
+    pin: Path | None = typer.Option(
+        None,
+        "--pin",
+        help="Bench pin JSON. Defaults to evals/bench/pin.json.",
+    ),
+    paid: bool = typer.Option(
+        False,
+        "--paid",
+        help="Allow ASK_MODEL=openai for bench. Omit this flag in every workflow.",
+    ),
+    no_compile_once: bool = typer.Option(
+        False,
+        "--no-compile-once",
+        help="Compile LangGraph on every question. For the before run.",
+    ),
+    corpus: str = typer.Option(
+        "fixture",
+        "--corpus",
+        help="fixture or full. full needs twelve 10-Ks and bge-small.",
+    ),
 ) -> None:
     """Score handwritten gold with span-overlap recall@k, MRR, and nDCG.
 
     Full mode re-chunks raw filings, embeds them, and writes
     ``evals/results/<sha12>.json``. ``--small`` is the CI path.
     """
+    if suite != "bench":
+        extra: list[str] = []
+        if pin is not None:
+            extra.append("--pin")
+        if paid:
+            extra.append("--paid")
+        if no_compile_once:
+            extra.append("--no-compile-once")
+        if corpus != "fixture":
+            extra.append("--corpus")
+        if extra:
+            typer.echo(f"error: {suite} suite does not take {', '.join(extra)}", err=True)
+            raise typer.Exit(code=1)
     if suite == "metrics":
         _reject_metrics_flags(
             small=small,
@@ -902,11 +935,19 @@ def eval_cmd(
         _run_metrics_eval(out, readme)
         return
     if suite == "bench":
+        if corpus not in {"fixture", "full"}:
+            typer.echo("error: --corpus must be fixture or full", err=True)
+            raise typer.Exit(code=1)
         _run_bench_eval(
             out,
             readme,
             baseline=baseline,
             write_baseline=write_baseline_file,
+            pin_path=pin,
+            paid=paid,
+            compile_once=not no_compile_once,
+            corpus=corpus,  # type: ignore[arg-type]
+            input_dir=input_dir,
         )
         return
 
@@ -1227,9 +1268,23 @@ def _run_bench_eval(
     *,
     baseline: Path | None,
     write_baseline: bool,
+    pin_path: Path | None = None,
+    paid: bool = False,
+    compile_once: bool = True,
+    corpus: str = "fixture",
+    input_dir: Path | None = None,
 ) -> None:
     try:
-        report = asyncio.run(run_bench_suite(out_dir=out))
+        report = asyncio.run(
+            run_bench_suite(
+                out_dir=out,
+                compile_once=compile_once,
+                pin_path=pin_path,
+                corpus=corpus,  # type: ignore[arg-type]
+                paid=paid,
+                input_dir=input_dir,
+            )
+        )
     except EvalUnverified as exc:
         typer.echo(f"unverified: {exc}", err=True)
         raise typer.Exit(code=2) from exc
@@ -1242,6 +1297,7 @@ def _run_bench_eval(
         "eval "
         f"suite=bench n={report.n_items} "
         f"compile_once={str(report.compile_once).lower()} "
+        f"corpus={report.corpus} "
         f"identity={report.identity_digest} "
         f"bottleneck={report.bottleneck_phase} "
         f"out={out}"
@@ -1286,7 +1342,7 @@ def _gate_bench(
     typer.echo(
         "eval-baseline "
         f"ok={str(compared.ok).lower()} "
-        f"p95_ms={snapshot.p95_total_ms:.3f} "
+        f"graph_over_rag={snapshot.graph_over_rag_p95:.3f} "
         f"cost={snapshot.mean_cost_usd:.6f}"
     )
     if not compared.ok:

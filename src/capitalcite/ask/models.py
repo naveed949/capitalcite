@@ -61,10 +61,14 @@ class OpenAIStructuredModel:
         model: str,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        seed: int | None = None,
+        temperature: float = 0.0,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._transport = transport
+        self._seed = seed
+        self._temperature = temperature
 
     def __repr__(self) -> str:
         return f"OpenAIStructuredModel(model={self._model!r})"
@@ -110,11 +114,12 @@ class OpenAIStructuredModel:
                     response = await client.post(
                         _CHAT_URL,
                         headers={"Authorization": f"Bearer {self._api_key}"},
-                        json={
-                            "model": self._model,
-                            "response_format": {"type": "json_object"},
-                            "messages": messages,
-                        },
+                        json=_chat_body(
+                            self._model,
+                            messages,
+                            seed=self._seed,
+                            temperature=self._temperature,
+                        ),
                     )
             except httpx.HTTPError as exc:
                 raise ModelUnavailable("openai chat completion request failed") from exc
@@ -156,6 +161,9 @@ def build_structured_model(
     *,
     api_key: str | None,
     openai_model: str,
+    seed: int | None = None,
+    temperature: float = 0.0,
+    transport: httpx.AsyncBaseTransport | None = None,
 ) -> StructuredModel:
     """fake never reads the key. openai without a key raises ModelNotConfigured."""
     if name == "fake":
@@ -163,7 +171,31 @@ def build_structured_model(
     key = (api_key or "").strip()
     if not key:
         raise ModelNotConfigured("ASK_MODEL=openai requires OPENAI_API_KEY")
-    return OpenAIStructuredModel(key, openai_model)
+    return OpenAIStructuredModel(
+        key,
+        openai_model,
+        transport=transport,
+        seed=seed,
+        temperature=temperature,
+    )
+
+
+def _chat_body(
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    seed: int | None,
+    temperature: float,
+) -> dict[str, object]:
+    body: dict[str, object] = {
+        "model": model,
+        "response_format": {"type": "json_object"},
+        "messages": messages,
+        "temperature": temperature,
+    }
+    if seed is not None:
+        body["seed"] = seed
+    return body
 
 
 def _system_prompt() -> str:

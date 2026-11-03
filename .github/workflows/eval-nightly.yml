@@ -8,6 +8,10 @@ on:
     paths:
       - ".github/workflows/eval-nightly.yml"
       - "evals/baselines/nightly.json"
+      - "evals/baselines/bench.json"
+      - "evals/bench/**"
+      - "src/capitalcite/eval/**"
+      - "src/capitalcite/agent/**"
       - "src/capitalcite/eval/baseline.py"
       - "src/capitalcite/eval/cache_key.py"
       - "src/capitalcite/eval/runner.py"
@@ -45,7 +49,6 @@ jobs:
 
   bench:
     name: agent vs RAG bench gate
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       SEC_USER_AGENT: capitalcite-ci ci@example.com

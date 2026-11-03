@@ -325,6 +325,20 @@ def _git_sha() -> str:
     return sha
 
 
+def git_revision() -> str:
+    """HEAD SHA, or SHA-dirty when the worktree has uncommitted changes."""
+    sha = _git_sha()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if dirty.returncode == 0 and dirty.stdout.strip():
+        return f"{sha}-dirty"
+    return sha
+
+
 def _package_version(name: str) -> str:
     try:
         return version(name)

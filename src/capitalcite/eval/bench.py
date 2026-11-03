@@ -6,7 +6,8 @@ import hashlib
 import json
 import os
 import tempfile
-from collections.abc import Iterable, Sequence
+from collections.abc import AsyncIterator, Iterable, Sequence
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -16,7 +17,7 @@ from capitalcite.agent import run_agent_loop, set_compile_once
 from capitalcite.atomic import atomic_write_text
 from capitalcite.config import Settings
 from capitalcite.eval.bootstrap import MeanCI, paired_mean_ci, percentile
-from capitalcite.eval.fixture_index import FixtureIndexError, indexed_fixture
+from capitalcite.eval.fixture_index import FixtureIndexError, indexed_corpus, indexed_fixture
 from capitalcite.eval.judge import recall_items, score_item
 from capitalcite.eval.metrics_eval import LiteralPath, score_answer
 from capitalcite.eval.metrics_gold import (
@@ -27,7 +28,7 @@ from capitalcite.eval.metrics_gold import (
 )
 from capitalcite.eval.phases import PhaseTimes, fold_phases
 from capitalcite.eval.prices import DEFAULT_PRICES, PriceTable, cost_usd, load_prices
-from capitalcite.eval.runner import EvalUnverified, _git_sha
+from capitalcite.eval.runner import EvalUnverified, git_revision
 from capitalcite.eval.tokens import (
     TOKENIZER_NAME,
     agent_prompt_tokens,
@@ -52,6 +53,8 @@ if TYPE_CHECKING:
 
 LiteralArm = Literal["rag", "graph", "loop"]
 LiteralSet = Literal["v1_recall", "metrics"]
+LiteralCorpus = Literal["fixture", "full"]
+RECALL_NOT_MEASURED = "not measured (fixture index has no gold spans)"
 DEFAULT_PIN = Path("evals/bench/pin.json")
 DEFAULT_V1 = Path("evals/golden/v1.jsonl")
 BOOTSTRAP_B = 10000
@@ -67,7 +70,7 @@ class BenchPin(BaseModel):
     suite: Literal["bench"] = "bench"
     n_items: int = Field(ge=1)
     sets: dict[str, int]
-    model: Literal["fake"] = "fake"
+    model: Literal["fake", "openai"] = "fake"
     openai_model: str
     seed: int
     temperature: float
@@ -89,6 +92,8 @@ class IdentityRow(BaseModel):
     refusal_reason: str | None
     tokens_in: int = Field(ge=0)
     tokens_out: int = Field(ge=0)
+    tokens_in_api: int | None = None
+    tokens_out_api: int | None = None
     cost_usd: float
     recall_at_5: bool | None
     accurate: bool
@@ -105,6 +110,8 @@ class QueryRecord(BaseModel):
     phases: PhaseTimes
     tokens_in: int = Field(ge=0)
     tokens_out: int = Field(ge=0)
+    tokens_in_api: int | None = None
+    tokens_out_api: int | None = None
     cost_usd: float
     recall_at_5: bool | None = None
     accurate: bool
@@ -119,6 +126,8 @@ class QueryRecord(BaseModel):
             refusal_reason=self.refusal_reason,
             tokens_in=self.tokens_in,
             tokens_out=self.tokens_out,
+            tokens_in_api=self.tokens_in_api,
+            tokens_out_api=self.tokens_out_api,
             cost_usd=self.cost_usd,
             recall_at_5=self.recall_at_5,
             accurate=self.accurate,
@@ -149,19 +158,38 @@ class ArmSummary(BaseModel):
     cost_per_correct: float | None
 
 
+class RecallReport(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    status: Literal["measured", "not_measured"]
+    reason: str
+    graph_minus_loop: MeanCI | None = None
+    graph_minus_rag: MeanCI | None = None
+
+    @model_validator(mode="after")
+    def measured_carries_ci(self) -> RecallReport:
+        has_ci = self.graph_minus_loop is not None and self.graph_minus_rag is not None
+        if self.status == "measured" and not has_ci:
+            raise ValueError("measured recall needs paired CIs")
+        if self.status == "not_measured" and (
+            self.graph_minus_loop is not None or self.graph_minus_rag is not None
+        ):
+            raise ValueError("not_measured recall cannot carry a CI")
+        return self
+
+
 class BenchReport(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
     suite: Literal["bench"] = "bench"
     git_sha: str = Field(min_length=1)
     compile_once: bool
+    corpus: LiteralCorpus = "fixture"
     pin: BenchPin
     prices: PriceTable
     n_items: int = Field(ge=1)
     queries: tuple[QueryRecord, ...]
     identity_digest: str = Field(min_length=64, max_length=64)
-    recall_delta_graph_minus_loop: MeanCI
+    recall: RecallReport
     accuracy_delta_graph_minus_loop: MeanCI
-    recall_delta_graph_minus_rag: MeanCI
     accuracy_delta_graph_minus_rag: MeanCI
     bottleneck_phase: str
     estimated_paid_tokens_per_item: dict[str, float]
@@ -250,12 +278,17 @@ async def run_bench_suite(
     compile_once: bool = True,
     pin_path: Path | None = None,
     stem_suffix: str = "-bench",
+    corpus: LiteralCorpus = "fixture",
+    paid: bool = False,
+    input_dir: Path | None = None,
 ) -> BenchReport:
-    """Ask rag, graph, and loop on the 77+18 item union. Fake model only."""
+    """Ask rag, graph, and loop on the 77+18 item union."""
     os.environ.setdefault("SEC_USER_AGENT", "capitalcite-eval eval@example.com")
     pin = load_pin(pin_path)
+    if paid:
+        pin = pin.model_copy(update={"model": "openai"})
     prices = load_prices(Path(pin.prices) if pin.prices else DEFAULT_PRICES)
-    settings = _bench_settings()
+    settings = _bench_settings(pin, paid=paid)
     v1 = recall_items(load_items(DEFAULT_V1))
     metrics = await load_metric_gold()
     if len(v1) + len(metrics) != pin.n_items:
@@ -266,16 +299,26 @@ async def run_bench_suite(
     exporter = MemoryExporter()
     configure_for_tests(exporter)
     queries: list[QueryRecord] = []
+    measure_recall = corpus == "full"
     try:
         with tempfile.TemporaryDirectory(prefix="capitalcite-bench-") as tmp:
             asking = settings.model_copy(update={"audit_log_path": Path(tmp) / "audit.jsonl"})
             try:
-                async with indexed_fixture() as setup:
+                async with _index_for(corpus, input_dir) as setup:
                     arms: tuple[LiteralArm, ...] = ("rag", "graph", "loop")
                     for gold in v1:
                         for arm in arms:
                             queries.append(
-                                await _score_v1(gold, arm, setup, asking, exporter, prices, pin)
+                                await _score_v1(
+                                    gold,
+                                    arm,
+                                    setup,
+                                    asking,
+                                    exporter,
+                                    prices,
+                                    pin,
+                                    measure_recall=measure_recall,
+                                )
                             )
                     for metric in metrics:
                         for arm in arms:
@@ -290,32 +333,55 @@ async def run_bench_suite(
         reset_for_tests()
         set_compile_once(True)
     ordered = tuple(sorted(queries, key=lambda row: (row.item_id, row.arm)))
+    if measure_recall:
+        recall = RecallReport(
+            status="measured",
+            reason="twelve-filing section/hybrid index",
+            graph_minus_loop=_delta(ordered, "recall_at_5", "graph", "loop"),
+            graph_minus_rag=_delta(ordered, "recall_at_5", "graph", "rag"),
+        )
+    else:
+        recall = RecallReport(status="not_measured", reason=RECALL_NOT_MEASURED)
+    revision = git_revision()
     report = BenchReport(
-        git_sha=_git_sha(),
+        git_sha=revision,
         compile_once=compile_once,
+        corpus=corpus,
         pin=pin,
         prices=prices,
         n_items=len(v1) + len(metrics),
         queries=ordered,
         identity_digest=identity_digest(ordered),
-        recall_delta_graph_minus_loop=_delta(ordered, "recall_at_5", "graph", "loop"),
+        recall=recall,
         accuracy_delta_graph_minus_loop=_delta(ordered, "accurate", "graph", "loop"),
-        recall_delta_graph_minus_rag=_delta(ordered, "recall_at_5", "graph", "rag"),
         accuracy_delta_graph_minus_rag=_delta(ordered, "accurate", "graph", "rag"),
         bottleneck_phase=bottleneck_phase(ordered, "graph"),
         estimated_paid_tokens_per_item=_token_means(ordered),
     )
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
-        stem = report.git_sha[:12] + stem_suffix
+        stem = _result_stem(revision, stem_suffix)
         atomic_write_text(out_dir / f"{stem}.json", report.model_dump_json(indent=2) + "\n")
-        identity = [row.identity().model_dump(mode="json") for row in ordered]
-        identity.append({"identity_digest": report.identity_digest})
-        atomic_write_text(
-            out_dir / f"{stem}.identity.json",
-            json.dumps(identity, sort_keys=True, indent=2) + "\n",
-        )
     return report
+
+
+def _result_stem(revision: str, suffix: str) -> str:
+    dirty = revision.endswith("-dirty")
+    sha = revision.removesuffix("-dirty")[:12]
+    marker = "-dirty" if dirty else ""
+    return f"{sha}{marker}{suffix}"
+
+
+@asynccontextmanager
+async def _index_for(
+    corpus: LiteralCorpus, input_dir: Path | None
+) -> AsyncIterator[RetrievalSetup]:
+    if corpus == "full":
+        async with indexed_corpus(input_dir) as setup:
+            yield setup
+        return
+    async with indexed_fixture() as setup:
+        yield setup
 
 
 def load_bench_report(path: Path) -> BenchReport:
@@ -337,20 +403,17 @@ def render_bench_markdown(report: BenchReport) -> str:
     for name in ("rag", "graph", "loop"):
         arm = report.arms[name]
         cost_correct = "n/a" if arm.cost_per_correct is None else f"{arm.cost_per_correct:.6f}"
+        recall_cell = _recall_cell(report, arm)
         lines.append(
-            f"| {name} | {arm.n} | {arm.recall_at_5:.3f} | {arm.accuracy:.3f} | "
+            f"| {name} | {arm.n} | {recall_cell} | {arm.accuracy:.3f} | "
             f"{arm.p50_total_ms:.1f} | {arm.p95_total_ms:.1f} | "
             f"{arm.mean_cost_usd:.6f} | {cost_correct} |"
         )
-    rec = report.recall_delta_graph_minus_loop
     acc = report.accuracy_delta_graph_minus_loop
     lines.extend(
         [
             "",
-            (
-                f"graph-loop Recall@5 delta={rec.point:.3f} "
-                f"95% CI [{rec.lo:.3f}, {rec.hi:.3f}] B={rec.B} seed={rec.seed}"
-            ),
+            _recall_delta_line(report),
             (
                 f"graph-loop accuracy delta={acc.point:.3f} "
                 f"95% CI [{acc.lo:.3f}, {acc.hi:.3f}] B={acc.B} seed={acc.seed}"
@@ -360,6 +423,22 @@ def render_bench_markdown(report: BenchReport) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def _recall_cell(report: BenchReport, arm: ArmSummary) -> str:
+    if report.recall.status != "measured":
+        return "not measured"
+    return f"{arm.recall_at_5:.3f}"
+
+
+def _recall_delta_line(report: BenchReport) -> str:
+    if report.recall.status != "measured" or report.recall.graph_minus_loop is None:
+        return f"graph-loop Recall@5 delta={report.recall.reason}"
+    rec = report.recall.graph_minus_loop
+    return (
+        f"graph-loop Recall@5 delta={rec.point:.3f} "
+        f"95% CI [{rec.lo:.3f}, {rec.hi:.3f}] B={rec.B} seed={rec.seed}"
+    )
 
 
 BENCH_BEGIN_MARK = "<!-- BEGIN BENCH EVAL -->"
@@ -377,26 +456,23 @@ def update_readme_bench(readme: Path, report: BenchReport) -> None:
 
 
 def _readme_table(report: BenchReport) -> str:
-    sha = report.git_sha[:12]
+    sha = _result_stem(report.git_sha, "")
     lines = [
         "| Arm | n | Recall@5 | Accuracy | p50 ms | p95 ms | cost/query |",
         "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for name in ("rag", "graph", "loop"):
         arm = report.arms[name]
+        recall_cell = _recall_cell(report, arm)
         lines.append(
-            f"| {name} | {arm.n} | {arm.recall_at_5:.3f} | {arm.accuracy:.3f} | "
+            f"| {name} | {arm.n} | {recall_cell} | {arm.accuracy:.3f} | "
             f"{arm.p50_total_ms:.1f} | {arm.p95_total_ms:.1f} | {arm.mean_cost_usd:.6f} |"
         )
-    rec = report.recall_delta_graph_minus_loop
     acc = report.accuracy_delta_graph_minus_loop
     lines.extend(
         [
             "",
-            (
-                f"graph-loop Recall@5 delta={rec.point:.3f} "
-                f"(95% CI {rec.lo:.3f} to {rec.hi:.3f}, B={rec.B}, seed={rec.seed})."
-            ),
+            _recall_delta_line(report),
             (f"graph-loop accuracy delta={acc.point:.3f} (95% CI {acc.lo:.3f} to {acc.hi:.3f})."),
             f"Bottleneck on the graph arm is **{report.bottleneck_phase}**.",
             f"Generated from [`evals/results/{sha}-bench.json`](evals/results/{sha}-bench.json).",
@@ -414,9 +490,11 @@ async def _score_v1(
     exporter: MemoryExporter,
     prices: PriceTable,
     pin: BenchPin,
+    *,
+    measure_recall: bool,
 ) -> QueryRecord:
     response, hits, phases = await _run_arm(item.question, arm, setup, settings, exporter)
-    recall = score_item(item, hits).hit_at(5)
+    recall = score_item(item, hits).hit_at(5) if measure_recall else None
     accurate = _v1_accurate(item, response)
     return _record(
         item.id,
@@ -527,6 +605,7 @@ def _record(
         )
     text = response.answer or response.refusal_reason or ""
     tokens_out = count_tokens(text)
+    tokens_in_api, tokens_out_api = _api_tokens(exporter)
     billed = pin.model != "fake"
     return QueryRecord(
         item_id=item_id,
@@ -538,6 +617,8 @@ def _record(
         phases=phases,
         tokens_in=tokens_in,
         tokens_out=tokens_out,
+        tokens_in_api=tokens_in_api,
+        tokens_out_api=tokens_out_api,
         cost_usd=cost_usd(
             prices,
             model_id=pin.openai_model,
@@ -596,10 +677,40 @@ def _mean(values: Iterable[float]) -> float:
     return sum(rows) / len(rows)
 
 
-def _bench_settings() -> Settings:
+def _api_tokens(exporter: MemoryExporter) -> tuple[int | None, int | None]:
+    inn = 0
+    out = 0
+    found = False
+    for span in exporter.finished():
+        attrs = span.attributes
+        raw_in = attrs.get("gen_ai.usage.input_tokens")
+        raw_out = attrs.get("gen_ai.usage.output_tokens")
+        if isinstance(raw_in, int):
+            inn += raw_in
+            found = True
+        if isinstance(raw_out, int):
+            out += raw_out
+            found = True
+    if not found:
+        return None, None
+    return inn, out
+
+
+def _bench_settings(pin: BenchPin, *, paid: bool) -> Settings:
     settings = Settings(sec_user_agent="capitalcite-eval eval@example.com")
-    if settings.ask_model != "fake":
-        raise EvalUnverified("ASK_MODEL must be fake")
+    if settings.ask_model == "openai" and not paid:
+        raise EvalUnverified("ASK_MODEL=openai requires --paid")
+    if paid and settings.ask_model != "openai":
+        raise EvalUnverified("--paid requires ASK_MODEL=openai")
+    if settings.ask_model not in {"fake", "openai"}:
+        raise EvalUnverified("ASK_MODEL must be fake or openai")
+    if settings.ask_model == "openai":
+        key = (settings.openai_api_key or "").strip()
+        if not key:
+            raise EvalUnverified("ASK_MODEL=openai requires OPENAI_API_KEY")
+        settings = settings.model_copy(
+            update={"ask_seed": pin.seed, "ask_temperature": pin.temperature}
+        )
     if settings.metric_query_backend != "catalog":
         raise EvalUnverified("METRIC_QUERY_BACKEND must be catalog")
     warehouse = settings.warehouse_path

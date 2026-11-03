@@ -24,6 +24,7 @@ from capitalcite.retrieval import (
     RetrievalError,
     RetrievalSetup,
     build_index,
+    create_retrieval_setup,
     setup_retrieval,
 )
 
@@ -80,6 +81,49 @@ async def indexed_fixture(root: Path | None = None) -> AsyncIterator[RetrievalSe
             client=client,
             embedder=FakeEmbedder(),
         )
+        try:
+            await build_index(setup, work)
+            yield setup
+        except RetrievalError as exc:
+            raise EvalUnverified(str(exc)) from exc
+        finally:
+            await setup.aclose()
+
+
+@asynccontextmanager
+async def indexed_corpus(root: Path | None = None) -> AsyncIterator[RetrievalSetup]:
+    """Section-chunk the twelve-filing corpus and index it with local bge-small."""
+    corpus = root if root is not None else Path("data")
+    edgar = corpus / "raw" / "edgar"
+    if not edgar.is_dir():
+        raise EvalUnverified(f"missing raw/edgar under {corpus}")
+    filings = sum(1 for _ in edgar.rglob("metadata.json"))
+    if filings < 12:
+        raise EvalUnverified(f"need 12 filings under {corpus}, have {filings}")
+    with tempfile.TemporaryDirectory(prefix="capitalcite-bench-full-") as tmp:
+        work = Path(tmp)
+        summary = run_chunk(
+            input_root=corpus,
+            output=FilingStore(work),
+            chunker=ChunkerName.SECTION,
+            size=512,
+            overlap=64,
+        )
+        if summary.failed:
+            raise FixtureIndexError("full corpus chunk failed")
+        if summary.files == 0:
+            raise EvalUnverified(f"no filings to chunk under {corpus}")
+        settings = Settings(
+            sec_user_agent="capitalcite-eval eval@example.com",
+            chunker=ChunkerName.SECTION,
+            chunk_size=512,
+            chunk_overlap=64,
+            embedder="bge-small",
+            qdrant_collection="bench-full",
+            search_k=FIXTURE_RETRIEVE_K,
+            qdrant_path=work / "qdrant",
+        )
+        setup = create_retrieval_setup(settings)
         try:
             await build_index(setup, work)
             yield setup

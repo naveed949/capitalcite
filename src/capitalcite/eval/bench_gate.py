@@ -1,4 +1,4 @@
-"""Nightly p95 latency and cost-per-query gate for the bench suite."""
+"""Same-run graph/rag p95 ratio and cost-per-query gate for the bench suite."""
 
 from __future__ import annotations
 
@@ -9,46 +9,56 @@ from pydantic import BaseModel, ConfigDict, Field
 from capitalcite.atomic import atomic_write_text
 from capitalcite.eval.baseline import CompareFailure, CompareReport
 from capitalcite.eval.bench import BenchReport, summarize_arm
-from capitalcite.eval.bootstrap import percentile
 
 DEFAULT_BENCH_BASELINE = Path("evals/baselines/bench.json")
 
-P95_LATENCY_MAX_RATIO = 2.0
+GRAPH_OVER_RAG_MAX_RATIO = 2.0
 COST_PER_QUERY_ABS = 0.0
 TOLERANCE_RATIONALE = (
-    "Fake-model p95 is wall-clock on a shared CPU runner. A 2x band absorbs "
-    "scheduler noise and first-query index warmup without hiding a doubled "
-    "retrieve or a compile-cache regression. Cost is exactly 0 on ASK_MODEL=fake; "
-    "any positive mean fails."
+    "Absolute graph p95 is wall-clock on the host. A loaded runner measured "
+    "96-100 ms against a 38.8 ms laptop snapshot and failed a 2x ms band. "
+    "The gate compares graph p95 to rag p95 in the same run. Both arms see "
+    "the same scheduler. A 2x band on that ratio absorbs first-query warmup "
+    "without hiding a doubled retrieve or a compile-cache miss. Cost is "
+    "exactly 0 on ASK_MODEL=fake; any positive mean fails."
 )
 
 
 class BenchThresholds(BaseModel):
     model_config = ConfigDict(frozen=True)
-    p95_latency_max_ratio: float = Field(gt=0.0, default=P95_LATENCY_MAX_RATIO)
+    graph_over_rag_p95_max_ratio: float = Field(gt=0.0, default=GRAPH_OVER_RAG_MAX_RATIO)
     cost_per_query_abs: float = Field(ge=0.0, default=COST_PER_QUERY_ABS)
     rationale: str = TOLERANCE_RATIONALE
 
 
 class BenchBaseline(BaseModel):
     model_config = ConfigDict(frozen=True)
-    schema_version: int = 1
+    schema_version: int = 2
     n_items: int = Field(ge=1)
     model: str = Field(min_length=1)
     compile_once: bool
-    p95_total_ms: float = Field(ge=0.0)
+    graph_over_rag_p95: float = Field(ge=0.0)
+    graph_p95_total_ms: float = Field(ge=0.0)
+    rag_p95_total_ms: float = Field(ge=0.0)
     mean_cost_usd: float = Field(ge=0.0)
     thresholds: BenchThresholds = Field(default_factory=BenchThresholds)
 
 
+def _ratio(graph_p95: float, rag_p95: float) -> float:
+    floor = max(rag_p95, 1.0)
+    return graph_p95 / floor
+
+
 def snapshot_bench(report: BenchReport) -> BenchBaseline:
     graph = summarize_arm(report.queries, "graph")
-    totals = [row.phases.total_ms for row in report.queries if row.arm == "graph"]
+    rag = summarize_arm(report.queries, "rag")
     return BenchBaseline(
         n_items=report.n_items,
         model=report.pin.model,
         compile_once=report.compile_once,
-        p95_total_ms=percentile(totals, 0.95) if totals else 0.0,
+        graph_over_rag_p95=_ratio(graph.p95_total_ms, rag.p95_total_ms),
+        graph_p95_total_ms=graph.p95_total_ms,
+        rag_p95_total_ms=rag.p95_total_ms,
         mean_cost_usd=graph.mean_cost_usd,
     )
 
@@ -86,15 +96,15 @@ def compare_bench(current: BenchBaseline, committed: BenchBaseline) -> CompareRe
                 detail=f"{current.compile_once} != committed {committed.compile_once}",
             )
         )
-    limit = committed.p95_total_ms * committed.thresholds.p95_latency_max_ratio
-    if current.p95_total_ms > limit:
+    limit = committed.graph_over_rag_p95 * committed.thresholds.graph_over_rag_p95_max_ratio
+    if current.graph_over_rag_p95 > limit:
         failures.append(
             CompareFailure(
-                metric="p95_total_ms",
+                metric="graph_over_rag_p95",
                 detail=(
-                    f"{current.p95_total_ms:.3f} > {limit:.3f} "
-                    f"({committed.thresholds.p95_latency_max_ratio}x "
-                    f"of {committed.p95_total_ms:.3f})"
+                    f"{current.graph_over_rag_p95:.3f} > {limit:.3f} "
+                    f"({committed.thresholds.graph_over_rag_p95_max_ratio}x "
+                    f"of {committed.graph_over_rag_p95:.3f})"
                 ),
             )
         )
@@ -122,4 +132,10 @@ def write_bench_baseline(path: Path, snapshot: BenchBaseline) -> None:
 
 
 def perturb_p95(snapshot: BenchBaseline, factor: float) -> BenchBaseline:
-    return snapshot.model_copy(update={"p95_total_ms": snapshot.p95_total_ms * factor})
+    graph_p95 = snapshot.graph_p95_total_ms * factor
+    return snapshot.model_copy(
+        update={
+            "graph_p95_total_ms": graph_p95,
+            "graph_over_rag_p95": _ratio(graph_p95, snapshot.rag_p95_total_ms),
+        }
+    )

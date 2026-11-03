@@ -5,8 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 from functools import lru_cache
-
-import tiktoken
+from typing import Any
 
 from capitalcite.agent.models import _plan_system_prompt, _plan_user_prompt
 from capitalcite.agent.types import TraceStep
@@ -17,7 +16,15 @@ TOKENIZER_NAME = "o200k_base"
 
 
 @lru_cache(maxsize=1)
-def encoding() -> tiktoken.Encoding:
+def encoding() -> Any:
+    """Load o200k_base. First use may download the encoding over the network."""
+    try:
+        import tiktoken
+    except ImportError as exc:
+        raise RuntimeError(
+            "tiktoken is not installed. Install the eval group with "
+            "`uv sync --group eval`. First use may download o200k_base."
+        ) from exc
     return tiktoken.get_encoding(TOKENIZER_NAME)
 
 

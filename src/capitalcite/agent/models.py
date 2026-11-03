@@ -13,7 +13,12 @@ from pydantic import ValidationError
 
 from capitalcite.agent.types import PlannerDecision, ToolCall, TraceStep
 from capitalcite.ask.guard import tickers_named, years_named
-from capitalcite.ask.models import OpenAIStructuredModel, StructuredModel, _usage_tokens
+from capitalcite.ask.models import (
+    OpenAIStructuredModel,
+    StructuredModel,
+    _chat_body,
+    _usage_tokens,
+)
 from capitalcite.ask.types import (
     AskModelName,
     DraftCite,
@@ -143,11 +148,15 @@ class OpenAIAgentModel:
         model: str,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        seed: int | None = None,
+        temperature: float = 0.0,
     ) -> None:
         self._inner = inner
         self._api_key = api_key
         self._model = model
         self._transport = transport
+        self._seed = seed
+        self._temperature = temperature
 
     async def plan(
         self,
@@ -195,11 +204,12 @@ class OpenAIAgentModel:
                     response = await client.post(
                         _CHAT_URL,
                         headers={"Authorization": f"Bearer {self._api_key}"},
-                        json={
-                            "model": self._model,
-                            "response_format": {"type": "json_object"},
-                            "messages": messages,
-                        },
+                        json=_chat_body(
+                            self._model,
+                            messages,
+                            seed=self._seed,
+                            temperature=self._temperature,
+                        ),
                     )
             except httpx.HTTPError as exc:
                 raise ModelUnavailable("openai chat completion request failed") from exc
@@ -227,14 +237,29 @@ def build_agent_model(
     api_key: str | None,
     openai_model: str,
     transport: httpx.AsyncBaseTransport | None = None,
+    seed: int | None = None,
+    temperature: float = 0.0,
 ) -> AgentModel:
     if name == "fake":
         return FakeAgentModel()
     key = (api_key or "").strip()
     if not key:
         raise ModelNotConfigured("ASK_MODEL=openai requires OPENAI_API_KEY")
-    inner = OpenAIStructuredModel(key, openai_model, transport=transport)
-    return OpenAIAgentModel(inner, key, openai_model, transport=transport)
+    inner = OpenAIStructuredModel(
+        key,
+        openai_model,
+        transport=transport,
+        seed=seed,
+        temperature=temperature,
+    )
+    return OpenAIAgentModel(
+        inner,
+        key,
+        openai_model,
+        transport=transport,
+        seed=seed,
+        temperature=temperature,
+    )
 
 
 _METRIC_PHRASES: tuple[tuple[str, MetricName], ...] = (
