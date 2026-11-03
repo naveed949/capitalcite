@@ -205,13 +205,62 @@ def test_writeup_overhead_ms_from_linked_json(tmp_path: Path) -> None:
     link = f"[overhead](evals/results/{name})"
     _write_tree(
         tmp_path,
-        readme=f"Tracing overhead is measured in {link}.\n",
+        readme=f"OTLP adds 0.4 ms at p50. Source {link}.\n",
         writeup=f"OTLP adds 0.4 ms at p50 {link}.\n",
-        results={"cited": {"overhead_p50": "0.4 ms"}},
+        results={
+            "off": {"samples_ms": [2.0] * 20},
+            "on": {"samples_ms": [2.4] * 20},
+        },
         result_name=name,
     )
     proc = run_check(tmp_path)
     assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_readme_overhead_block_accepts_measured_band(tmp_path: Path) -> None:
+    name = "abcabcabcabc-otel-overhead.json"
+    link = f"[overhead](evals/results/{name})"
+    _write_tree(
+        tmp_path,
+        readme=(
+            f"Source {link}.\n"
+            "<!-- BEGIN OTEL OVERHEAD -->\n"
+            "OTLP adds 0.2 to 0.5 ms.\n"
+            "<!-- END OTEL OVERHEAD -->\n"
+        ),
+        writeup=f"OTLP adds 0.2 to 0.5 ms {link}.\n",
+        results={
+            "off": {"samples_ms": [2.0] * 20},
+            "on": {"samples_ms": [2.2] * 20},
+        },
+        result_name=name,
+    )
+    proc = run_check(tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_readme_overhead_block_rejects_unprojected_ms(tmp_path: Path) -> None:
+    name = "abcabcabcabc-otel-overhead.json"
+    link = f"[overhead](evals/results/{name})"
+    _write_tree(
+        tmp_path,
+        readme=(
+            f"Measured 0.4 ms in {link}.\n"
+            "<!-- BEGIN OTEL OVERHEAD -->\n"
+            "OTLP adds 9.9 ms.\n"
+            "<!-- END OTEL OVERHEAD -->\n"
+        ),
+        writeup=f"OTLP adds 0.4 ms {link}.\n",
+        results={
+            "off": {"samples_ms": [2.0] * 20},
+            "on": {"samples_ms": [2.4] * 20},
+        },
+        result_name=name,
+    )
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1
+    assert "9.9 ms" in proc.stdout
+    assert "OTLP overhead block" in proc.stdout
 
 
 def test_writeup_ratio_without_link_fails(tmp_path: Path) -> None:

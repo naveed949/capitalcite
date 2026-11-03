@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sys
 from collections.abc import Mapping
@@ -32,6 +33,8 @@ CHECKED_DOCS: tuple[str, ...] = ("docs/writeup.md",)
 README_REL = "README.md"
 BENCH_BEGIN_MARK = "<!-- BEGIN BENCH EVAL -->"
 BENCH_END_MARK = "<!-- END BENCH EVAL -->"
+OVERHEAD_BEGIN_MARK = "<!-- BEGIN OTEL OVERHEAD -->"
+OVERHEAD_END_MARK = "<!-- END OTEL OVERHEAD -->"
 ZERO_LEXEMES = frozenset({"0", "0.0", "0.00", "0.000"})
 COST_LINE = re.compile(r"\bcost\b", re.IGNORECASE)
 HEX_STEM = re.compile(r"^[0-9a-f]+", re.IGNORECASE)
@@ -180,7 +183,7 @@ def project_file(data: Mapping[str, object], readme: frozenset[str]) -> frozense
         return _project_metrics(data, readme)
     if data.get("suite") == "bench":
         return _project_bench(data, readme)
-    emitted: set[str] = set(_project_overhead(data))
+    emitted: set[str] = set(_project_overhead(data, readme))
     if data.get("small") is True:
         return frozenset(emitted)
     arms = data.get("arms")
@@ -346,11 +349,68 @@ def _emit_rate(emitted: set[str], readme: frozenset[str], hits: int, items: int)
         emitted.add(rate)
 
 
-def _project_overhead(data: Mapping[str, object]) -> frozenset[str]:
-    cited = data.get("cited")
-    if not isinstance(cited, dict):
+def _project_overhead(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
+    """Recount OTLP on/off percentiles from samples. Stored cited strings are not a source."""
+    off = data.get("off")
+    on = data.get("on")
+    if not isinstance(off, dict) or not isinstance(on, dict):
         return frozenset()
-    return frozenset(value for value in cited.values() if isinstance(value, str))
+    off_samples = _ms_samples(off)
+    on_samples = _ms_samples(on)
+    if not off_samples or not on_samples:
+        return frozenset()
+    off_p50 = statistics_median(off_samples)
+    off_p95 = _nearest_rank(off_samples, 0.95)
+    on_p50 = statistics_median(on_samples)
+    on_p95 = _nearest_rank(on_samples, 0.95)
+    overhead_p50 = on_p50 - off_p50
+    overhead_p95 = on_p95 - off_p95
+    emitted: set[str] = set()
+    for value in (off_p50, off_p95, on_p50, on_p95, overhead_p50, overhead_p95):
+        _emit_ms(emitted, readme, value)
+    lo_r, hi_r = _overhead_band_ends(overhead_p50, overhead_p95)
+    for part in (f"{lo_r:.1f}", f"{hi_r:.1f}"):
+        for token in (part, f"{part} ms"):
+            if token in readme:
+                emitted.add(token)
+    return frozenset(emitted)
+
+
+def _ms_samples(side: Mapping[str, object]) -> list[float]:
+    raw = side.get("samples_ms")
+    if not isinstance(raw, list):
+        return []
+    out: list[float] = []
+    for item in raw:
+        if isinstance(item, bool) or not isinstance(item, int | float):
+            continue
+        out.append(float(item))
+    return out
+
+
+def statistics_median(values: list[float]) -> float:
+    ordered = sorted(values)
+    n = len(ordered)
+    mid = n // 2
+    if n % 2 == 1:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def _nearest_rank(values: list[float], quantile: float) -> float:
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, math.ceil(quantile * len(ordered)) - 1))
+    return ordered[index]
+
+
+def _overhead_band_ends(p50_ms: float, p95_ms: float) -> tuple[float, float]:
+    lo = min(p50_ms, p95_ms)
+    hi = max(p50_ms, p95_ms)
+    lo_r = math.floor(lo * 10) / 10
+    hi_r = math.ceil(hi * 10) / 10
+    if hi_r < 0.5:
+        hi_r = 0.5
+    return lo_r, hi_r
 
 
 def _stem_hex(path: Path) -> str | None:
@@ -392,12 +452,20 @@ def build_ledger(root: Path, writeup: str, readme: str) -> tuple[Ledger, tuple[F
     return Ledger(readme=readme_set, projected=frozenset(projected)), tuple(failures)
 
 
-def _readme_bench_block(text: str) -> str | None:
-    if BENCH_BEGIN_MARK not in text or BENCH_END_MARK not in text:
+def _readme_marked_block(text: str, begin: str, end: str) -> str | None:
+    if begin not in text or end not in text:
         return None
-    _, rest = text.split(BENCH_BEGIN_MARK, 1)
-    block, _ = rest.split(BENCH_END_MARK, 1)
+    _, rest = text.split(begin, 1)
+    block, _ = rest.split(end, 1)
     return block
+
+
+def _readme_bench_block(text: str) -> str | None:
+    return _readme_marked_block(text, BENCH_BEGIN_MARK, BENCH_END_MARK)
+
+
+def _readme_overhead_block(text: str) -> str | None:
+    return _readme_marked_block(text, OVERHEAD_BEGIN_MARK, OVERHEAD_END_MARK)
 
 
 def _check_readme_bench_block(readme: str, projected: frozenset[str]) -> tuple[Failure, ...]:
@@ -424,6 +492,30 @@ def _check_readme_bench_block(readme: str, projected: frozenset[str]) -> tuple[F
             Failure(
                 span,
                 f"'{cited.lexeme}' in the README bench block is not in linked evals/results JSON",
+            )
+        )
+    return tuple(failures)
+
+
+def _check_readme_overhead_block(readme: str, projected: frozenset[str]) -> tuple[Failure, ...]:
+    """README OTLP overhead numbers must come from committed samples, not the rest of the README."""
+    block = _readme_overhead_block(readme)
+    if block is None:
+        return ()
+    prefix, _ = readme.split(OVERHEAD_BEGIN_MARK, 1)
+    line_offset = prefix.count("\n")
+    failures: list[Failure] = []
+    for cited in extract(block, README_REL):
+        span = Span(cited.span.path, cited.span.line + line_offset, cited.span.column)
+        if cited.lexeme in projected:
+            continue
+        failures.append(
+            Failure(
+                span,
+                (
+                    f"'{cited.lexeme}' in the README OTLP overhead block is not in "
+                    "linked evals/results JSON"
+                ),
             )
         )
     return tuple(failures)
@@ -475,9 +567,11 @@ def check(root: Path) -> tuple[Failure, ...]:
         ledger, link_failures = build_ledger(root, writeup_text, readme_text)
         failures.extend(link_failures)
         failures.extend(_check_readme_bench_block(readme_text, ledger.projected))
+        failures.extend(_check_readme_overhead_block(readme_text, ledger.projected))
     elif README_REL in texts:
         ledger = Ledger(readme=readme_lexemes(readme_text), projected=frozenset())
         failures.extend(_check_readme_bench_block(readme_text, ledger.projected))
+        failures.extend(_check_readme_overhead_block(readme_text, ledger.projected))
     else:
         ledger = Ledger(readme=frozenset(), projected=frozenset())
     for rel in CHECKED_DOCS:

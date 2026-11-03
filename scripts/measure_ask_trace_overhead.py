@@ -98,6 +98,7 @@ def main() -> int:
     on_stats = _stats(on)
     overhead_p50 = on_stats["p50_ms"] - off_stats["p50_ms"]
     overhead_p95 = on_stats["p95_ms"] - off_stats["p95_ms"]
+    lo_r, hi_r = _overhead_band_ends(overhead_p50, overhead_p95)
     cited = {
         "off_p50": _cite_ms(off_stats["p50_ms"]),
         "off_p95": _cite_ms(off_stats["p95_ms"]),
@@ -105,6 +106,7 @@ def main() -> int:
         "on_p95": _cite_ms(on_stats["p95_ms"]),
         "overhead_p50": _cite_ms(overhead_p50),
         "overhead_p95": _cite_ms(overhead_p95),
+        "overhead_band": f"{lo_r:.1f} to {hi_r:.1f} ms",
     }
     spread = off_stats["max_ms"] - off_stats["min_ms"]
     limiter = _limiter(profile_off, profile_on, spread, overhead_p50)
@@ -227,6 +229,16 @@ def _nearest_rank(samples: list[float], quantile: float) -> float:
 
 def _cite_ms(value: float) -> str:
     return f"{value:.1f} ms"
+
+
+def _overhead_band_ends(p50_ms: float, p95_ms: float) -> tuple[float, float]:
+    lo = min(p50_ms, p95_ms)
+    hi = max(p50_ms, p95_ms)
+    lo_r = math.floor(lo * 10) / 10
+    hi_r = math.ceil(hi * 10) / 10
+    if hi_r < 0.5:
+        hi_r = 0.5
+    return lo_r, hi_r
 
 
 def _limiter(
