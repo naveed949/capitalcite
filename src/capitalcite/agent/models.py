@@ -149,7 +149,7 @@ class OpenAIAgentModel:
         *,
         transport: httpx.AsyncBaseTransport | None = None,
         seed: int | None = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
     ) -> None:
         self._inner = inner
         self._api_key = api_key
@@ -238,7 +238,7 @@ def build_agent_model(
     openai_model: str,
     transport: httpx.AsyncBaseTransport | None = None,
     seed: int | None = None,
-    temperature: float = 0.0,
+    temperature: float | None = None,
 ) -> AgentModel:
     if name == "fake":
         return FakeAgentModel()

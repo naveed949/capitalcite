@@ -62,7 +62,7 @@ class OpenAIStructuredModel:
         *,
         transport: httpx.AsyncBaseTransport | None = None,
         seed: int | None = None,
-        temperature: float = 0.0,
+        temperature: float | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
@@ -162,7 +162,7 @@ def build_structured_model(
     api_key: str | None,
     openai_model: str,
     seed: int | None = None,
-    temperature: float = 0.0,
+    temperature: float | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> StructuredModel:
     """fake never reads the key. openai without a key raises ModelNotConfigured."""
@@ -185,16 +185,17 @@ def _chat_body(
     messages: list[dict[str, str]],
     *,
     seed: int | None,
-    temperature: float,
+    temperature: float | None,
 ) -> dict[str, object]:
     body: dict[str, object] = {
         "model": model,
         "response_format": {"type": "json_object"},
         "messages": messages,
-        "temperature": temperature,
     }
     if seed is not None:
         body["seed"] = seed
+    if temperature is not None:
+        body["temperature"] = temperature
     return body
 
 

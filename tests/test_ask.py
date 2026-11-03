@@ -195,10 +195,10 @@ def test_chat_body_includes_seed_and_temperature() -> None:
         "gpt-4o-mini",
         [{"role": "user", "content": "hi"}],
         seed=None,
-        temperature=0.0,
+        temperature=None,
     )
     assert "seed" not in omitted
-    assert omitted["temperature"] == 0.0
+    assert "temperature" not in omitted
 
 
 async def test_openai_retries_invalid_json_once() -> None:

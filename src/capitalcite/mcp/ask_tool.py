@@ -96,6 +96,8 @@ def _model_for(
         selected,
         api_key=settings.openai_api_key,
         openai_model=settings.ask_openai_model,
+        seed=settings.ask_seed,
+        temperature=settings.ask_temperature,
     )
 
 

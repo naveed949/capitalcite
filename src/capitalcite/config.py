@@ -88,11 +88,13 @@ class Settings(BaseSettings):
         default=None,
         description="Optional OpenAI chat seed. Empty omits seed from the request body.",
     )
-    ask_temperature: float = Field(
-        default=0.0,
+    ask_temperature: float | None = Field(
+        default=None,
         ge=0.0,
         le=2.0,
-        description="OpenAI chat temperature when ASK_MODEL=openai.",
+        description=(
+            "Optional OpenAI chat temperature. Empty omits temperature from the request body."
+        ),
     )
     ask_min_hit_score: float = Field(
         default=0.0,
