@@ -238,6 +238,10 @@ _FAKE_PROVENANCE = {
 }
 
 
+def _legacy_provenance() -> BenchProvenance:
+    return BenchProvenance.model_validate(dict(_FAKE_PROVENANCE))
+
+
 class BenchReport(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
     suite: Literal["bench"] = "bench"
@@ -246,7 +250,7 @@ class BenchReport(BaseModel):
     corpus: LiteralCorpus = "fixture"
     pin: BenchPin
     prices: PriceTable
-    provenance: BenchProvenance
+    provenance: BenchProvenance = Field(default_factory=_legacy_provenance)
     n_items: int = Field(ge=1)
     queries: tuple[QueryRecord, ...]
     identity_digest: str = Field(min_length=64, max_length=64)
@@ -255,15 +259,6 @@ class BenchReport(BaseModel):
     accuracy_delta_graph_minus_rag: MeanCI
     bottleneck_phase: str
     estimated_paid_tokens_per_item: dict[str, float]
-
-    @model_validator(mode="before")
-    @classmethod
-    def legacy_fake_provenance(cls, data: object) -> object:
-        if isinstance(data, dict) and "provenance" not in data:
-            copied = dict(data)
-            copied["provenance"] = dict(_FAKE_PROVENANCE)
-            return copied
-        return data
 
     @computed_field  # type: ignore[prop-decorator]
     @property
