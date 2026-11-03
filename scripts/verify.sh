@@ -3092,15 +3092,77 @@ def _wait_health(port: int) -> None:
 
 
 def _post_ask(port: int) -> int:
-    body = json.dumps({"question": "ping", "model": "fake"}).encode()
+    body = json.dumps(
+        {"question": "What was the Standardized CET1 ratio?", "model": "fake", "k": 4}
+    ).encode()
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}/ask",
         data=body,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return int(response.status)
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return int(response.status)
+    except urllib.error.HTTPError as exc:
+        detail = exc.read()[:500]
+        sys.stderr.write(f"verify: otlp POST /ask HTTP {exc.code} {detail!r}\n")
+        raise
+
+
+def _seed_index(store: str) -> None:
+    quote = "the Standardized CET1 ratio was 15.7 percent"
+    chunk = {
+        "doc_id": "doc-jpm",
+        "section": "Item 7",
+        "start": 10,
+        "end": 10 + len(quote),
+        "offset": 10,
+        "source_url": "https://www.sec.gov/Archives/edgar/data/19617/jpm.htm",
+        "text": quote,
+        "token_count": 8,
+        "chunker": "section",
+        "ticker": "JPM",
+        "form": "10-K",
+        "period": "2024-12-31",
+        "accession": "doc-jpm",
+    }
+    corpus = Path(tempfile.mkdtemp(prefix="otel-corpus-"))
+    folder = corpus / "parsed" / "edgar" / "JPM" / "10-K" / "2024-12-31" / "doc-jpm"
+    folder.mkdir(parents=True)
+    (folder / "chunks.jsonl").write_text(json.dumps(chunk) + "\n", encoding="utf-8")
+    env = os.environ.copy()
+    env.update(
+        {
+            "SEC_USER_AGENT": "capitalcite-verify you@example.com",
+            "ASK_MODEL": "fake",
+            "LANGFUSE_TRACING_ENABLED": "false",
+            "QDRANT_PATH": store,
+            "EMBEDDER": "bge-small",
+        }
+    )
+    env.pop("CAPITALCITE_TRACE_FILE", None)
+    completed = subprocess.run(
+        [
+            "capitalcite",
+            "index",
+            "--input-dir",
+            str(corpus),
+            "--chunker",
+            "section",
+            "--embedder",
+            "bge-small",
+        ],
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    shutil.rmtree(corpus, ignore_errors=True)
+    if completed.returncode != 0:
+        sys.stderr.write(completed.stdout)
+        sys.stderr.write(completed.stderr)
+        raise SystemExit("verify: otlp fixture index failed")
 
 
 def _span_names(bodies: list[bytes]) -> list[str]:
@@ -3127,6 +3189,7 @@ def _run_uvicorn(
             "APP_ENV": "verify",
             "LOG_LEVEL": "WARNING",
             "QDRANT_PATH": qdrant_path,
+            "EMBEDDER": "bge-small",
         }
     )
     env.pop("CAPITALCITE_TRACE_FILE", None)
@@ -3159,6 +3222,7 @@ def _stop(proc: subprocess.Popen[bytes]) -> None:
 
 
 qdrant = tempfile.mkdtemp(prefix="otel-qdrant-")
+_seed_index(qdrant)
 server = _Server()
 thread = threading.Thread(target=server.serve_forever, daemon=True)
 thread.start()
