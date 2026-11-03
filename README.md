@@ -323,6 +323,7 @@ Structured answers: [ADR 0007](docs/decisions/0007-structured-ask.md).
 Plan-then-act agent: [ADR 0008](docs/decisions/0008-plan-then-act-agent.md).
 Fail-closed tool gate: [ADR 0009](docs/decisions/0009-fail-closed-tool-gate.md).
 Langfuse tracing: [ADR 0010](docs/decisions/0010-langfuse-tracing.md).
+OTLP tracing: [ADR 0028](docs/decisions/0028-otel-tracing.md).
 Audit log: [ADR 0011](docs/decisions/0011-append-only-audit-log.md).
 Azure Container Apps: [ADR 0012](docs/decisions/0012-azure-container-apps.md).
 Regression CI: [ADR 0013](docs/decisions/0013-eval-regression-ci.md).
@@ -352,7 +353,7 @@ The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, `calculator`, `graph_query`. Unknown names are denied | agent tools |
 | Fail-closed gate | JSON allow-list. Unknown names, extra keys, and a policy-load failure are denies | `capitalcite gate` |
 | Audit log | Append-only hash-chained JSONL plus a sibling tip. Write before the tool runs | `capitalcite audit verify` |
-| Observability | Optional Langfuse trees. File exporter via `CAPITALCITE_TRACE_FILE`. No-op without keys | `observation()` |
+| Observability | Optional Langfuse trees, a JSONL file, and OTLP HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Off without that endpoint or Langfuse keys | `observation()` |
 | Evals in CI | `capitalcite check` on every PR. Nightly twelve-filing section/hybrid vs `evals/baselines/nightly.json` | `capitalcite check` |
 | Deploy | Azure Container Apps Bicep. Live `/health` is UNVERIFIED until someone opts in | IaC + image recipe |
 | MCP server | `capitalcite mcp` stdio. `search_filings` and `ask` go through the same gate | `capitalcite mcp` |

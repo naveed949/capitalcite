@@ -2969,6 +2969,101 @@ else
   log "verify: Langfuse not listening; live ingestion UNVERIFIED"
 fi
 
+log "verify: otlp"
+if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
+  set +e
+  otel_http="$(
+    curl -sS -o "${ART}/otel.health.out" -w "%{http_code}" \
+      --connect-timeout 1 --max-time 2 \
+      "${OTEL_EXPORTER_OTLP_ENDPOINT%/}/v1/traces" 2>"${ART}/otel.health.err"
+  )"
+  otel_rc=$?
+  set -e
+  write otel.health.exit "${otel_rc}"
+  write otel.health.http "${otel_http:-}"
+  write otel.skipped "OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} curl_exit=${otel_rc} http=${otel_http:-}. Live collector UNVERIFIED. Compose profile otel was not started."
+  log "verify: OTLP endpoint is set; live collector UNVERIFIED"
+else
+  set +e
+  uv run python - <<'PY'
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+    ExportTraceServiceRequest,
+)
+
+from capitalcite.config import Settings
+from capitalcite.trace import ObservationKind, configure, observation, shutdown
+
+
+class _Handler(BaseHTTPRequestHandler):
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length)
+        server = self.server
+        assert isinstance(server, _Server)
+        server.bodies.append(body)
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, template: str, *args: object) -> None:
+        return None
+
+
+class _Server(ThreadingHTTPServer):
+    def __init__(self) -> None:
+        self.bodies: list[bytes] = []
+        super().__init__(("127.0.0.1", 0), _Handler)
+
+
+server = _Server()
+thread = threading.Thread(target=server.serve_forever, daemon=True)
+thread.start()
+try:
+    port = server.server_address[1]
+    configure(
+        Settings.model_validate(
+            {
+                "sec_user_agent": "capitalcite-verify you@example.com",
+                "langfuse_tracing_enabled": False,
+                "otel_exporter_otlp_endpoint": f"http://127.0.0.1:{port}",
+            }
+        )
+    )
+    with observation("ask", ObservationKind.ASK):
+        pass
+    shutdown()
+    if not server.bodies:
+        sys.stderr.write("verify: otlp receiver got no posts\n")
+        sys.exit(1)
+    message = ExportTraceServiceRequest()
+    message.ParseFromString(server.bodies[0])
+    names = [
+        span.name
+        for resource in message.resource_spans
+        for scope in resource.scope_spans
+        for span in scope.spans
+    ]
+    if "ask" not in names:
+        sys.stderr.write(f"verify: otlp span names {names}\n")
+        sys.exit(1)
+finally:
+    server.shutdown()
+    server.server_close()
+PY
+  otel_rc=$?
+  set -e
+  write otel.proof.exit "${otel_rc}"
+  if [[ "${otel_rc}" -ne 0 ]]; then
+    log "verify: in-process OTLP proof failed"
+    exit 1
+  fi
+  write otel.otlp.ok "in-process receiver accepted an ask span. OTEL_EXPORTER_OTLP_ENDPOINT was unset. Compose profile otel was not started."
+  log "verify: in-process OTLP receiver accepted an ask span"
+fi
+
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   log "verify: docker compose config"
   set +e

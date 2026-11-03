@@ -1,9 +1,12 @@
-# Langfuse tracing
+# Langfuse and OTLP tracing
 
 `POST /ask` and `capitalcite eval` emit a trace tree when tracing is
-configured. Spans cover retrieval, each model call, each tool call, and
-gate decisions. Cost and latency sit on those spans. If Langfuse keys
-are missing, tracing is a no-op and the request still returns.
+configured. Spans cover retrieval, each model call, each tool call, gate
+decisions, and, on the agent path, the graph nodes `graph.plan`,
+`graph.act`, `graph.synthesize`, and `graph.stop`. Cost and latency sit
+on those spans. If Langfuse keys are missing and
+`OTEL_EXPORTER_OTLP_ENDPOINT` is unset, tracing is a no-op and the
+request still returns.
 
 ## Sub-features
 
@@ -21,12 +24,25 @@ are missing, tracing is a no-op and the request still returns.
   `capitalcite.tool`, `capitalcite.gate.decision` `deny`, and the reason.
 - `langfuse-live` is UNVERIFIED when nothing is listening on
   `localhost:3000`. Do not start compose for this check.
+- `otlp-in-process` runs when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset.
+  `scripts/verify.sh` starts a local HTTP receiver, exports one `ask`
+  span, and checks the protobuf body. It does not start compose.
+- `otlp-configured` runs when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
+  A curl of that endpoint is recorded. A dead collector is UNVERIFIED.
+  Do not start the `otel` compose profile for this check.
+- `gen-ai-attrs` are `gen_ai.request.model`, `gen_ai.operation.name`,
+  `gen_ai.provider.name`, and `gen_ai.tool.name` on the spans that have
+  them. Model spans use operation `chat`. Tool spans use `execute_tool`.
 
 ## How to get to it (user POV)
 
 - Copy `.env.example` to `.env` and run `docker compose up -d` for the
   Langfuse UI at `http://localhost:3000`.
 - Or set `CAPITALCITE_TRACE_FILE` to write spans without a UI.
+- Or set `OTEL_EXPORTER_OTLP_ENDPOINT` to an HTTP collector, for example
+  `http://127.0.0.1:4318` after `docker compose --profile otel up -d otel-collector`.
+  Leave it unset for a no-op. `http/protobuf` and `http` are the supported
+  protocols. The timeout applies to the export worker.
 - Leave keys empty, or set `LANGFUSE_TRACING_ENABLED=false`, for a no-op.
 
 ## Driving it with curl and the capitalcite CLI
@@ -52,6 +68,10 @@ Preconditions:
   `deny`, and `unknown_tool` / `invalid_args` / `policy_load_failed`.
 - **Live Langfuse.** If `curl -sf http://127.0.0.1:3000` fails, write
   `langfuse.skipped` and report UNVERIFIED. Do not start compose.
+- **OTLP.** If `OTEL_EXPORTER_OTLP_ENDPOINT` is unset, the in-process
+  receiver proof must see an `ask` span. If it is set, record the curl
+  and leave a live collector UNVERIFIED when nothing accepts the post.
+  Do not start the `otel` profile.
 - **Bundled helper.** Run `./scripts/verify.sh`. It writes `spans.jsonl`
   and either `langfuse.skipped` or a note that the UI was reachable.
 - **Proof.** Keep the JSONL and the skip file. Pytest is not this
@@ -64,6 +84,9 @@ Preconditions:
 - `conftest.py` forces `LANGFUSE_TRACING_ENABLED=false`. Pytest never
   dials `:3000`.
 - File export does not require Langfuse keys. Live ingestion does.
+- OTLP does not require Langfuse keys. An empty
+  `OTEL_EXPORTER_OTLP_ENDPOINT` installs no OTLP exporter.
+- A slow collector must not change the `/ask` body. Export is queued.
 - Do not treat an in-memory pytest tree as a Langfuse UI screenshot.
 - `Gate.decide` writes one gate span per allow or deny. `capitalcite
   gate bench` does not open a tracer, so the p95 ceiling stays a
