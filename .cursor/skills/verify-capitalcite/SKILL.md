@@ -110,6 +110,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite graph query --kind subsidiaries --ticker JPM` | exit 0 + `852218` |
 | CLI | `capitalcite eval --suite graph --small` | exit 0 + `graph_exact=` and `fixture_substring_hit_rate=`; MemoryGraphStore, no Bolt |
 | CLI | `capitalcite eval --suite metrics` | exit 0 + `suite=metrics` and `agent_exact=` / `agent_refusal=` / `rag_exact=` / `rag_refusal=` / `v1_mart=`; Fake model, catalog backend, ci warehouse |
+| CLI | `capitalcite eval --suite bench` | exit 0 + `suite=bench` and `identity=` / `bottleneck=`; Fake model, catalog backend, ci warehouse. Paid OpenAI is UNVERIFIED |
 | CLI | `capitalcite metrics extract --tickers JPM,BAC,WFC,C --fixtures` | exit 0 + `metrics extract xbrl=4 financials=4`. Each sidecar `sha256` matches its payload. Live BankFind and live companyfacts are outside this helper |
 | CLI | `uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci` | exit 0 + `Completed successfully`. Live `dev` extract is outside this helper |
 | CLI | `mf validate-configs`, the required `mf query`, and four saved queries | After that build, with `DBT_PROJECT_DIR`, `DBT_PROFILES_DIR`, and `DBT_TARGET=ci`. `mf` reads the compiled `semantic_manifest.json`. `validate-configs` exits 0. The query is `total_deposits` and `deposits_qoq_growth` grouped by `metric_time__quarter` and `bank__ticker` where `bank__entity_level` is `bank_subsidiary`. Each saved query exits 0. `pytest -m mf` matches `evals/results/metrics/mf-query.csv`. |
@@ -182,6 +183,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `eval.help.out` / `eval.help.exit` | `capitalcite eval --help` (must list `--suite` and `--small`) |
 | `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |
 | `eval-metrics.out` / `eval-metrics.err` / `eval-metrics.exit` | Fake-model metrics suite after the ci warehouse. stdout contains `suite=metrics` and `v1_mart=` |
+| `eval-bench.out` / `eval-bench.err` / `eval-bench.exit` | Fake-model bench suite after the ci warehouse. stdout contains `suite=bench`, `identity=`, and `bottleneck=` |
 | `graph.help.out` / `graph.load.out` / `graph.query.out` / `eval-graph-small.out` | Memory-backend graph load/query and `eval --suite graph --small`. Live Bolt is UNVERIFIED |
 | `metrics.help.out` / `metrics.out` / `metrics.exit` / `metrics.files.txt` | Offline `capitalcite metrics extract --fixtures`. stdout contains `metrics extract xbrl=4 financials=4`. Sidecar sha256 matches the payload. Live BankFind is outside this helper |
 | `dbt.out` / `dbt.exit` / `dbt-docs.out` / `dbt-docs.exit` / `dbt-shape.out` / `dbt-shape.exit` | `dbt build --target ci` and `dbt docs generate --target ci` on `tests/fixtures/metrics`. stdout contains `Completed successfully`. Shape query checks JPM 2026-06-30 holding-company Assets and the matching lead-bank Call Report cells |
@@ -263,8 +265,9 @@ Expected later handles (do not add empty stubs now):
 | MetricFlow | `mf validate-configs`, the required deposits query, and four saved queries (landed). Live `dev` extract is outside this helper |
 | metric query | `metric_query` live cell for JPM deposits, catalog byte match, and fake `/ask/stream` for `2026Q2` (landed). Image remeasure after the warehouse copy is UNVERIFIED without Docker |
 | metrics eval | `capitalcite eval --suite metrics` (landed). Missing warehouse is UNVERIFIED |
+| agent vs RAG bench | `capitalcite eval --suite bench` (landed). Missing warehouse is UNVERIFIED. Paid OpenAI is UNVERIFIED |
 
-`./scripts/verify.sh` builds the ci warehouse before `capitalcite check`, then runs `capitalcite eval --suite metrics`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. After the fixture warehouse build it runs `mf validate-configs`, the required deposits query, each saved query, and `pytest -m mf`. `--small` does not skip that block. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED.
+`./scripts/verify.sh` builds the ci warehouse before `capitalcite check`, then runs `capitalcite eval --suite metrics`, `capitalcite eval --suite bench`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. After the fixture warehouse build it runs `mf validate-configs`, the required deposits query, each saved query, and `pytest -m mf`. `--small` does not skip that block. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED. A paid bench run is UNVERIFIED.
 
 ## Offer the maintenance loop
 

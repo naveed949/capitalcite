@@ -43,6 +43,36 @@ jobs:
       - name: capitalcite check
         run: uv run capitalcite check --out "${RUNNER_TEMP}/check"
 
+  bench:
+    name: agent vs RAG bench gate
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+      ASK_MODEL: fake
+      METRIC_QUERY_BACKEND: catalog
+      WAREHOUSE_PATH: ${{ github.workspace }}/dbt/target/ci.duckdb
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and tools
+        run: uv sync --frozen --all-groups
+
+      - name: Build ci warehouse
+        run: uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci
+
+      - name: Bench vs committed p95 and cost
+        run: |
+          uv run capitalcite eval --suite bench \
+            --baseline evals/baselines/bench.json \
+            --out "${RUNNER_TEMP}/eval-bench"
+
   live:
     name: live LLM eval
     if: github.event_name != 'pull_request'

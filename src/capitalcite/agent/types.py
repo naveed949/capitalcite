@@ -102,6 +102,7 @@ class AgentResult(BaseModel):
     answer: Answer
     plan: tuple[PlanStep, ...] = ()
     traces: tuple[TraceStep, ...] = ()
+    hits: tuple[Hit, ...] = ()
     steps_used: int = Field(ge=0)
     tokens_used: int = Field(ge=0)
     stop_reason: str | None = None

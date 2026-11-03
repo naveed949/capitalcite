@@ -81,6 +81,7 @@ _NOOP = _NoOpSpan()
 class MemoryExporter:
     def __init__(self) -> None:
         self._finished: list[SpanRecord] = []
+        self._begins: dict[str, float] = {}
 
     def begin(
         self,
@@ -92,7 +93,8 @@ class MemoryExporter:
         trace_id: str | None = None,
         parent_id: str | None = None,
     ) -> None:
-        return None
+        _ = name, kind, attributes
+        self._begins[span_id] = time.perf_counter()
 
     def export(self, record: SpanRecord) -> None:
         self._finished.append(record)
@@ -103,8 +105,12 @@ class MemoryExporter:
     def finished(self) -> tuple[SpanRecord, ...]:
         return tuple(self._finished)
 
+    def begins(self) -> dict[str, float]:
+        return dict(self._begins)
+
     def clear(self) -> None:
         self._finished.clear()
+        self._begins.clear()
 
 
 class FileExporter:

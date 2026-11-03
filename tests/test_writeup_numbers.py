@@ -90,6 +90,40 @@ def test_writeup_rejects_json_only_number(tmp_path: Path) -> None:
     assert "docs/writeup.md" in proc.stdout
 
 
+def test_writeup_bench_rate_from_linked_json(tmp_path: Path) -> None:
+    name = "abcabcabcabc-bench.json"
+    link = f"[src](evals/results/{name})"
+    queries = []
+    for arm in ("rag", "graph", "loop"):
+        queries.append(
+            {
+                "item_id": "cc-h-001",
+                "arm": arm,
+                "recall_at_5": True,
+                "accurate": True,
+                "phases": {"total_ms": 10.0, "compile_ms": 2.0},
+            }
+        )
+        queries.append(
+            {
+                "item_id": "cc-h-002",
+                "arm": arm,
+                "recall_at_5": False,
+                "accurate": False,
+                "phases": {"total_ms": 12.0, "compile_ms": 2.0},
+            }
+        )
+    _write_tree(
+        tmp_path,
+        readme=f"Recall@5 is 0.500 on n=2. Source {link}.\n",
+        writeup=f"graph Recall@5 is 1/2 {link}.\n",
+        results={"suite": "bench", "n_items": 2, "queries": queries},
+        result_name=name,
+    )
+    proc = run_check(tmp_path)
+    assert proc.returncode == 0, proc.stdout
+
+
 def test_writeup_ratio_from_linked_json(tmp_path: Path) -> None:
     name = "abcabcabcabc.json"
     link = f"[src](evals/results/{name})"

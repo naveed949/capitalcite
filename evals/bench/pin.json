@@ -1,0 +1,33 @@
+{
+  "suite": "bench",
+  "n_items": 95,
+  "sets": {
+    "v1_recall": 77,
+    "metrics": 18
+  },
+  "model": "fake",
+  "openai_model": "gpt-4o-mini",
+  "seed": 20261103,
+  "temperature": 0.0,
+  "tokenizer": "o200k_base",
+  "prompt_hash": "5d0ae638231240c9b774ec7d7a5f2f81e7f9ae4230ca9cca713f0e35973d1b52",
+  "prices": "evals/bench/prices/openai-2026-11-03.json",
+  "bootstrap_B": 10000,
+  "bootstrap_seed": 20261103,
+  "paid_run": {
+    "status": "UNVERIFIED",
+    "reason": "Paid model API spend is not approved. This command was not executed.",
+    "model_id": "gpt-4o-mini",
+    "seed": 20261103,
+    "temperature": 0.0,
+    "prompt_hash": "5d0ae638231240c9b774ec7d7a5f2f81e7f9ae4230ca9cca713f0e35973d1b52",
+    "tokenizer": "o200k_base",
+    "prices": "evals/bench/prices/openai-2026-11-03.json",
+    "command": "ASK_MODEL=openai ASK_OPENAI_MODEL=gpt-4o-mini CAPITALCITE_BENCH_SEED=20261103 CAPITALCITE_BENCH_TEMPERATURE=0 uv run capitalcite eval --suite bench --pin evals/bench/pin.json --out evals/results",
+    "estimated_tokens_per_item": {
+      "tokens_in": 1374.9684210526316,
+      "tokens_out": 47.90526315789474,
+      "source": "evals/results/44092d937e84-bench.json graph arm, o200k_base counts of the prompts the adapters would send"
+    }
+  }
+}

@@ -51,7 +51,7 @@ write() {
   printf '%s\n' "$*" >"${ART}/${file}"
 }
 
-# capitalcite check and eval --suite metrics need the fixture warehouse.
+# capitalcite check, eval --suite metrics, and eval --suite bench need the fixture warehouse.
 # Build once; later warehouse steps reuse the same dbt.out.
 build_ci_warehouse() {
   export DBT_PROJECT_DIR="${ROOT}/dbt"
@@ -2319,8 +2319,9 @@ if [[ "${eval_help_rc}" -ne 0 ]]; then
 fi
 if ! plain "${ART}/eval.help.out" | grep -q -- "--suite" \
   || ! plain "${ART}/eval.help.out" | grep -q -- "--small" \
-  || ! plain "${ART}/eval.help.out" | grep -q -- "metrics"; then
-  log "verify: eval --help missing --suite, --small, or metrics"
+  || ! plain "${ART}/eval.help.out" | grep -q -- "metrics" \
+  || ! plain "${ART}/eval.help.out" | grep -q -- "bench"; then
+  log "verify: eval --help missing --suite, --small, metrics, or bench"
   cat "${ART}/eval.help.out" >&2 || true
   exit 1
 fi
@@ -2458,6 +2459,26 @@ if [[ "${eval_metrics_rc}" -ne 0 ]] \
 fi
 log "verify: capitalcite eval --suite metrics ok"
 cat "${ART}/eval-metrics.out"
+
+log "verify: capitalcite eval --suite bench"
+set +e
+WAREHOUSE_PATH="${WAREHOUSE_PATH}" METRIC_QUERY_BACKEND=catalog ASK_MODEL=fake \
+  uv run capitalcite eval --suite bench --out "${ART}/eval-bench" \
+  >"${ART}/eval-bench.out" 2>"${ART}/eval-bench.err"
+eval_bench_rc=$?
+set -e
+write eval-bench.exit "${eval_bench_rc}"
+if [[ "${eval_bench_rc}" -ne 0 ]] \
+  || ! grep -q "suite=bench" "${ART}/eval-bench.out" \
+  || ! grep -q "identity=" "${ART}/eval-bench.out" \
+  || ! grep -q "bottleneck=" "${ART}/eval-bench.out"; then
+  log "verify: eval --suite bench failed"
+  cat "${ART}/eval-bench.out" >&2 || true
+  cat "${ART}/eval-bench.err" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite eval --suite bench ok"
+cat "${ART}/eval-bench.out"
 
 log "verify: capitalcite graph --help"
 set +e

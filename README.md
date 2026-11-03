@@ -156,6 +156,31 @@ Generated from [`evals/results/4447164efb28-metrics.json`](evals/results/4447164
 
 `capitalcite check` also gates quote-index sanity (36/77), fixture span-overlap (3/3), and the metrics suite (agent exact 15/15, agent refusal 3/3, RAG exact 0/15, RAG refusal 1/3, mart coverage 0/56) against [`evals/baselines/ci.json`](evals/baselines/ci.json) at zero item drop. Live OpenAI is `--live` and UNVERIFIED without `OPENAI_API_KEY`. Nightly live-corpus section/hybrid Recall@5 vs [`evals/baselines/nightly.json`](evals/baselines/nightly.json) allows one item of rank-boundary noise. Baseline file edits need the `eval-baseline` label.
 
+### Agent vs RAG bench (phases and cost)
+
+95 items: 77 handwritten v1 recall rows from `evals/golden/v1.jsonl` plus 18 pointer-gold rows from `evals/golden/metrics.jsonl`. `ASK_MODEL=fake`, seed `20261103`, temperature `0`, prompt hash `5d0ae638231240c9b774ec7d7a5f2f81e7f9ae4230ca9cca713f0e35973d1b52`, tokenizer `o200k_base`. Fixture index, not the twelve-filing corpus. Recall@5 on that index is 0/77, the same empty-span condition as `--small`.
+
+<!-- BEGIN BENCH EVAL -->
+
+| Arm | n | Recall@5 | Accuracy | p50 ms | p95 ms | cost/query |
+|---|---:|---:|---:|---:|---:|---:|
+| rag | 95 | 0.000 | 0.053 | 1.3 | 1.6 | 0.000000 |
+| graph | 95 | 0.000 | 0.232 | 6.6 | 38.8 | 0.000000 |
+| loop | 95 | 0.000 | 0.232 | 4.7 | 37.3 | 0.000000 |
+
+graph-loop Recall@5 delta=0.000 (95% CI 0.000 to 0.000, B=10000, seed=20261103).
+graph-loop accuracy delta=0.000 (95% CI 0.000 to 0.000).
+Bottleneck on the graph arm is **tool**.
+Generated from [`evals/results/44092d937e84-bench.json`](evals/results/44092d937e84-bench.json).
+
+<!-- END BENCH EVAL -->
+
+Accuracy is 22/95 on graph and loop, 5/95 on rag. Cost per correct is 0 on the fake model. The measured bottleneck phase is **tool** (gate plus execute, exclusive of nested retrieve): graph mean tool 6.2 ms, retrieve 1.0 ms, model 0.1 ms, compile 0.0 ms.
+
+The optimization in this change is compile-once. Before, `run_agent` compiled a LangGraph `StateGraph` on every question ([`44092d937e84-bench-before.json`](evals/results/44092d937e84-bench-before.json)): graph compile 2.5 ms, p50 8.9 ms, p95 50.5 ms. After ([`44092d937e84-bench.json`](evals/results/44092d937e84-bench.json)): compile 0.0 ms, p50 6.6 ms, p95 38.8 ms. Answers did not change (`identity_digest` `211cd2caf15885e8ceeccb14e3258641a66991b63a9620a28936457f3d522f48` on both files). Tool remains the largest phase. Fake-model generate time is not live `gpt-4o-mini` latency. A paid run is UNVERIFIED; the pinned command is in [`evals/bench/pin.json`](evals/bench/pin.json). Estimated tokens per graph item from this fake run: 1374.968 in, 47.905 out.
+
+Nightly gates graph p95 and cost per query against [`evals/baselines/bench.json`](evals/baselines/bench.json) at a 2x p95 band and a 0 absolute cost budget.
+
 ### Latency and cost
 
 | Path | p50 latency | p95 latency | Cost / query |

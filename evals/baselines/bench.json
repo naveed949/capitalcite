@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "n_items": 95,
+  "model": "fake",
+  "compile_once": true,
+  "p95_total_ms": 38.83798750005098,
+  "mean_cost_usd": 0.0,
+  "thresholds": {
+    "p95_latency_max_ratio": 2.0,
+    "cost_per_query_abs": 0.0,
+    "rationale": "Fake-model p95 is wall-clock on a shared CPU runner. A 2x band absorbs scheduler noise and first-query index warmup without hiding a doubled retrieve or a compile-cache regression. Cost is exactly 0 on ASK_MODEL=fake; any positive mean fails."
+  }
+}

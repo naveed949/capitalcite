@@ -7,7 +7,7 @@ import contextlib
 import json
 import logging
 import os
-from collections.abc import AsyncGenerator, AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
 from pathlib import Path
 from typing import Annotated
 
@@ -424,12 +424,16 @@ async def _agent_events(
                 await task
 
 
+AgentRunner = Callable[..., Awaitable[AgentResult]]
+
+
 async def _run_agent(
     body: AskRequest,
     setup: RetrievalSetup,
     settings: Settings,
     *,
     observe: Observe | None = None,
+    runner: AgentRunner | None = None,
 ) -> AgentResult:
     selected = body.model if body.model is not None else settings.ask_model
     model = build_agent_model(
@@ -485,7 +489,8 @@ async def _run_agent(
             AuditLog(settings.audit_log_path),
             request_trace_id(),
         )
-        return await run_agent(
+        invoke = runner if runner is not None else run_agent
+        return await invoke(
             body.question,
             model,
             tools,

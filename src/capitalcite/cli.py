@@ -24,6 +24,20 @@ from capitalcite.eval.baseline import (
     snapshot_nightly,
     write_nightly,
 )
+from capitalcite.eval.bench import (
+    BenchSuiteError,
+    load_bench_report,
+    render_bench_markdown,
+    run_bench_suite,
+    update_readme_bench,
+)
+from capitalcite.eval.bench_gate import (
+    DEFAULT_BENCH_BASELINE,
+    compare_bench,
+    load_bench_baseline,
+    snapshot_bench,
+    write_bench_baseline,
+)
 from capitalcite.eval.cache_key import eval_index_cache_key
 from capitalcite.eval.check import (
     DEFAULT_BASELINE,
@@ -747,7 +761,7 @@ def index_cmd(
 
 @app.command("eval")
 def eval_cmd(
-    suite: str = typer.Option(..., "--suite", help="golden, graph, or metrics."),
+    suite: str = typer.Option(..., "--suite", help="golden, graph, metrics, or bench."),
     small: bool = typer.Option(
         False,
         "--small",
@@ -826,6 +840,15 @@ def eval_cmd(
             write_baseline=write_baseline_file,
             print_cache_key=print_cache_key,
         )
+    if suite == "bench":
+        _reject_bench_flags(
+            small=small,
+            chunker=chunker,
+            mode=mode,
+            embedder=embedder,
+            k=k,
+            print_cache_key=print_cache_key,
+        )
     if small and (baseline is not None or write_baseline_file):
         typer.echo("error: --small does not take --baseline", err=True)
         raise typer.Exit(code=1)
@@ -855,6 +878,9 @@ def eval_cmd(
     if from_results is not None and suite == "metrics":
         _render_metrics_file(from_results, readme)
         return
+    if from_results is not None and suite == "bench":
+        _render_bench_file(from_results, readme, baseline, write_baseline_file)
+        return
     if from_results is not None:
         try:
             reports = load_reports(from_results)
@@ -874,6 +900,14 @@ def eval_cmd(
 
     if suite == "metrics":
         _run_metrics_eval(out, readme)
+        return
+    if suite == "bench":
+        _run_bench_eval(
+            out,
+            readme,
+            baseline=baseline,
+            write_baseline=write_baseline_file,
+        )
         return
 
     settings = _eval_settings(small)
@@ -1131,6 +1165,129 @@ def _gate_nightly(
         f"ok={str(compared.ok).lower()} "
         f"arms={len(snapshot.arms)} "
         f"items={snapshot.n_items}"
+    )
+    if not compared.ok:
+        for failure in compared.failures:
+            typer.echo(f"fail {failure.metric}: {failure.detail}", err=True)
+        raise typer.Exit(code=1)
+
+
+def _reject_bench_flags(
+    *,
+    small: bool,
+    chunker: list[ChunkerName] | None,
+    mode: list[str] | None,
+    embedder: EmbedderName | None,
+    k: int,
+    print_cache_key: bool,
+) -> None:
+    flagged: list[str] = []
+    if small:
+        flagged.append("--small")
+    if chunker:
+        flagged.append("--chunker")
+    if mode:
+        flagged.append("--mode")
+    if embedder is not None:
+        flagged.append("--embedder")
+    if k != 5:
+        flagged.append("--k")
+    if print_cache_key:
+        flagged.append("--print-cache-key")
+    if not flagged:
+        return
+    typer.echo(f"error: bench suite does not take {', '.join(flagged)}", err=True)
+    raise typer.Exit(code=1)
+
+
+def _render_bench_file(
+    path: Path,
+    readme: Path | None,
+    baseline: Path | None,
+    write_baseline: bool,
+) -> None:
+    try:
+        report = load_bench_report(path)
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(render_bench_markdown(report), nl=False)
+    if readme is not None:
+        try:
+            update_readme_bench(readme, report)
+        except ValueError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    _gate_bench(report, baseline=baseline, write_baseline=write_baseline)
+
+
+def _run_bench_eval(
+    out: Path,
+    readme: Path | None,
+    *,
+    baseline: Path | None,
+    write_baseline: bool,
+) -> None:
+    try:
+        report = asyncio.run(run_bench_suite(out_dir=out))
+    except EvalUnverified as exc:
+        typer.echo(f"unverified: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    except (OSError, ValueError, BenchSuiteError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        shutdown()
+    typer.echo(
+        "eval "
+        f"suite=bench n={report.n_items} "
+        f"compile_once={str(report.compile_once).lower()} "
+        f"identity={report.identity_digest} "
+        f"bottleneck={report.bottleneck_phase} "
+        f"out={out}"
+    )
+    typer.echo(render_bench_markdown(report), nl=False)
+    if readme is not None:
+        try:
+            update_readme_bench(readme, report)
+        except ValueError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    _gate_bench(report, baseline=baseline, write_baseline=write_baseline)
+
+
+def _gate_bench(
+    report: object,
+    *,
+    baseline: Path | None,
+    write_baseline: bool,
+) -> None:
+    from capitalcite.eval.bench import BenchReport
+
+    if not write_baseline and baseline is None:
+        return
+    assert isinstance(report, BenchReport)
+    snapshot = snapshot_bench(report)
+    target = baseline if baseline is not None else DEFAULT_BENCH_BASELINE
+    if write_baseline:
+        write_bench_baseline(target, snapshot)
+        typer.echo(f"wrote baseline {target}")
+        committed = snapshot
+    elif not target.is_file():
+        typer.echo(f"error: missing baseline {target}", err=True)
+        raise typer.Exit(code=1)
+    else:
+        try:
+            committed = load_bench_baseline(target)
+        except (OSError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    compared = compare_bench(snapshot, committed)
+    typer.echo(
+        "eval-baseline "
+        f"ok={str(compared.ok).lower()} "
+        f"p95_ms={snapshot.p95_total_ms:.3f} "
+        f"cost={snapshot.mean_cost_usd:.6f}"
     )
     if not compared.ok:
         for failure in compared.failures:

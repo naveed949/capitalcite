@@ -1,0 +1,13 @@
+{
+  "id": "openai-2026-11-03",
+  "source": "https://platform.openai.com/docs/pricing",
+  "retrieved": "2026-11-03",
+  "label": "OpenAI API list prices as of 2026-11-03, read from platform.openai.com/docs/pricing. Fake-model cost is always 0. These rates apply only to a paid run that this repository does not execute.",
+  "currency": "USD",
+  "models": {
+    "gpt-4o-mini": {
+      "input_usd_per_1m": 0.15,
+      "output_usd_per_1m": 0.6
+    }
+  }
+}

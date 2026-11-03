@@ -172,6 +172,8 @@ def linked_results(text: str) -> frozenset[str]:
 def project_file(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
     if data.get("suite") == "metrics":
         return _project_metrics(data, readme)
+    if data.get("suite") == "bench":
+        return _project_bench(data, readme)
     emitted: set[str] = set(_project_overhead(data))
     if data.get("small") is True:
         return frozenset(emitted)
@@ -231,6 +233,76 @@ def _project_metrics(data: Mapping[str, object], readme: frozenset[str]) -> froz
             )
             _emit_rate(emitted, readme, hits, len(covered))
     return frozenset(emitted)
+
+
+def _project_bench(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
+    """Recount rates and percentiles. Stored floats are not a source."""
+    queries = data.get("queries")
+    if not isinstance(queries, list):
+        return frozenset()
+    emitted: set[str] = set()
+    n_items = data.get("n_items")
+    if type(n_items) is int:
+        emitted.add(str(n_items))
+    for arm in ("rag", "graph", "loop"):
+        rows = [row for row in queries if isinstance(row, dict) and row.get("arm") == arm]
+        recall_rows = [row for row in rows if isinstance(row.get("recall_at_5"), bool)]
+        recall_hits = sum(1 for row in recall_rows if row.get("recall_at_5") is True)
+        accurate = sum(1 for row in rows if row.get("accurate") is True)
+        _emit_rate(emitted, readme, recall_hits, len(recall_rows))
+        _emit_rate(emitted, readme, accurate, len(rows))
+        totals = []
+        compile_ms = []
+        for row in rows:
+            phases = row.get("phases")
+            if not isinstance(phases, dict):
+                continue
+            total = phases.get("total_ms")
+            if isinstance(total, int | float):
+                totals.append(float(total))
+            compile = phases.get("compile_ms")
+            if isinstance(compile, int | float):
+                compile_ms.append(float(compile))
+        if totals:
+            _emit_ms(emitted, readme, _percentile(totals, 0.50))
+            _emit_ms(emitted, readme, _percentile(totals, 0.95))
+            _emit_ms(emitted, readme, sum(totals) / len(totals))
+        if compile_ms:
+            _emit_ms(emitted, readme, sum(compile_ms) / len(compile_ms))
+    B = data.get("recall_delta_graph_minus_loop")
+    if isinstance(B, dict):
+        raw_b = B.get("B")
+        seed = B.get("seed")
+        n = B.get("n")
+        if type(raw_b) is int:
+            emitted.add(str(raw_b))
+        if type(seed) is int:
+            emitted.add(str(seed))
+        if type(n) is int:
+            emitted.add(str(n))
+    return frozenset(emitted)
+
+
+def _percentile(values: list[float], p: float) -> float:
+    xs = sorted(values)
+    if len(xs) == 1:
+        return xs[0]
+    rank = (len(xs) - 1) * p
+    lo = int(rank)
+    hi = min(lo + 1, len(xs) - 1)
+    return xs[lo] + (xs[hi] - xs[lo]) * (rank - lo)
+
+
+def _emit_ms(emitted: set[str], readme: frozenset[str], value: float) -> None:
+    candidates = (
+        f"{value:.1f}",
+        f"{value:.1f} ms",
+        f"{round(value)}",
+        f"{round(value)} ms",
+    )
+    for lexeme in candidates:
+        if lexeme in readme:
+            emitted.add(lexeme)
 
 
 def _emit_rate(emitted: set[str], readme: frozenset[str], hits: int, items: int) -> None:

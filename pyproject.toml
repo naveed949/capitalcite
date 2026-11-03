@@ -26,6 +26,7 @@ dependencies = [
     "pydantic-settings>=2.6,<3",
     "pypdf>=6.20.1",
     "qdrant-client[fastembed]>=1.14,<2",
+    "tiktoken>=0.14.0",
     "typer>=0.15,<1",
 ]
 
