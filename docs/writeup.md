@@ -127,7 +127,12 @@ Latency is `ASK_MODEL=fake` on the 12-point fixture. RAG p50 is
 14 ms, p95 16 ms. Agent p50 and p95 are both 21 ms. Gate `decide()`
 p95 is 0.020 ms on 2000 samples. A fake-model clone timed at
 11 seconds on a 4-core VM with warm `uv` and Hugging Face caches.
-A cold `bge-small` download was 67 MB.
+A cold `bge-small` download was 67 MB. OTLP on versus off, on one
+in-memory chunk, is 2.0 ms p50 and 2.3 ms p95 off, and 2.2 ms p50
+and 2.6 ms p95 on. The difference is 0.2 ms at p50 and 0.3 ms at
+p95
+([`b352bd8cd49c-otel-overhead.json`](../evals/results/b352bd8cd49c-otel-overhead.json)).
+That gap is smaller than the spread of the tracing-off samples.
 
 ## Why section/hybrid Recall@5 is 0.169
 
