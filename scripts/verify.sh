@@ -3025,11 +3025,11 @@ if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
   set -e
   write otel.health.exit "${otel_rc}"
   write otel.health.http "${otel_http:-}"
-  write otel.skipped "OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} curl_exit=${otel_rc} http=${otel_http:-}. Live collector UNVERIFIED. Compose profile otel was not started."
-  log "verify: OTLP endpoint is set; live collector UNVERIFIED"
-else
-  set +e
-  uv run python - <<'PY' >"${ART}/otel.proof.out" 2>"${ART}/otel.proof.err"
+  write otel.live.unverified "OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT} curl_exit=${otel_rc} http=${otel_http:-}. Live collector UNVERIFIED. The in-process proof still runs. Compose profile otel was not started."
+  log "verify: pre-set OTLP endpoint is UNVERIFIED; in-process proof still runs"
+fi
+set +e
+uv run python - <<'PY' >"${ART}/otel.proof.out" 2>"${ART}/otel.proof.err"
 import json
 import os
 import shutil
@@ -3091,7 +3091,7 @@ def _wait_health(port: int) -> None:
     raise RuntimeError(f"uvicorn on {port} never became healthy")
 
 
-def _post_ask(port: int) -> int:
+def _post_ask(port: int) -> tuple[int, object]:
     body = json.dumps(
         {"question": "What was the Standardized CET1 ratio?", "model": "fake", "k": 4}
     ).encode()
@@ -3103,11 +3103,29 @@ def _post_ask(port: int) -> int:
     )
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
-            return int(response.status)
+            payload = json.loads(response.read().decode())
+            return int(response.status), payload
     except urllib.error.HTTPError as exc:
         detail = exc.read()[:500]
         sys.stderr.write(f"verify: otlp POST /ask HTTP {exc.code} {detail!r}\n")
         raise
+
+
+def _banker(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        return {"raw": payload}
+    citations = payload.get("citations") or []
+    quotes: list[object] = []
+    if isinstance(citations, list):
+        for item in citations:
+            if isinstance(item, dict):
+                quotes.append(item.get("quote"))
+    return {
+        "kind": payload.get("kind"),
+        "answer": payload.get("answer"),
+        "refusal_reason": payload.get("refusal_reason"),
+        "quotes": quotes,
+    }
 
 
 def _seed_index(store: str) -> None:
@@ -3165,16 +3183,27 @@ def _seed_index(store: str) -> None:
         raise SystemExit("verify: otlp fixture index failed")
 
 
-def _span_names(bodies: list[bytes]) -> list[str]:
-    names: list[str] = []
+def _span_payloads(bodies: list[bytes]) -> list[dict[str, object]]:
+    found: list[dict[str, object]] = []
     for raw in bodies:
         message = ExportTraceServiceRequest()
         message.ParseFromString(raw)
         for resource in message.resource_spans:
             for scope in resource.scope_spans:
                 for span in scope.spans:
-                    names.append(span.name)
-    return names
+                    attributes: dict[str, object] = {}
+                    for attr in span.attributes:
+                        value = attr.value
+                        if value.HasField("string_value"):
+                            attributes[attr.key] = value.string_value
+                        elif value.HasField("int_value"):
+                            attributes[attr.key] = value.int_value
+                        elif value.HasField("double_value"):
+                            attributes[attr.key] = value.double_value
+                        elif value.HasField("bool_value"):
+                            attributes[attr.key] = value.bool_value
+                    found.append({"name": span.name, "attributes": attributes})
+    return found
 
 
 def _run_uvicorn(
@@ -3193,7 +3222,10 @@ def _run_uvicorn(
         }
     )
     env.pop("CAPITALCITE_TRACE_FILE", None)
+    env.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
     env.update(extra_env)
+    if not env.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        env.pop("OTEL_EXPORTER_OTLP_ENDPOINT", None)
     return subprocess.Popen(
         [
             sys.executable,
@@ -3227,28 +3259,49 @@ server = _Server()
 thread = threading.Thread(target=server.serve_forever, daemon=True)
 thread.start()
 collector = server.server_address[1]
+off_port = _free_port()
 live_port = _free_port()
 down_port = _free_port()
 closed = _free_port()
+off_proc: subprocess.Popen[bytes] | None = None
 live_proc: subprocess.Popen[bytes] | None = None
 down_proc: subprocess.Popen[bytes] | None = None
 try:
+    off_proc = _run_uvicorn(off_port, {}, qdrant)
+    _wait_health(off_port)
+    off_status, off_body = _post_ask(off_port)
+    if off_status != 200:
+        sys.stderr.write(f"verify: tracing-off POST /ask HTTP {off_status}\n")
+        sys.exit(1)
+    _stop(off_proc)
+    off_proc = None
     live_proc = _run_uvicorn(
         live_port,
         {"OTEL_EXPORTER_OTLP_ENDPOINT": f"http://127.0.0.1:{collector}"},
         qdrant,
     )
     _wait_health(live_port)
-    status = _post_ask(live_port)
+    status, _live_body = _post_ask(live_port)
     if status != 200:
         sys.stderr.write(f"verify: otlp POST /ask HTTP {status}\n")
         sys.exit(1)
     time.sleep(0.6)
     _stop(live_proc)
     live_proc = None
-    names = _span_names(server.bodies)
-    if "ask" not in names:
+    payloads = _span_payloads(server.bodies)
+    names = [item["name"] for item in payloads]
+    if "ask" not in names or "chat fake" not in names:
         sys.stderr.write(f"verify: otlp span names {names}\n")
+        sys.exit(1)
+    chat = next(item for item in payloads if item["name"] == "chat fake")
+    attrs = chat["attributes"]
+    assert isinstance(attrs, dict)
+    if (
+        attrs.get("gen_ai.operation.name") != "chat"
+        or attrs.get("gen_ai.provider.name") != "fake"
+        or attrs.get("gen_ai.request.model") != "fake"
+    ):
+        sys.stderr.write(f"verify: chat fake gen_ai attrs {attrs}\n")
         sys.exit(1)
     down_proc = _run_uvicorn(
         down_port,
@@ -3259,11 +3312,16 @@ try:
         qdrant,
     )
     _wait_health(down_port)
-    down_status = _post_ask(down_port)
+    down_status, down_body = _post_ask(down_port)
     if down_status != 200:
         sys.stderr.write(f"verify: collector-down POST /ask HTTP {down_status}\n")
         sys.exit(1)
+    if _banker(down_body) != _banker(off_body):
+        sys.stderr.write("verify: collector-down answer differed from tracing-off\n")
+        sys.exit(1)
 finally:
+    if off_proc is not None:
+        _stop(off_proc)
     if live_proc is not None:
         _stop(live_proc)
     if down_proc is not None:
@@ -3271,7 +3329,7 @@ finally:
     server.shutdown()
     server.server_close()
     shutil.rmtree(qdrant, ignore_errors=True)
-print("otlp ask span exported; collector-down POST /ask returned 200")
+print("otlp ask and chat fake exported; collector-down answer matched tracing-off")
 PY
   otel_rc=$?
   set -e
@@ -3282,10 +3340,9 @@ PY
     cat "${ART}/otel.proof.err" >&2 || true
     exit 1
   fi
-  write otel.otlp.ok "POST /ask exported an ask span to an in-process collector, and POST /ask returned 200 with the collector down. OTEL_EXPORTER_OTLP_ENDPOINT was unset for the main uvicorn. Compose profile otel was not started."
-  log "verify: OTLP collector accepted an ask span; collector-down POST /ask returned 200"
+  write otel.otlp.ok "POST /ask exported ask and chat fake spans with gen_ai attributes to an in-process collector. Collector-down POST /ask returned 200 and matched the tracing-off answer. Compose profile otel was not started."
+  log "verify: OTLP collector accepted ask and chat fake; collector-down answer matched tracing-off"
   cat "${ART}/otel.proof.out"
-fi
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   log "verify: docker compose config"
@@ -3707,10 +3764,11 @@ web_ask
   elif [[ -f "${ART}/langfuse.reachable" ]]; then
     echo "langfuse reachable ($(cat "${ART}/langfuse.reachable"))"
   fi
-  if [[ -f "${ART}/otel.skipped" ]]; then
-    echo "otel skipped ($(cat "${ART}/otel.skipped"))"
-  elif [[ -f "${ART}/otel.otlp.ok" ]]; then
+  if [[ -f "${ART}/otel.otlp.ok" ]]; then
     echo "otel $(cat "${ART}/otel.otlp.ok")"
+  fi
+  if [[ -f "${ART}/otel.live.unverified" ]]; then
+    echo "otel live unverified ($(cat "${ART}/otel.live.unverified"))"
   fi
   if [[ -f "${ART}/compose.config.exit" ]]; then
     echo "compose.config.exit $(cat "${ART}/compose.config.exit")"

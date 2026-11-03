@@ -24,17 +24,19 @@ request still returns. A set trace file still writes JSONL.
   `capitalcite.tool`, `capitalcite.gate.decision` `deny`, and the reason.
 - `langfuse-live` is UNVERIFIED when nothing is listening on
   `localhost:3000`. Do not start compose for this check.
-- `otlp-export` runs when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset.
-  `scripts/verify.sh` starts a local HTTP receiver, drives `POST /ask`
-  on a short-lived uvicorn pointed at that receiver, and checks the
-  protobuf body for an `ask` span. It does not start compose.
+- `otlp-export` always runs. `scripts/verify.sh` starts a local HTTP
+  receiver, drives `POST /ask` on a short-lived uvicorn pointed at that
+  receiver, and checks the protobuf body for `ask` and `chat fake`.
+  `chat fake` carries `gen_ai.operation.name` `chat`,
+  `gen_ai.provider.name` `fake`, and `gen_ai.request.model` `fake`. It
+  does not start compose.
 - `otlp-collector-down` starts a short-lived uvicorn with
   `OTEL_EXPORTER_OTLP_ENDPOINT` pointed at a closed port. `POST /ask`
-  still returns 200. Do not start the `otel` compose profile.
-- `otlp-configured` runs when `OTEL_EXPORTER_OTLP_ENDPOINT` is already
-  set in the environment. A curl of that endpoint is recorded. A live
-  collector this run did not start is UNVERIFIED. Do not start the
-  `otel` compose profile.
+  still returns 200, and the JSON matches a tracing-off run of the same
+  body. Do not start the `otel` compose profile.
+- `otlp-configured` records a curl of a pre-set
+  `OTEL_EXPORTER_OTLP_ENDPOINT`. That live collector is UNVERIFIED. The
+  in-process proof still runs. Do not start the `otel` compose profile.
 - `ask-trace-diff` runs `scripts/check_ask_trace_diff.py` with
   `ASK_MODEL=fake`. Rag `ask()`, streamed rag, and agent answers match
   with tracing on and off. The non-refusal subset includes answered
@@ -79,18 +81,18 @@ Preconditions:
   `deny`, and `unknown_tool` / `invalid_args` / `policy_load_failed`.
 - **Live Langfuse.** If `curl -sf http://127.0.0.1:3000` fails, write
   `langfuse.skipped` and report UNVERIFIED. Do not start compose.
-- **OTLP.** If `OTEL_EXPORTER_OTLP_ENDPOINT` is unset, the helper must
-  export an `ask` span from `POST /ask` to a local receiver, and
-  `POST /ask` must still return 200 when the collector port is closed.
-  If the endpoint is already set, record the curl and leave a live
-  collector UNVERIFIED when nothing accepts the post. Do not start the
-  `otel` profile.
+- **OTLP.** The helper always exports `ask` and `chat fake` from
+  `POST /ask` to a local receiver. `chat fake` has the `gen_ai.*`
+  attributes above. `POST /ask` still returns 200 when the collector
+  port is closed, and that JSON matches tracing-off. If the endpoint is
+  already set, record the curl and leave that live collector UNVERIFIED.
+  Do not start the `otel` profile.
 - **Zero-diff.** `ASK_MODEL=fake uv run python scripts/check_ask_trace_diff.py`
   exits 0, prints `mismatches=0`, and prints `answered=` of at least 8
   on the non-refusal rag subset.
 - **Bundled helper.** Run `./scripts/verify.sh`. It writes `spans.jsonl`,
-  `ask-trace-diff.out`, `otel.otlp.ok` or `otel.skipped`, and either
-  `langfuse.skipped` or a note that the UI was reachable.
+  `ask-trace-diff.out`, `otel.otlp.ok`, optionally `otel.live.unverified`,
+  and either `langfuse.skipped` or a note that the UI was reachable.
 - **Proof.** Keep the JSONL and the skip file. Pytest is not this
   feature. A 200 from `/health` is not tracing proof.
 

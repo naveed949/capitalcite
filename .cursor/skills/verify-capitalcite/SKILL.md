@@ -101,7 +101,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite gate decide --tool shell --args '{"cmd":"ls"}'` | exit 0 + JSON `kind` `deny`; unknown tool, invalid args, and a broken policy file each deny |
 | CLI | `capitalcite gate redteam` | exit 0 + `failed` 0; injection text cannot run a denied tool |
 | CLI | `capitalcite gate bench` | exit 0 + `p95_ms`; no network |
-| File | `CAPITALCITE_TRACE_FILE` JSONL | after `capitalcite gate decide`, JSONL has deny spans with tool and reason; after fake `POST /ask`, JSONL has `ask` + `retrieve` + `chat fake`; after `eval --small`, an `eval` span has `git_sha` and `config_hash`. Live Langfuse `:3000` is UNVERIFIED when down. OTLP: `POST /ask` exports an `ask` span to a local collector, and still returns 200 when that collector is down. A pre-set live endpoint is UNVERIFIED |
+| File | `CAPITALCITE_TRACE_FILE` JSONL | after `capitalcite gate decide`, JSONL has deny spans with tool and reason; after fake `POST /ask`, JSONL has `ask` + `retrieve` + `chat fake`; after `eval --small`, an `eval` span has `git_sha` and `config_hash`. Live Langfuse `:3000` is UNVERIFIED when down. OTLP: `POST /ask` exports `ask` and `chat fake` (with `gen_ai.*`) to a local collector. Collector-down `POST /ask` is 200 and matches tracing-off. The in-process proof always runs. A pre-set live endpoint is UNVERIFIED |
 | CLI | `scripts/check_ask_trace_diff.py` | exit 0 + `mismatches=0` with `ASK_MODEL=fake` on rag `ask()`, streamed rag, and agent. The non-refusal subset includes answered items |
 | CLI | `capitalcite eval --suite bench --baseline evals/baselines/bench.json` | exit 0 + `suite=bench` + `eval-baseline ok=true`; Fake model, catalog backend, ci warehouse. Paid OpenAI is UNVERIFIED |
 | CLI | `capitalcite audit verify` | exit 0 on an intact chain; exit 1 after a mutated field or a removed last record; no network |
@@ -174,7 +174,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `agent.cc-h-055.body.json` / `agent.cc-h-061.body.json` **or** `agent.unreachable` | Live `POST /ask` `path=agent` with the fake model on comparison and multi-hop items. `agent.openai.unverified` when live OpenAI was not run |
 | `spans.jsonl` **or** `spans.skipped` | File-exporter JSONL of ask/retrieve/`chat fake` (and eval) spans. Proof of the tree without Langfuse |
 | `langfuse.skipped` | Live Langfuse UI on `:3000` was not reachable. UNVERIFIED, not a pass |
-| `otel.otlp.ok` / `otel.proof.out` / `otel.proof.exit` **or** `otel.skipped` | In-process collector received an `ask` span from `POST /ask`, and `POST /ask` returned 200 with the collector down. A pre-set `OTEL_EXPORTER_OTLP_ENDPOINT` writes `otel.skipped` and is UNVERIFIED. Compose profile `otel` is not started |
+| `otel.otlp.ok` / `otel.proof.out` / `otel.proof.exit` | In-process collector received `ask` and `chat fake` (with `gen_ai.operation.name` `chat`, `gen_ai.provider.name` `fake`, `gen_ai.request.model` `fake`). Collector-down `POST /ask` is 200 and matches tracing-off. This proof always runs. A pre-set live endpoint also writes `otel.live.unverified`. Compose profile `otel` is not started |
 | `audit.help.out` / `audit.ok.out` / `audit.tamper.out` / `audit.removed.out` | Offline `capitalcite audit verify` on an intact chain, after a mutated field, and after deleting the last line |
 | `audit.agent.out` **or** `audit.agent.skipped` | Live one-record-per-trace check after `path=agent`, or UNVERIFIED when the agent path could not run |
 | `mcp.help.out` / `mcp.tools.json` / `mcp.search.body.json` / `mcp.search.extra.body.json` / `mcp.calculator.body.json` / `mcp.ask.body.json` / `mcp.audit.out` / `mcp.spans.jsonl` | Official stdio MCP client against `capitalcite mcp` on the fixture index. Isolated `AUDIT_LOG_PATH` and `QDRANT_PATH` |
@@ -256,7 +256,7 @@ Landed handles (do not add empty stubs):
 | Plan-then-act agent | `POST /ask` `path=agent` |
 | Fail-closed tool gate | `capitalcite gate decide` |
 | Audit log | `capitalcite audit verify` |
-| File and OTLP tracing | `CAPITALCITE_TRACE_FILE` JSONL after `/ask`, in-process OTLP export, collector-down 200, `scripts/check_ask_trace_diff.py`. Live Langfuse UI is UNVERIFIED without `:3000` |
+| File and OTLP tracing | `CAPITALCITE_TRACE_FILE` JSONL after `/ask`, in-process OTLP export of `ask` and `chat fake`, collector-down answer match, `scripts/check_ask_trace_diff.py`. Live Langfuse UI is UNVERIFIED without `:3000` |
 | Behavioral regression | `capitalcite check` |
 | MCP server | `capitalcite mcp` via official stdio client |
 | Optional entity graph | `capitalcite graph load/query` and `eval --suite graph --small`. Live Neo4j Bolt is UNVERIFIED without Docker |
