@@ -9,7 +9,7 @@ paired bootstrap of graph minus loop.
 
 - `eval-bench-help` lists `bench` on `capitalcite eval --help`.
 - `eval-bench-run` writes `<sha12>-bench.json` (or `<sha12>-dirty-bench.json`) with n, identity, and bottleneck. It does not write a sibling identity file.
-- `eval-bench-gate` compares the same-run graph/rag p95 ratio and cost per query to `evals/baselines/bench.json`. When `compile_once` is true it also fails if mean graph `compile_ms` is 0.5 or higher.
+- `eval-bench-gate` compares the same-run graph/rag p95 ratio and cost per query to `evals/baselines/bench.json`. When `compile_once` is true it also fails if mean graph `compile_ms` is 0.5 or higher. `verify.sh` runs this gate on the same fake-model suite.
 
 ## How to get to it (user POV)
 
@@ -29,8 +29,9 @@ Preconditions:
 
 - **Show help.** Run `uv run capitalcite eval --help`. Exit code is `0`. Stdout mentions `bench`.
 - **Run the suite.** Run `WAREHOUSE_PATH=dbt/target/ci.duckdb METRIC_QUERY_BACKEND=catalog ASK_MODEL=fake uv run capitalcite eval --suite bench --out $ART/eval-bench`. Exit code is `0`. Stdout includes `suite=bench`, `identity=`, and `bottleneck=`. The out directory contains a `*-bench.json` file.
+- **Gate the suite.** Add `--baseline evals/baselines/bench.json`. Exit code is `0`. Stdout includes `eval-baseline ok=true`.
 - **Missing warehouse.** Unset `WAREHOUSE_PATH` or point it at a missing file. Exit 2 and `unverified`. That is UNVERIFIED, not a product failure.
-- **Bundled helper.** `./scripts/verify.sh` builds the ci warehouse before `capitalcite check`, then writes `eval-bench.out`, `eval-bench.err`, and `eval-bench.exit`. `--small` does not skip this.
+- **Bundled helper.** `./scripts/verify.sh` builds the ci warehouse before `capitalcite check`, then writes `eval-bench.out`, `eval-bench.err`, and `eval-bench.exit`. The same command passes `--baseline evals/baselines/bench.json`. `--small` does not skip this.
 - **Proof.** Keep the CLI stdout, exit code, and the JSON. Pytest is not this feature.
 
 ## Gotchas

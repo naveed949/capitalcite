@@ -101,7 +101,9 @@ Stable handles (do not invent others):
 | CLI | `capitalcite gate decide --tool shell --args '{"cmd":"ls"}'` | exit 0 + JSON `kind` `deny`; unknown tool, invalid args, and a broken policy file each deny |
 | CLI | `capitalcite gate redteam` | exit 0 + `failed` 0; injection text cannot run a denied tool |
 | CLI | `capitalcite gate bench` | exit 0 + `p95_ms`; no network |
-| File | `CAPITALCITE_TRACE_FILE` JSONL | after `capitalcite gate decide`, JSONL has deny spans with tool and reason; after fake `POST /ask`, JSONL has `ask` + `retrieve`; after `eval --small`, an `eval` span has `git_sha` and `config_hash`. Live Langfuse `:3000` is UNVERIFIED when down. OTLP is an in-process receiver proof when `OTEL_EXPORTER_OTLP_ENDPOINT` is unset, and UNVERIFIED when that endpoint is set but nothing accepts it |
+| File | `CAPITALCITE_TRACE_FILE` JSONL | after `capitalcite gate decide`, JSONL has deny spans with tool and reason; after fake `POST /ask`, JSONL has `ask` + `retrieve` + `chat fake`; after `eval --small`, an `eval` span has `git_sha` and `config_hash`. Live Langfuse `:3000` is UNVERIFIED when down. OTLP: `POST /ask` exports an `ask` span to a local collector, and still returns 200 when that collector is down. A pre-set live endpoint is UNVERIFIED |
+| CLI | `scripts/check_ask_trace_diff.py` | exit 0 + `mismatches=0` with `ASK_MODEL=fake` on rag `ask()`, streamed rag, and agent. The non-refusal subset includes answered items |
+| CLI | `capitalcite eval --suite bench --baseline evals/baselines/bench.json` | exit 0 + `suite=bench` + `eval-baseline ok=true`; Fake model, catalog backend, ci warehouse. Paid OpenAI is UNVERIFIED |
 | CLI | `capitalcite audit verify` | exit 0 on an intact chain; exit 1 after a mutated field or a removed last record; no network |
 | CLI | `capitalcite check` | exit 0 + `ok=true`; quote-index sanity, fixture recall, and metrics exact/refusal vs `evals/baselines/ci.json` at zero item drop; `cc-ci-002` answered; `cc-u-001` refused; red-team `failed` 0. Needs the ci warehouse and `METRIC_QUERY_BACKEND=catalog`. `--live` without `OPENAI_API_KEY` is UNVERIFIED |
 | MCP | `capitalcite mcp` via official `Client(StdioServerParameters)` | `list_tools` is `search_filings`+`ask`+`metric_query`; extra keys `invalid_args`; `calculator` `unknown_tool`; fake `ask` writes audit JSONL and span JSONL |
@@ -110,7 +112,7 @@ Stable handles (do not invent others):
 | CLI | `capitalcite graph query --kind subsidiaries --ticker JPM` | exit 0 + `852218` |
 | CLI | `capitalcite eval --suite graph --small` | exit 0 + `graph_exact=` and `fixture_substring_hit_rate=`; MemoryGraphStore, no Bolt |
 | CLI | `capitalcite eval --suite metrics` | exit 0 + `suite=metrics` and `agent_exact=` / `agent_refusal=` / `rag_exact=` / `rag_refusal=` / `v1_mart=`; Fake model, catalog backend, ci warehouse |
-| CLI | `capitalcite eval --suite bench` | exit 0 + `suite=bench` and `identity=` / `bottleneck=`; Fake model, catalog backend, ci warehouse. Paid OpenAI is UNVERIFIED |
+| CLI | `capitalcite eval --suite bench` | exit 0 + `suite=bench` and `identity=` / `bottleneck=`; Fake model, catalog backend, ci warehouse. Paid OpenAI is UNVERIFIED. The helper also passes `--baseline evals/baselines/bench.json` |
 | CLI | `capitalcite metrics extract --tickers JPM,BAC,WFC,C --fixtures` | exit 0 + `metrics extract xbrl=4 financials=4`. Each sidecar `sha256` matches its payload. Live BankFind and live companyfacts are outside this helper |
 | CLI | `uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci` | exit 0 + `Completed successfully`. Live `dev` extract is outside this helper |
 | CLI | `mf validate-configs`, the required `mf query`, and four saved queries | After that build, with `DBT_PROJECT_DIR`, `DBT_PROFILES_DIR`, and `DBT_TARGET=ci`. `mf` reads the compiled `semantic_manifest.json`. `validate-configs` exits 0. The query is `total_deposits` and `deposits_qoq_growth` grouped by `metric_time__quarter` and `bank__ticker` where `bank__entity_level` is `bank_subsidiary`. Each saved query exits 0. `pytest -m mf` matches `evals/results/metrics/mf-query.csv`. |
@@ -170,8 +172,9 @@ Each run of `scripts/verify.sh` writes at least:
 | `web.exit` / `web.label.txt` / `web.answered.txt` / `web.agent.txt` / `web.refused.txt` / `web.cancel.txt` / `web.answered.png` / `web.agent.png` / `web.refused.png` **or** `web.unreachable` / `web.browser.unverified` | Browser drive of the page against this run's uvicorn. Missing pnpm or node writes `web.unreachable`. A failed Chromium launch writes `web.browser.unverified` |
 | `gate.help.out` / `gate.validate.out` / `gate.decide.*.body.json` / `gate.redteam.body.json` / `gate.bench.body.json` | Offline fail-closed gate: shipped policy loads, unknown/invalid/broken deny, red-team `failed` is 0, `p95_ms` is recorded |
 | `agent.cc-h-055.body.json` / `agent.cc-h-061.body.json` **or** `agent.unreachable` | Live `POST /ask` `path=agent` with the fake model on comparison and multi-hop items. `agent.openai.unverified` when live OpenAI was not run |
-| `spans.jsonl` **or** `spans.skipped` | File-exporter JSONL of ask/retrieve (and eval) spans. Proof of the tree without Langfuse |
+| `spans.jsonl` **or** `spans.skipped` | File-exporter JSONL of ask/retrieve/`chat fake` (and eval) spans. Proof of the tree without Langfuse |
 | `langfuse.skipped` | Live Langfuse UI on `:3000` was not reachable. UNVERIFIED, not a pass |
+| `otel.otlp.ok` / `otel.proof.out` / `otel.proof.exit` **or** `otel.skipped` | In-process collector received an `ask` span from `POST /ask`, and `POST /ask` returned 200 with the collector down. A pre-set `OTEL_EXPORTER_OTLP_ENDPOINT` writes `otel.skipped` and is UNVERIFIED. Compose profile `otel` is not started |
 | `audit.help.out` / `audit.ok.out` / `audit.tamper.out` / `audit.removed.out` | Offline `capitalcite audit verify` on an intact chain, after a mutated field, and after deleting the last line |
 | `audit.agent.out` **or** `audit.agent.skipped` | Live one-record-per-trace check after `path=agent`, or UNVERIFIED when the agent path could not run |
 | `mcp.help.out` / `mcp.tools.json` / `mcp.search.body.json` / `mcp.search.extra.body.json` / `mcp.calculator.body.json` / `mcp.ask.body.json` / `mcp.audit.out` / `mcp.spans.jsonl` | Official stdio MCP client against `capitalcite mcp` on the fixture index. Isolated `AUDIT_LOG_PATH` and `QDRANT_PATH` |
@@ -179,11 +182,12 @@ Each run of `scripts/verify.sh` writes at least:
 | `check.help.out` / `check.help.exit` | `capitalcite check --help` (must list `--baseline` and `--live`) |
 | `check.out` / `check.exit` / `check/check.json` | Deterministic regression pack vs the committed baseline |
 | `check.live.unverified` **or** `check.live.out` | `--live` without a key, or a grounded live run |
-| `writeup-numbers.out` / `writeup-numbers.err` / `writeup-numbers.exit` | `scripts/check_writeup_numbers.py`. Exit 0. Every number in `docs/writeup.md` is a README lexeme or a linked results projection |
+| `writeup-numbers.out` / `writeup-numbers.err` / `writeup-numbers.exit` | `scripts/check_writeup_numbers.py`. Exit 0. Every number in `docs/writeup.md` is a README lexeme or a linked results projection. The README OTLP overhead block matches the linked samples |
+| `ask-trace-diff.out` / `ask-trace-diff.err` / `ask-trace-diff.exit` | `scripts/check_ask_trace_diff.py` with `ASK_MODEL=fake`. `mismatches=0`. `answered=` at least 8 on the non-refusal rag subset |
 | `eval.help.out` / `eval.help.exit` | `capitalcite eval --help` (must list `--suite` and `--small`) |
 | `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |
 | `eval-metrics.out` / `eval-metrics.err` / `eval-metrics.exit` | Fake-model metrics suite after the ci warehouse. stdout contains `suite=metrics` and `v1_mart=` |
-| `eval-bench.out` / `eval-bench.err` / `eval-bench.exit` | Fake-model bench suite after the ci warehouse. stdout contains `suite=bench`, `identity=`, and `bottleneck=` |
+| `eval-bench.out` / `eval-bench.err` / `eval-bench.exit` | Fake-model bench suite after the ci warehouse, gated with `--baseline evals/baselines/bench.json`. stdout contains `suite=bench`, `identity=`, `bottleneck=`, and `eval-baseline ok=true` |
 | `graph.help.out` / `graph.load.out` / `graph.query.out` / `eval-graph-small.out` | Memory-backend graph load/query and `eval --suite graph --small`. Live Bolt is UNVERIFIED |
 | `metrics.help.out` / `metrics.out` / `metrics.exit` / `metrics.files.txt` | Offline `capitalcite metrics extract --fixtures`. stdout contains `metrics extract xbrl=4 financials=4`. Sidecar sha256 matches the payload. Live BankFind is outside this helper |
 | `dbt.out` / `dbt.exit` / `dbt-docs.out` / `dbt-docs.exit` / `dbt-shape.out` / `dbt-shape.exit` | `dbt build --target ci` and `dbt docs generate --target ci` on `tests/fixtures/metrics`. stdout contains `Completed successfully`. Shape query checks JPM 2026-06-30 holding-company Assets and the matching lead-bank Call Report cells |
@@ -239,33 +243,33 @@ When a later issue adds a user-facing endpoint or command, extend verification i
 5. Run `./scripts/verify.sh` and keep the new artifact files.
 6. Periodic honesty pass: `/maintain-verification-skill`.
 
-Expected later handles (do not add empty stubs now):
+Landed handles (do not add empty stubs):
 
-| Issue | Handle to add |
+| Surface | Handle |
 |---|---|
-| #3 chunking | `capitalcite chunk --chunker section` (landed) |
-| #4 retrieval | `POST /search` (landed) |
-| #5 golden set | `capitalcite golden validate` (landed) |
-| #6 evals | `capitalcite eval --suite golden` (landed) |
-| #7 answers | `POST /ask` (landed) |
-| streaming answers | `POST /ask/stream` (landed) |
-| #8 agent | `POST /ask` `path=agent` (landed) |
-| #9 gate | `capitalcite gate decide` (landed) |
-| #10 audit | `capitalcite audit verify` (landed) |
-| #11 tracing | `CAPITALCITE_TRACE_FILE` JSONL after `/ask` (landed). Live Langfuse UI is UNVERIFIED without `:3000` |
-| #12 eval CI | `capitalcite check` (landed) |
-| #15 MCP | `capitalcite mcp` via official stdio client (landed) |
-| #16 entity graph | `capitalcite graph load/query` and `eval --suite graph --small` (landed). Live Neo4j Bolt is UNVERIFIED without Docker |
-| metrics extract | `capitalcite metrics extract --fixtures` (landed). Live BankFind and live companyfacts are outside this helper |
-| self-contained image | `make image`, then `capitalcite --help` and `GET /health` in the image (landed). No docker is UNVERIFIED |
-| CORS | `CORS_ORIGINS` on the live uvicorn (landed) |
-| ask rate limit | `ASK_RATE_LIMIT` on `POST /ask` and `POST /ask/stream` (landed) |
-| web app | `web ask` on port 3001 (landed). Missing pnpm or a browser is UNVERIFIED |
-| dbt warehouse | `dbt build --target ci` (landed). `dev` against `data/raw` is outside this helper |
-| MetricFlow | `mf validate-configs`, the required deposits query, and four saved queries (landed). Live `dev` extract is outside this helper |
-| metric query | `metric_query` live cell for JPM deposits, catalog byte match, and fake `/ask/stream` for `2026Q2` (landed). Image remeasure after the warehouse copy is UNVERIFIED without Docker |
-| metrics eval | `capitalcite eval --suite metrics` (landed). Missing warehouse is UNVERIFIED |
-| agent vs RAG bench | `capitalcite eval --suite bench` (landed). Missing warehouse is UNVERIFIED. Paid OpenAI is UNVERIFIED |
+| Parse and chunk | `capitalcite chunk --chunker section` |
+| Hybrid search | `POST /search` |
+| Golden Q&A set | `capitalcite golden validate` |
+| Retrieval eval | `capitalcite eval --suite golden` |
+| Structured answers | `POST /ask` |
+| Streaming answers | `POST /ask/stream` |
+| Plan-then-act agent | `POST /ask` `path=agent` |
+| Fail-closed tool gate | `capitalcite gate decide` |
+| Audit log | `capitalcite audit verify` |
+| File and OTLP tracing | `CAPITALCITE_TRACE_FILE` JSONL after `/ask`, in-process OTLP export, collector-down 200, `scripts/check_ask_trace_diff.py`. Live Langfuse UI is UNVERIFIED without `:3000` |
+| Behavioral regression | `capitalcite check` |
+| MCP server | `capitalcite mcp` via official stdio client |
+| Optional entity graph | `capitalcite graph load/query` and `eval --suite graph --small`. Live Neo4j Bolt is UNVERIFIED without Docker |
+| Metrics extract | `capitalcite metrics extract --fixtures`. Live BankFind and live companyfacts are outside this helper |
+| Self-contained image | `make image`, then `capitalcite --help` and `GET /health` in the image. No docker is UNVERIFIED |
+| CORS | `CORS_ORIGINS` on the live uvicorn |
+| Ask rate limit | `ASK_RATE_LIMIT` on `POST /ask` and `POST /ask/stream` |
+| Web app | `web ask` on port 3001. Missing pnpm or a browser is UNVERIFIED |
+| dbt warehouse | `dbt build --target ci`. `dev` against `data/raw` is outside this helper |
+| MetricFlow | `mf validate-configs`, the required deposits query, and four saved queries. Live `dev` extract is outside this helper |
+| Metric query | `metric_query` live cell for JPM deposits, catalog byte match, and fake `/ask/stream` for `2026Q2`. Image remeasure after the warehouse copy is UNVERIFIED without Docker |
+| Metrics eval | `capitalcite eval --suite metrics`. Missing warehouse is UNVERIFIED |
+| Agent vs RAG bench | `capitalcite eval --suite bench --baseline evals/baselines/bench.json`. Missing warehouse is UNVERIFIED. Paid OpenAI is UNVERIFIED |
 
 `./scripts/verify.sh` builds the ci warehouse before `capitalcite check`, then runs `capitalcite eval --suite metrics`, `capitalcite eval --suite bench`, `capitalcite eval --suite golden --small`, and `eval --suite graph --small` always, and the twelve-filing bge-small matrix when ingest succeeded. After the fixture warehouse build it runs `mf validate-configs`, the required deposits query, each saved query, and `pytest -m mf`. `--small` does not skip that block. A missing corpus is `UNVERIFIED`, not a pass. Live `--live` without `OPENAI_API_KEY` is UNVERIFIED. Live Neo4j Bolt without Docker is UNVERIFIED. A paid bench run is UNVERIFIED.
 

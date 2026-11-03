@@ -209,6 +209,24 @@ fi
 log "verify: write-up numbers ok"
 cat "${ART}/writeup-numbers.out"
 
+log "verify: ask-trace-diff"
+set +e
+ASK_MODEL=fake uv run python "${ROOT}/scripts/check_ask_trace_diff.py" \
+  >"${ART}/ask-trace-diff.out" 2>"${ART}/ask-trace-diff.err"
+ask_trace_diff_rc=$?
+set -e
+write ask-trace-diff.exit "${ask_trace_diff_rc}"
+if [[ "${ask_trace_diff_rc}" -ne 0 ]] \
+  || ! grep -q "mismatches=0" "${ART}/ask-trace-diff.out" \
+  || ! grep -q "answered=" "${ART}/ask-trace-diff.out"; then
+  log "verify: ask-trace-diff failed"
+  cat "${ART}/ask-trace-diff.out" >&2 || true
+  cat "${ART}/ask-trace-diff.err" >&2 || true
+  exit 1
+fi
+log "verify: ask-trace-diff ok"
+cat "${ART}/ask-trace-diff.out"
+
 PORT="$(uv run python -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
 write port "${PORT}"
 log "verify: launching uvicorn on 127.0.0.1:${PORT}"
@@ -1608,10 +1626,10 @@ records = [
     if line.strip()
 ]
 names = {str(row.get("name")) for row in records}
-if "ask" not in names:
-    sys.stderr.write(f"verify: span names {sorted(names)} missing ask\n")
+if "ask" not in names or "chat fake" not in names:
+    sys.stderr.write(f"verify: span names {sorted(names)} missing ask or chat fake\n")
     sys.exit(1)
-print(f"spans ask n={len(records)}")
+print(f"spans ask+chat fake n={len(records)}")
 PY
   else
     write spans.skipped "fixture /ask did not write span JSONL"
@@ -2057,8 +2075,10 @@ records = [
     if line.strip()
 ]
 names = {str(row.get("name")) for row in records}
-if "ask" not in names or "retrieve" not in names:
-    sys.stderr.write(f"verify: span names {sorted(names)} missing ask or retrieve\n")
+if "ask" not in names or "retrieve" not in names or "chat fake" not in names:
+    sys.stderr.write(
+        f"verify: span names {sorted(names)} missing ask, retrieve, or chat fake\n"
+    )
     sys.exit(1)
 retrieve = next(row for row in records if row.get("name") == "retrieve")
 attrs = retrieve.get("attributes") or {}
@@ -2070,9 +2090,9 @@ for needle in ("Bearer ", "sk-lf-", "Authorization"):
     if needle in blob:
         sys.stderr.write(f"verify: span JSONL contained {needle!r}\n")
         sys.exit(1)
-print(f"spans ask+retrieve n={len(records)}")
+print(f"spans ask+retrieve+chat fake n={len(records)}")
 PY
-  log "verify: span JSONL has ask and retrieve"
+  log "verify: span JSONL has ask, retrieve, and chat fake"
 
   AGENT055='{"question":"Which bank had the higher Standardized CET1 ratio at year-end 2024, JPMorgan or Bank of America?","k":10,"path":"agent","model":"fake"}'
   AGENT061='{"question":"Did JPMorgan'\''s year-end 2024 Standardized CET1 ratio exceed its 12.3% requirement including buffers?","k":10,"path":"agent","model":"fake"}'
@@ -2463,7 +2483,8 @@ cat "${ART}/eval-metrics.out"
 log "verify: capitalcite eval --suite bench"
 set +e
 WAREHOUSE_PATH="${WAREHOUSE_PATH}" METRIC_QUERY_BACKEND=catalog ASK_MODEL=fake \
-  uv run capitalcite eval --suite bench --out "${ART}/eval-bench" \
+  uv run capitalcite eval --suite bench --baseline evals/baselines/bench.json \
+  --out "${ART}/eval-bench" \
   >"${ART}/eval-bench.out" 2>"${ART}/eval-bench.err"
 eval_bench_rc=$?
 set -e
@@ -2471,8 +2492,9 @@ write eval-bench.exit "${eval_bench_rc}"
 if [[ "${eval_bench_rc}" -ne 0 ]] \
   || ! grep -q "suite=bench" "${ART}/eval-bench.out" \
   || ! grep -q "identity=" "${ART}/eval-bench.out" \
-  || ! grep -q "bottleneck=" "${ART}/eval-bench.out"; then
-  log "verify: eval --suite bench failed"
+  || ! grep -q "bottleneck=" "${ART}/eval-bench.out" \
+  || ! grep -q "eval-baseline ok=true" "${ART}/eval-bench.out"; then
+  log "verify: eval --suite bench or bench gate failed"
   cat "${ART}/eval-bench.out" >&2 || true
   cat "${ART}/eval-bench.err" >&2 || true
   exit 1
@@ -3006,17 +3028,26 @@ if [[ -n "${OTEL_EXPORTER_OTLP_ENDPOINT:-}" ]]; then
   log "verify: OTLP endpoint is set; live collector UNVERIFIED"
 else
   set +e
-  uv run python - <<'PY'
+  uv run python - <<'PY' >"${ART}/otel.proof.out" 2>"${ART}/otel.proof.err"
+import json
+import os
+import shutil
+import socket
+import subprocess
 import sys
+import tempfile
 import threading
+import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
     ExportTraceServiceRequest,
 )
 
-from capitalcite.config import Settings
-from capitalcite.trace import ObservationKind, configure, observation, shutdown
+ROOT = Path.cwd()
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -3039,50 +3070,156 @@ class _Server(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", 0), _Handler)
 
 
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    assert isinstance(port, int)
+    return port
+
+
+def _wait_health(port: int) -> None:
+    url = f"http://127.0.0.1:{port}/health"
+    for _ in range(80):
+        try:
+            with urllib.request.urlopen(url, timeout=1) as response:
+                if response.status == 200:
+                    return
+        except (urllib.error.URLError, TimeoutError, OSError):
+            time.sleep(0.25)
+    raise RuntimeError(f"uvicorn on {port} never became healthy")
+
+
+def _post_ask(port: int) -> int:
+    body = json.dumps({"question": "ping", "model": "fake"}).encode()
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/ask",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return int(response.status)
+
+
+def _span_names(bodies: list[bytes]) -> list[str]:
+    names: list[str] = []
+    for raw in bodies:
+        message = ExportTraceServiceRequest()
+        message.ParseFromString(raw)
+        for resource in message.resource_spans:
+            for scope in resource.scope_spans:
+                for span in scope.spans:
+                    names.append(span.name)
+    return names
+
+
+def _run_uvicorn(
+    port: int, extra_env: dict[str, str], qdrant_path: str
+) -> subprocess.Popen[bytes]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "SEC_USER_AGENT": "capitalcite-verify you@example.com",
+            "ASK_MODEL": "fake",
+            "LANGFUSE_TRACING_ENABLED": "false",
+            "APP_ENV": "verify",
+            "LOG_LEVEL": "WARNING",
+            "QDRANT_PATH": qdrant_path,
+        }
+    )
+    env.pop("CAPITALCITE_TRACE_FILE", None)
+    env.update(extra_env)
+    return subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "capitalcite.api:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        cwd=str(ROOT),
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _stop(proc: subprocess.Popen[bytes]) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+qdrant = tempfile.mkdtemp(prefix="otel-qdrant-")
 server = _Server()
 thread = threading.Thread(target=server.serve_forever, daemon=True)
 thread.start()
+collector = server.server_address[1]
+live_port = _free_port()
+down_port = _free_port()
+closed = _free_port()
+live_proc: subprocess.Popen[bytes] | None = None
+down_proc: subprocess.Popen[bytes] | None = None
 try:
-    port = server.server_address[1]
-    configure(
-        Settings.model_validate(
-            {
-                "sec_user_agent": "capitalcite-verify you@example.com",
-                "langfuse_tracing_enabled": False,
-                "otel_exporter_otlp_endpoint": f"http://127.0.0.1:{port}",
-            }
-        )
+    live_proc = _run_uvicorn(
+        live_port,
+        {"OTEL_EXPORTER_OTLP_ENDPOINT": f"http://127.0.0.1:{collector}"},
+        qdrant,
     )
-    with observation("ask", ObservationKind.ASK):
-        pass
-    shutdown()
-    if not server.bodies:
-        sys.stderr.write("verify: otlp receiver got no posts\n")
+    _wait_health(live_port)
+    status = _post_ask(live_port)
+    if status != 200:
+        sys.stderr.write(f"verify: otlp POST /ask HTTP {status}\n")
         sys.exit(1)
-    message = ExportTraceServiceRequest()
-    message.ParseFromString(server.bodies[0])
-    names = [
-        span.name
-        for resource in message.resource_spans
-        for scope in resource.scope_spans
-        for span in scope.spans
-    ]
+    time.sleep(0.6)
+    _stop(live_proc)
+    live_proc = None
+    names = _span_names(server.bodies)
     if "ask" not in names:
         sys.stderr.write(f"verify: otlp span names {names}\n")
         sys.exit(1)
+    down_proc = _run_uvicorn(
+        down_port,
+        {
+            "OTEL_EXPORTER_OTLP_ENDPOINT": f"http://127.0.0.1:{closed}",
+            "OTEL_EXPORTER_OTLP_TIMEOUT": "0.2",
+        },
+        qdrant,
+    )
+    _wait_health(down_port)
+    down_status = _post_ask(down_port)
+    if down_status != 200:
+        sys.stderr.write(f"verify: collector-down POST /ask HTTP {down_status}\n")
+        sys.exit(1)
 finally:
+    if live_proc is not None:
+        _stop(live_proc)
+    if down_proc is not None:
+        _stop(down_proc)
     server.shutdown()
     server.server_close()
+    shutil.rmtree(qdrant, ignore_errors=True)
+print("otlp ask span exported; collector-down POST /ask returned 200")
 PY
   otel_rc=$?
   set -e
   write otel.proof.exit "${otel_rc}"
   if [[ "${otel_rc}" -ne 0 ]]; then
-    log "verify: in-process OTLP proof failed"
+    log "verify: OTLP collector proof failed"
+    cat "${ART}/otel.proof.out" >&2 || true
+    cat "${ART}/otel.proof.err" >&2 || true
     exit 1
   fi
-  write otel.otlp.ok "in-process receiver accepted an ask span. OTEL_EXPORTER_OTLP_ENDPOINT was unset. Compose profile otel was not started."
-  log "verify: in-process OTLP receiver accepted an ask span"
+  write otel.otlp.ok "POST /ask exported an ask span to an in-process collector, and POST /ask returned 200 with the collector down. OTEL_EXPORTER_OTLP_ENDPOINT was unset for the main uvicorn. Compose profile otel was not started."
+  log "verify: OTLP collector accepted an ask span; collector-down POST /ask returned 200"
+  cat "${ART}/otel.proof.out"
 fi
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -3359,6 +3496,8 @@ web_ask
 {
   echo "timestamp ${TS}"
   echo "writeup-numbers.exit $(cat "${ART}/writeup-numbers.exit")"
+  echo "ask-trace-diff.exit $(cat "${ART}/ask-trace-diff.exit")"
+  echo "ask-trace-diff $(tr '\n' ' ' <"${ART}/ask-trace-diff.out")"
   echo "port ${PORT}"
   echo "uvicorn.pid ${UVICORN_PID}"
   echo "health.http $(cat "${ART}/health.http")"
@@ -3459,6 +3598,12 @@ web_ask
   fi
   echo "eval.help.exit $(cat "${ART}/eval.help.exit")"
   echo "eval-small.exit $(cat "${ART}/eval-small.exit")"
+  if [[ -f "${ART}/eval-metrics.exit" ]]; then
+    echo "eval-metrics.exit $(cat "${ART}/eval-metrics.exit")"
+  fi
+  if [[ -f "${ART}/eval-bench.exit" ]]; then
+    echo "eval-bench.exit $(cat "${ART}/eval-bench.exit")"
+  fi
   echo "check.help.exit $(cat "${ART}/check.help.exit")"
   echo "check.exit $(cat "${ART}/check.exit")"
   if [[ -f "${ART}/check.live.unverified" ]]; then
@@ -3496,6 +3641,11 @@ web_ask
     echo "langfuse skipped ($(cat "${ART}/langfuse.skipped"))"
   elif [[ -f "${ART}/langfuse.reachable" ]]; then
     echo "langfuse reachable ($(cat "${ART}/langfuse.reachable"))"
+  fi
+  if [[ -f "${ART}/otel.skipped" ]]; then
+    echo "otel skipped ($(cat "${ART}/otel.skipped"))"
+  elif [[ -f "${ART}/otel.otlp.ok" ]]; then
+    echo "otel $(cat "${ART}/otel.otlp.ok")"
   fi
   if [[ -f "${ART}/compose.config.exit" ]]; then
     echo "compose.config.exit $(cat "${ART}/compose.config.exit")"

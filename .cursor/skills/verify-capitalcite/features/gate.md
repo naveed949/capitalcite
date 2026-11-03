@@ -41,6 +41,6 @@ Preconditions:
 ## Gotchas
 
 - `decide` does not run the tool. An allow still means only "the policy permitted this call."
-- `capitalcite audit verify` is a different feature (#10). Do not invent it here.
+- `capitalcite audit verify` is a different feature. Do not invent it here.
 - `CliRunner().invoke(...)` in pytest is not this feature.
 - A default-allow policy file is a load failure, not an open gate.
