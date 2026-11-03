@@ -20,9 +20,10 @@ the wrong phase does not move the number that users feel.
 The bench reuses `observation()` and `MemoryExporter`. Retrieve spans sum
 to retrieval time. Tool and gate spans sum to tool time after nested
 retrieve children are subtracted, so a `search_filings` call is not
-counted twice. Generate spans sum to model time. A `compile` child of the
+counted twice. Spans of generation kind, named `chat {model}`, sum to
+model time. A `compile` child of the
 agent span is the LangGraph `StateGraph.compile()` call. Total is the
-outer ask span. Time to first token is the first generate begin minus the
+outer ask span. Time to first token is the first generation begin minus the
 ask begin. There is no second clock.
 
 With n=95, p50 and p95 are interpolated between adjacent order statistics
@@ -88,12 +89,12 @@ tool, retrieve, model, and compile under the ask total.
 
 ## The fake model cannot measure model latency
 
-`ASK_MODEL=fake` does not call a network generator. The generate span is
-the heuristic planner and a quote of a hit. Model time on that path is
-not the latency of `gpt-4o-mini`. Token counts of the prompts are real.
-The time to first token is time-to-first-generate-span, not a streamed
-token from the API. Every number that needs a live model is UNVERIFIED
-until the pinned paid command runs.
+`ASK_MODEL=fake` does not call a network generator. The generation span
+named `chat {model}` is the heuristic planner and a quote of a hit.
+Model time on that path is not the latency of `gpt-4o-mini`. Token
+counts of the prompts are real. The time to first token is the first
+generation begin, not a streamed token from the API. Every number that
+needs a live model is UNVERIFIED until the pinned paid command runs.
 
 ## Compile once is the applied optimization
 
