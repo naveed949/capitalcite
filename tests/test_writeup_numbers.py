@@ -264,6 +264,31 @@ def test_readme_overhead_block_rejects_unprojected_ms(tmp_path: Path) -> None:
     assert "OTLP overhead block" in proc.stdout
 
 
+def test_adr_overhead_block_rejects_unprojected_ms(tmp_path: Path) -> None:
+    name = "abcabcabcabc-otel-overhead.json"
+    link = f"[overhead](evals/results/{name})"
+    _write_tree(
+        tmp_path,
+        readme=f"Measured 0.4 ms in {link}.\n",
+        writeup=f"OTLP adds 0.4 ms {link}.\n",
+        results={
+            "off": {"samples_ms": [2.0] * 20},
+            "on": {"samples_ms": [2.4] * 20},
+        },
+        result_name=name,
+    )
+    adr = tmp_path / "docs" / "decisions"
+    adr.mkdir()
+    (adr / "0028-otel-tracing.md").write_text(
+        "<!-- BEGIN OTEL OVERHEAD -->\nOTLP adds 9.9 ms.\n<!-- END OTEL OVERHEAD -->\n",
+        encoding="utf-8",
+    )
+    proc = run_check(tmp_path)
+    assert proc.returncode == 1
+    assert "9.9 ms" in proc.stdout
+    assert "0028-otel-tracing.md" in proc.stdout
+
+
 def test_writeup_ratio_without_link_fails(tmp_path: Path) -> None:
     name = "abcabcabcabc.json"
     _write_tree(

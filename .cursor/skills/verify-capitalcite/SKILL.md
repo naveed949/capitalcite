@@ -182,7 +182,7 @@ Each run of `scripts/verify.sh` writes at least:
 | `check.help.out` / `check.help.exit` | `capitalcite check --help` (must list `--baseline` and `--live`) |
 | `check.out` / `check.exit` / `check/check.json` | Deterministic regression pack vs the committed baseline |
 | `check.live.unverified` **or** `check.live.out` | `--live` without a key, or a grounded live run |
-| `writeup-numbers.out` / `writeup-numbers.err` / `writeup-numbers.exit` | `scripts/check_writeup_numbers.py`. Exit 0. Every number in `docs/writeup.md` is a README lexeme or a linked results projection. The README OTLP overhead block matches the linked samples |
+| `writeup-numbers.out` / `writeup-numbers.err` / `writeup-numbers.exit` | `scripts/check_writeup_numbers.py`. Exit 0. Every number in `docs/writeup.md` is a README lexeme or a linked results projection. The README and ADR 0028 OTLP overhead blocks match the linked samples |
 | `ask-trace-diff.out` / `ask-trace-diff.err` / `ask-trace-diff.exit` | `scripts/check_ask_trace_diff.py` with `ASK_MODEL=fake`. `mismatches=0`. `answered=` at least 8 on the non-refusal rag subset |
 | `eval.help.out` / `eval.help.exit` | `capitalcite eval --help` (must list `--suite` and `--small`) |
 | `eval-small.out` / `eval-small.exit` | Fixture-corpus `--small` matrix |

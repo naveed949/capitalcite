@@ -31,6 +31,7 @@ QUANTITY = re.compile(
 
 CHECKED_DOCS: tuple[str, ...] = ("docs/writeup.md",)
 README_REL = "README.md"
+OVERHEAD_ADR_REL = "docs/decisions/0028-otel-tracing.md"
 BENCH_BEGIN_MARK = "<!-- BEGIN BENCH EVAL -->"
 BENCH_END_MARK = "<!-- END BENCH EVAL -->"
 OVERHEAD_BEGIN_MARK = "<!-- BEGIN OTEL OVERHEAD -->"
@@ -511,14 +512,18 @@ def _check_readme_bench_block(readme: str, projected: frozenset[str]) -> tuple[F
 
 
 def _check_readme_overhead_block(readme: str, projected: frozenset[str]) -> tuple[Failure, ...]:
-    """README OTLP overhead numbers must come from committed samples, not the rest of the README."""
-    block = _readme_overhead_block(readme)
+    return _check_overhead_block(readme, README_REL, projected)
+
+
+def _check_overhead_block(text: str, rel: str, projected: frozenset[str]) -> tuple[Failure, ...]:
+    """OTLP overhead-block numbers must come from committed samples."""
+    block = _readme_overhead_block(text)
     if block is None:
         return ()
-    prefix, _ = readme.split(OVERHEAD_BEGIN_MARK, 1)
+    prefix, _ = text.split(OVERHEAD_BEGIN_MARK, 1)
     line_offset = prefix.count("\n")
     failures: list[Failure] = []
-    for cited in extract(block, README_REL):
+    for cited in extract(block, rel):
         span = Span(cited.span.path, cited.span.line + line_offset, cited.span.column)
         if cited.lexeme in projected:
             continue
@@ -526,7 +531,7 @@ def _check_readme_overhead_block(readme: str, projected: frozenset[str]) -> tupl
             Failure(
                 span,
                 (
-                    f"'{cited.lexeme}' in the README OTLP overhead block is not in "
+                    f"'{cited.lexeme}' in the {rel} OTLP overhead block is not in "
                     "linked evals/results JSON"
                 ),
             )
@@ -587,6 +592,15 @@ def check(root: Path) -> tuple[Failure, ...]:
         failures.extend(_check_readme_overhead_block(readme_text, ledger.projected))
     else:
         ledger = Ledger(readme=frozenset(), projected=frozenset())
+    adr_path = root / OVERHEAD_ADR_REL
+    if adr_path.is_file():
+        failures.extend(
+            _check_overhead_block(
+                adr_path.read_text(encoding="utf-8"),
+                OVERHEAD_ADR_REL,
+                ledger.projected,
+            )
+        )
     for rel in CHECKED_DOCS:
         if rel not in texts:
             continue
