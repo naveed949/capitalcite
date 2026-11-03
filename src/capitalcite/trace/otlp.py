@@ -70,7 +70,10 @@ class OtlpExporter:
         resource = Resource.create({"service.name": service_name})
         self._provider = TracerProvider(resource=resource, id_generator=self._ids)
         self._provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, timeout=timeout_s))
+            BatchSpanProcessor(
+                OTLPSpanExporter(endpoint=endpoint, timeout=timeout_s),
+                schedule_delay_millis=200,
+            )
         )
         self._tracer = self._provider.get_tracer("capitalcite")
 

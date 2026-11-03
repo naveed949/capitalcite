@@ -17,6 +17,10 @@ os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 os.environ["NEO4J_URI"] = ""
 os.environ["NEO4J_PASSWORD"] = ""
+# OTLP uses requests. The httpx block below does not see those posts.
+os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
+os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = ""
+os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = ""
 # Rich/Typer help wrapping follows COLUMNS. CI/non-TTY widths truncate
 # "--tickers" to "--ticke…". Pin a wide dumb terminal for all tests.
 os.environ["COLUMNS"] = "120"

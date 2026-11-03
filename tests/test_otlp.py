@@ -121,6 +121,85 @@ def test_otlp_http_exports_names_ids_and_gen_ai_attributes(tmp_path: Path) -> No
         server.server_close()
 
 
+def test_streamed_agent_tree_reaches_otlp(tmp_path: Path) -> None:
+    server = _Server(_Capture)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = server.server_address[1]
+        bac = Chunk(
+            doc_id="doc-bac",
+            section="Item 7",
+            start=10,
+            end=10 + len("CET1 capital ratio of 11.9 percent"),
+            offset=10,
+            source_url="https://www.sec.gov/Archives/edgar/data/70858/bac.htm",
+            text="CET1 capital ratio of 11.9 percent under the Standardized approach",
+            token_count=8,
+            chunker=ChunkerName.SECTION,
+            ticker="BAC",
+            form="10-K",
+            period="2024-12-31",
+            accession="doc-bac",
+        )
+        application, _setup = _indexed_app(tmp_path, extra_chunks=(bac,))
+        with TestClient(application) as http:
+            configure(
+                _settings(
+                    otel_exporter_otlp_endpoint=f"http://127.0.0.1:{port}",
+                    otel_service_name="capitalcite-test",
+                )
+            )
+            response = http.post(
+                "/ask/stream",
+                json={
+                    "question": (
+                        "Which bank had the higher Standardized CET1 ratio at year-end 2024, "
+                        "JPMorgan or Bank of America?"
+                    ),
+                    "path": "agent",
+                    "model": "fake",
+                    "k": 8,
+                },
+            )
+            assert response.status_code == 200
+            assert "event: done" in response.text
+            shutdown()
+        exported = _decode(server.bodies)
+        by_id = {span["span_id"]: span for span in exported}
+        parents = {
+            name: {
+                by_id[item["parent"]]["name"] if item["parent"] else None
+                for item in exported
+                if item["name"] == name
+            }
+            for name in {item["name"] for item in exported}
+        }
+        assert parents["ask"] == {None}
+        assert parents["agent"] == {"ask"}
+        assert parents["graph.plan"] == {"agent"}
+        assert parents["graph.act"] == {"agent"}
+        assert parents["graph.synthesize"] == {"agent"}
+        assert parents["plan"] == {"graph.plan"}
+        assert parents["complete"] == {"graph.synthesize"}
+        assert parents["tool"] == {"graph.act"}
+        assert parents["gate"] == {"graph.act"}
+        assert parents["retrieve"] == {"tool"}
+        if "graph.stop" in parents:
+            assert parents["graph.stop"] == {"agent"}
+        generate = next(item for item in exported if item["name"] == "plan")
+        assert generate["attributes"]["gen_ai.operation.name"] == "chat"
+        assert generate["attributes"]["gen_ai.provider.name"] == "fake"
+        tool = next(item for item in exported if item["name"] == "tool")
+        assert tool["attributes"]["gen_ai.operation.name"] == "execute_tool"
+        assert tool["attributes"]["gen_ai.tool.name"] == "search_filings"
+        assert len({item["trace_id"] for item in exported}) == 1
+        assert all(posted == "/v1/traces" for posted, _body in server.bodies)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_blank_otlp_endpoint_and_grpc_protocol_are_noops() -> None:
     blank = _settings(otel_exporter_otlp_endpoint="  ")
     assert blank.otel_exporter_otlp_endpoint is None
@@ -198,7 +277,7 @@ def _settings(**overrides: object) -> Settings:
     return Settings.model_validate(payload)
 
 
-def _indexed_app(tmp_path: Path) -> tuple[FastAPI, object]:
+def _indexed_app(tmp_path: Path, extra_chunks: tuple[Chunk, ...] = ()) -> tuple[FastAPI, object]:
     chunk = Chunk(
         doc_id="doc-jpm",
         section="Item 7",
@@ -217,6 +296,12 @@ def _indexed_app(tmp_path: Path) -> tuple[FastAPI, object]:
     folder = tmp_path / "parsed" / "edgar" / "JPM" / "10-K" / "2024-12-31" / "doc-jpm"
     folder.mkdir(parents=True)
     (folder / "chunks.jsonl").write_text(chunk.model_dump_json() + "\n", encoding="utf-8")
+    for extra in extra_chunks:
+        extra_folder = (
+            tmp_path / "parsed" / "edgar" / extra.ticker / extra.form / extra.period / extra.doc_id
+        )
+        extra_folder.mkdir(parents=True)
+        (extra_folder / "chunks.jsonl").write_text(extra.model_dump_json() + "\n", encoding="utf-8")
     client = AsyncQdrantClient(":memory:")
     settings = _settings()
     setup = setup_retrieval(settings, client=client, embedder=FakeEmbedder())
