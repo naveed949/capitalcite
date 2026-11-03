@@ -5,6 +5,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from capitalcite.ask.endpoint import host_class_for
 from capitalcite.eval.bench import (
@@ -417,6 +418,87 @@ def test_pin_commands_match_host_class() -> None:
             assert env["ASK_OPENAI_BASE_URL"]
 
 
+def _rebuild_pin(**update: object) -> BenchPin:
+    payload = _pin().model_dump()
+    payload.update(update)
+    return BenchPin.model_validate(payload)
+
+
+def test_pin_rejects_userinfo_and_non_loopback_command_urls() -> None:
+    local_base = {
+        "model": "openai",
+        "host_class": "localhost",
+        "openai_model": "lfm3:latest",
+        "prices": "evals/bench/prices/lfm3-local.json",
+    }
+    with pytest.raises(ValidationError, match="userinfo") as leaked:
+        _rebuild_pin(
+            **local_base,
+            paid_run={
+                "status": "UNVERIFIED",
+                "command": "ASK_OPENAI_BASE_URL=http://user:secret@127.0.0.1:11434/v1 uv run x",
+            },
+        )
+    text = str(leaked.value)
+    assert "secret" not in text
+    assert "user:secret" not in text
+    with pytest.raises(ValidationError, match="loopback"):
+        _rebuild_pin(
+            **local_base,
+            paid_run={
+                "status": "UNVERIFIED",
+                "command": "ASK_OPENAI_BASE_URL=https://example.com/v1 uv run x",
+            },
+        )
+    with pytest.raises(ValidationError, match="local pin"):
+        _rebuild_pin(
+            paid_run={
+                "status": "UNVERIFIED",
+                "command": "ASK_OPENAI_BASE_URL=http://localhost:11434/v1 uv run x",
+            }
+        )
+    ok = _rebuild_pin(
+        **local_base,
+        paid_run={
+            "status": "UNVERIFIED",
+            "command": "ASK_OPENAI_BASE_URL=http://localhost:11434/v1 uv run x",
+        },
+    )
+    assert "localhost:11434" in str(ok.paid_run["command"])
+    quoted = _rebuild_pin(
+        **local_base,
+        paid_run={
+            "status": "UNVERIFIED",
+            "command": 'ASK_OPENAI_BASE_URL="http://localhost:11434/v1" uv run x',
+        },
+    )
+    assert "localhost:11434" in str(quoted.paid_run["command"])
+
+
+def test_ftp_command_url_is_refused_and_absent_from_results() -> None:
+    from capitalcite.eval.bench import _redact_command_urls
+
+    local_base = {
+        "model": "openai",
+        "host_class": "localhost",
+        "openai_model": "lfm3:latest",
+        "prices": "evals/bench/prices/lfm3-local.json",
+    }
+    ftp_tail = "# mirror ftp://remote.example:2121/weights"
+    local_cmd = f"ASK_OPENAI_BASE_URL=http://localhost:11434/v1 uv run x {ftp_tail}"
+    hosted_cmd = f"ASK_MODEL=openai uv run x {ftp_tail}"
+    with pytest.raises(ValidationError, match="loopback"):
+        _rebuild_pin(**local_base, paid_run={"status": "UNVERIFIED", "command": local_cmd})
+    with pytest.raises(ValidationError, match="local pin"):
+        _rebuild_pin(paid_run={"status": "UNVERIFIED", "command": hosted_cmd})
+    for command in (local_cmd, hosted_cmd):
+        redacted = _redact_command_urls(command)
+        assert "ftp://" not in redacted
+        assert "://" not in redacted
+        assert "remote.example" not in redacted
+        assert "2121" not in redacted
+
+
 def test_local_cost_is_zero_and_not_comparable() -> None:
     from capitalcite.ask.endpoint import parse_chat_endpoint
     from capitalcite.eval.bench import bench_provenance, bench_stem_suffix, provenance_sentence
@@ -503,14 +585,8 @@ def test_local_report_json_has_no_url(tmp_path: Path) -> None:
     from capitalcite.cli import app
     from capitalcite.eval.bench import bench_provenance
 
-    pin = _pin().model_copy(
-        update={
-            "model": "openai",
-            "host_class": "localhost",
-            "openai_model": "lfm3:latest",
-            "prices": "evals/bench/prices/lfm3-local.json",
-        }
-    )
+    pin = load_pin(Path("evals/bench/pin-lfm3-local.json"))
+    assert "://" in str(pin.paid_run["command"])
     endpoint = parse_chat_endpoint("http://127.0.0.1:11434/v1", None, "lfm3:latest")
     provenance = bench_provenance(endpoint, pin, Path("evals/bench/pin-lfm3-local.json"))
     report = BenchReport(
@@ -532,6 +608,9 @@ def test_local_report_json_has_no_url(tmp_path: Path) -> None:
     assert "://" not in text
     assert "11434" not in text
     body = json.loads(text)
+    command = body["pin"]["paid_run"]["command"]
+    assert "ASK_OPENAI_BASE_URL=localhost" in command
+    assert body["provenance"]["host_class"] == "localhost"
     assert body["provenance"]["provider"] == "local"
     assert body["provenance"]["comparable_to_hosted"] is False
     assert body["queries"][0]["cost_usd"] == 0.0

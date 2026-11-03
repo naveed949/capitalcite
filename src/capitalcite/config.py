@@ -98,7 +98,9 @@ class Settings(BaseSettings):
     ask_openai_timeout_s: float = Field(
         default=30.0,
         gt=0.0,
-        description="Seconds for one Chat Completions POST. Hosted or local.",
+        le=600.0,
+        allow_inf_nan=False,
+        description="Seconds for one Chat Completions POST. Hosted or local. Finite, at most 600.",
     )
     ask_seed: int | None = Field(
         default=None,

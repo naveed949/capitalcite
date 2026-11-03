@@ -138,6 +138,22 @@ def test_cors_origins_reject_star(monkeypatch: pytest.MonkeyPatch) -> None:
         Settings()
 
 
+def test_ask_openai_timeout_rejects_inf_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("ASK_OPENAI_TIMEOUT_S", "inf")
+    with pytest.raises(ValidationError):
+        Settings()
+    monkeypatch.setenv("ASK_OPENAI_TIMEOUT_S", "nan")
+    with pytest.raises(ValidationError):
+        Settings()
+    monkeypatch.setenv("ASK_OPENAI_TIMEOUT_S", "601")
+    with pytest.raises(ValidationError):
+        Settings()
+    monkeypatch.setenv("ASK_OPENAI_TIMEOUT_S", "600")
+    settings = Settings()
+    assert settings.ask_openai_timeout_s == 600.0
+
+
 def test_ask_rate_window_must_be_positive(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
     monkeypatch.setenv("ASK_RATE_WINDOW_S", "0")
