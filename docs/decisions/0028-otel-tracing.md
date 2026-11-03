@@ -28,7 +28,7 @@ A generation uses operation `chat`. A tool span uses operation `execute_tool` an
 
 `FileExporter.export` appends one JSONL line while the request is still on the stack. An HTTP post in that same function would add collector latency to every `/ask`. `BatchSpanProcessor` appends the finished span to a queue. A worker thread sends HTTP protobuf. `OTEL_EXPORTER_OTLP_TIMEOUT` defaults to 0.2 seconds and applies to that worker. A collector that is down, unreachable, or slow is logged. The handler still returns the answer it would have returned with tracing off.
 
-Measured on this 4-core machine, one in-memory chunk, `ASK_MODEL=fake`, 40 timed `POST /ask` calls per side. Off was 2.2 ms p50 and 2.9 ms p95. On was 2.6 ms p50 and 3.5 ms p95. The difference is 0.4 ms at p50 and 0.6 ms at p95. Per-round p50 differences were 0.16 ms and 0.54 ms. That difference is smaller than the spread of the tracing-off samples. The timer does not include the collector round trip. The file is `evals/results/701e39b7489a-otel-overhead.json`.
+Measured on this 4-core machine, one in-memory chunk, `ASK_MODEL=fake`, 40 timed `POST /ask` calls per side. Off was 2.2 ms p50 and 2.9 ms p95. On was 2.6 ms p50 and 3.5 ms p95. The difference is 0.4 ms at p50 and 0.6 ms at p95. Per-round p50 differences were 0.16 ms and 0.54 ms. Tracing was slower in both rounds. The timer does not include the collector round trip. The file is `evals/results/701e39b7489a-otel-overhead.json`.
 
 ## HTTP protobuf, not gRPC
 

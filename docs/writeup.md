@@ -132,7 +132,7 @@ in-memory chunk, is 2.2 ms p50 and 2.9 ms p95 off, and 2.6 ms p50
 and 3.5 ms p95 on. The difference is 0.4 ms at p50 and 0.6 ms at
 p95. Per-round p50 differences were 0.16 ms and 0.54 ms
 ([`701e39b7489a-otel-overhead.json`](../evals/results/701e39b7489a-otel-overhead.json)).
-That difference is smaller than the spread of the tracing-off samples.
+Tracing was slower in both rounds.
 
 The agent vs RAG bench is 95 items: 77 v1 recall rows plus 18
 metrics rows, from
