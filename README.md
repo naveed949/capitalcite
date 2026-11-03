@@ -166,6 +166,8 @@ Generated from [`evals/results/4447164efb28-metrics.json`](evals/results/4447164
 
 RAG and agent are 10 timed `POST /ask` calls after one warmup on the 12-point fixture index, `ASK_MODEL=fake`, this 4-core VM. Median / 95th percentile. One RAG sample was 75 ms (max, not p95). The limiter is retrieve plus JSON on one process, not the gate. Live OpenAI latency and cost stay UNVERIFIED. Gate numbers are `capitalcite gate bench --n 2000`.
 
+OTLP on the same fake model, measured separately, is [2.0 ms](evals/results/b352bd8cd49c-otel-overhead.json) p50 and [2.3 ms](evals/results/b352bd8cd49c-otel-overhead.json) p95 with tracing off, and [2.2 ms](evals/results/b352bd8cd49c-otel-overhead.json) p50 and [2.6 ms](evals/results/b352bd8cd49c-otel-overhead.json) p95 with an in-process OTLP receiver. The difference is [0.2 ms](evals/results/b352bd8cd49c-otel-overhead.json) at p50 and [0.3 ms](evals/results/b352bd8cd49c-otel-overhead.json) at p95. That gap is smaller than the spread of the tracing-off samples. 40 timed `POST /ask` calls per side after two warmup calls, two alternating rounds, one in-memory chunk, `FakeEmbedder`, `TestClient`, this 4-core VM. The timer wraps the POST. Collector flush is outside it. `scripts/measure_ask_trace_overhead.py` wrote the file. Hottest self time sat in the TestClient bridge and `deepcopy`, not in retrieve.
+
 Rewrite the retrieval and agent-vs-RAG blocks from the twelve-filing JSON:
 
 ```bash
@@ -321,6 +323,7 @@ Structured answers: [ADR 0007](docs/decisions/0007-structured-ask.md).
 Plan-then-act agent: [ADR 0008](docs/decisions/0008-plan-then-act-agent.md).
 Fail-closed tool gate: [ADR 0009](docs/decisions/0009-fail-closed-tool-gate.md).
 Langfuse tracing: [ADR 0010](docs/decisions/0010-langfuse-tracing.md).
+OTLP tracing: [ADR 0028](docs/decisions/0028-otel-tracing.md).
 Audit log: [ADR 0011](docs/decisions/0011-append-only-audit-log.md).
 Azure Container Apps: [ADR 0012](docs/decisions/0012-azure-container-apps.md).
 Regression CI: [ADR 0013](docs/decisions/0013-eval-regression-ci.md).
@@ -350,7 +353,7 @@ The running decision log is [docs/DECISIONS.md](docs/DECISIONS.md).
 | Tools | `search_filings`, `xbrl_fact`, `fdic_bankfind`, `calculator`, `graph_query`. Unknown names are denied | agent tools |
 | Fail-closed gate | JSON allow-list. Unknown names, extra keys, and a policy-load failure are denies | `capitalcite gate` |
 | Audit log | Append-only hash-chained JSONL plus a sibling tip. Write before the tool runs | `capitalcite audit verify` |
-| Observability | Optional Langfuse trees. File exporter via `CAPITALCITE_TRACE_FILE`. No-op without keys | `observation()` |
+| Observability | Optional Langfuse trees, a JSONL file, and OTLP HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Off without that endpoint or Langfuse keys | `observation()` |
 | Evals in CI | `capitalcite check` on every PR. Nightly twelve-filing section/hybrid vs `evals/baselines/nightly.json` | `capitalcite check` |
 | Deploy | Azure Container Apps Bicep. Live `/health` is UNVERIFIED until someone opts in | IaC + image recipe |
 | MCP server | `capitalcite mcp` stdio. `search_filings` and `ask` go through the same gate | `capitalcite mcp` |

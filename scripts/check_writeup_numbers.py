@@ -172,12 +172,12 @@ def linked_results(text: str) -> frozenset[str]:
 def project_file(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
     if data.get("suite") == "metrics":
         return _project_metrics(data, readme)
+    emitted: set[str] = set(_project_overhead(data))
     if data.get("small") is True:
-        return frozenset()
+        return frozenset(emitted)
     arms = data.get("arms")
     if not isinstance(arms, list):
-        return frozenset()
-    emitted: set[str] = set()
+        return frozenset(emitted)
     for arm in arms:
         if not isinstance(arm, dict):
             continue
@@ -238,6 +238,13 @@ def _emit_rate(emitted: set[str], readme: frozenset[str], hits: int, items: int)
         return
     if f"{hits / items:.3f}" in readme:
         emitted.add(f"{hits}/{items}")
+
+
+def _project_overhead(data: Mapping[str, object]) -> frozenset[str]:
+    cited = data.get("cited")
+    if not isinstance(cited, dict):
+        return frozenset()
+    return frozenset(value for value in cited.values() if isinstance(value, str))
 
 
 def _stem_hex(path: Path) -> str | None:

@@ -11,12 +11,14 @@ import pytest
 os.environ.setdefault("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("LOG_LEVEL", "WARNING")
-# Lifespan calls configure(). The SDK exports OTLP, which the httpx block does not catch.
 os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
 os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 os.environ["NEO4J_URI"] = ""
 os.environ["NEO4J_PASSWORD"] = ""
+os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"] = ""
+os.environ["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] = ""
+os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = ""
 # Rich/Typer help wrapping follows COLUMNS. CI/non-TTY widths truncate
 # "--tickers" to "--ticke…". Pin a wide dumb terminal for all tests.
 os.environ["COLUMNS"] = "120"

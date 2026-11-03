@@ -25,6 +25,7 @@ from capitalcite.trace import (
     generation_attrs,
     observation,
     retrieval_attrs,
+    tool_attrs,
 )
 from capitalcite.trace.attrs import sanitize
 from capitalcite.trace.langfuse_exporter import LangfuseExporter
@@ -110,7 +111,10 @@ def test_export_and_begin_failures_do_not_escape() -> None:
             kind: ObservationKind,
             span_id: str,
             attributes: Mapping[str, AttrValue],
+            trace_id: str | None = None,
+            parent_id: str | None = None,
         ) -> None:
+            _ = trace_id, parent_id
             raise RuntimeError(f"begin failed {name} {kind} {span_id} {attributes}")
 
         def export(self, record: SpanRecord) -> None:
@@ -130,6 +134,7 @@ def test_gate_decision_records_allowlisted_fields() -> None:
     assert record.name == "gate"
     assert record.kind is ObservationKind.GATE
     assert record.attributes["capitalcite.tool"] == "search_filings"
+    assert record.attributes["gen_ai.tool.name"] == "search_filings"
     assert record.attributes["capitalcite.gate.decision"] == "deny"
     assert _EMAIL not in record.model_dump_json()
     assert "[REDACTED EMAIL]" in str(record.attributes["capitalcite.gate.reason"])
@@ -293,7 +298,8 @@ def test_importing_trace_does_not_import_langfuse() -> None:
         "configure(settings)\n"
         "with observation('ask', ObservationKind.ASK):\n"
         "    pass\n"
-        "raise SystemExit('langfuse' in sys.modules)\n"
+        "bad = ('langfuse' in sys.modules) or ('opentelemetry' in sys.modules)\n"
+        "raise SystemExit(bad)\n"
     )
     completed = subprocess.run(
         [sys.executable, "-c", code],
@@ -349,9 +355,17 @@ def test_eval_attrs_keep_git_sha_digit_runs() -> None:
 def test_generation_cost_requires_a_known_rate_and_both_counts() -> None:
     priced = generation_attrs(model="gpt-4o-mini", input_tokens=1_000_000, output_tokens=1_000_000)
     assert priced["capitalcite.cost_usd"] == pytest.approx(0.75)
-    assert "capitalcite.cost_usd" not in generation_attrs(model="fake")
+    assert priced["gen_ai.operation.name"] == "chat"
+    assert priced["gen_ai.provider.name"] == "openai"
+    fake = generation_attrs(model="fake")
+    assert "capitalcite.cost_usd" not in fake
+    assert fake["gen_ai.provider.name"] == "fake"
+    assert fake["gen_ai.operation.name"] == "chat"
     assert "capitalcite.cost_usd" not in generation_attrs(model="gpt-4o-mini", input_tokens=10)
     assert "capitalcite.cost_usd" not in generation_attrs(model="gpt-4o-mini", output_tokens=10)
+    tool = tool_attrs(tool="search_filings", ok=True)
+    assert tool["gen_ai.tool.name"] == "search_filings"
+    assert tool["gen_ai.operation.name"] == "execute_tool"
 
 
 def _hit(*, doc_id: str, score: float, text: str) -> Hit:

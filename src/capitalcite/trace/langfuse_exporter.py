@@ -64,7 +64,10 @@ class LangfuseExporter:
         kind: ObservationKind,
         span_id: str,
         attributes: Mapping[str, AttrValue],
+        trace_id: str | None = None,
+        parent_id: str | None = None,
     ) -> None:
+        _ = trace_id, parent_id
         try:
             manager = self._client.start_as_current_observation(
                 name=name,

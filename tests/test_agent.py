@@ -464,19 +464,35 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
         assert ObservationKind.RETRIEVE in kinds
         assert ObservationKind.GENERATE in kinds
         records = exporter.finished()
-        ask_span = next(record for record in records if record.kind is ObservationKind.ASK)
+        by_id = {record.span_id: record for record in records}
+        ask_span = next(record for record in records if record.name == "ask")
         ask_trace_id = ask_span.trace_id
-        agent_span = next(record for record in records if record.kind is ObservationKind.AGENT)
+        agent_span = next(record for record in records if record.name == "agent")
         assert agent_span.parent_id == ask_span.span_id
         assert agent_span.trace_id == ask_span.trace_id
+        graph_nodes = [record for record in records if record.name.startswith("graph.")]
+        assert {record.name for record in graph_nodes} >= {
+            "graph.plan",
+            "graph.act",
+            "graph.synthesize",
+        }
+        assert all(record.parent_id == agent_span.span_id for record in graph_nodes)
+        graph_plan_ids = {record.span_id for record in graph_nodes if record.name == "graph.plan"}
+        graph_act_ids = {record.span_id for record in graph_nodes if record.name == "graph.act"}
+        graph_synthesize_ids = {
+            record.span_id for record in graph_nodes if record.name == "graph.synthesize"
+        }
         tools = [record for record in records if record.kind is ObservationKind.TOOL]
         assert tools
-        assert all(record.parent_id == agent_span.span_id for record in tools)
+        assert all(record.parent_id in graph_act_ids for record in tools)
         assert {record.attributes["capitalcite.tool"] for record in tools} == {"search_filings"}
+        assert {record.attributes["gen_ai.tool.name"] for record in tools} == {"search_filings"}
+        assert all(record.attributes["gen_ai.operation.name"] == "execute_tool" for record in tools)
         gates = [record for record in records if record.kind is ObservationKind.GATE]
         assert gates
-        assert all(record.parent_id == agent_span.span_id for record in gates)
+        assert all(record.parent_id in graph_act_ids for record in gates)
         assert {record.attributes["capitalcite.tool"] for record in gates} == {"search_filings"}
+        assert {record.attributes["gen_ai.tool.name"] for record in gates} == {"search_filings"}
         assert all(record.attributes["capitalcite.gate.decision"] == "allow" for record in gates)
         assert all(record.attributes["capitalcite.gate.reason"] == "allow" for record in gates)
         tool_ids = {record.span_id for record in tools}
@@ -486,9 +502,16 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
         plans = [record for record in records if record.name == "plan"]
         completes = [record for record in records if record.name == "complete"]
         assert plans and completes
+        assert all(record.parent_id in graph_plan_ids for record in plans)
+        assert all(record.parent_id in graph_synthesize_ids for record in completes)
         generated = plans + completes
-        assert all(record.parent_id == agent_span.span_id for record in generated)
         assert all(record.attributes["gen_ai.request.model"] == "fake" for record in generated)
+        assert all(record.attributes["gen_ai.operation.name"] == "chat" for record in generated)
+        assert all(record.attributes["gen_ai.provider.name"] == "fake" for record in generated)
+        assert all(
+            record.parent_id is not None and by_id[record.parent_id].name.startswith("graph.")
+            for record in generated
+        )
     finally:
         reset_for_tests()
     if body.kind == "answered":
@@ -507,6 +530,73 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
     assert ask_trace_id
     assert all(row.trace_id == ask_trace_id for row in audit_rows)
     assert all(row.decision == "allowed" and row.reason is None for row in audit_rows)
+
+
+def test_post_ask_stream_agent_span_tree(tmp_path: Path) -> None:
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    try:
+        jpm = _chunk(ticker="JPM", text="the Standardized CET1 ratios were 15.7% and 15.8%")
+        bac = _chunk(
+            ticker="BAC",
+            text="CET1 capital ratio of 11.9 percent under the Standardized approach",
+            doc_id="doc-bac",
+            url=_BAC_URL,
+            period="2024-12-31",
+        )
+        application, _setup = _indexed_app(tmp_path, [jpm, bac])
+        question = (
+            "Which bank had the higher Standardized CET1 ratio at year-end 2024, "
+            "JPMorgan or Bank of America?"
+        )
+        with TestClient(application) as http:
+            response = http.post(
+                "/ask/stream",
+                json={"question": question, "path": "agent", "model": "fake", "k": 8},
+            )
+        assert response.status_code == 200
+        assert "event: done" in response.text
+        records = exporter.finished()
+        by_id = {record.span_id: record for record in records}
+
+        def parent_name(span_id: str | None) -> str | None:
+            if span_id is None:
+                return None
+            return by_id[span_id].name
+
+        parents = {
+            name: {parent_name(item.parent_id) for item in records if item.name == name}
+            for name in {item.name for item in records}
+        }
+        assert parents["ask"] == {None}
+        assert parents["agent"] == {"ask"}
+        assert parents["graph.plan"] == {"agent"}
+        assert parents["graph.act"] == {"agent"}
+        assert parents["graph.synthesize"] == {"agent"}
+        assert parents["plan"] == {"graph.plan"}
+        assert parents["complete"] == {"graph.synthesize"}
+        assert parents["tool"] == {"graph.act"}
+        assert parents["gate"] == {"graph.act"}
+        assert parents["retrieve"] == {"tool"}
+        if "graph.stop" in parents:
+            assert parents["graph.stop"] == {"agent"}
+        allowed = {
+            "ask",
+            "agent",
+            "graph.plan",
+            "graph.act",
+            "graph.synthesize",
+            "graph.stop",
+            "plan",
+            "complete",
+            "tool",
+            "gate",
+            "retrieve",
+        }
+        assert set(parents) <= allowed
+        assert len({record.trace_id for record in records}) == 1
+    finally:
+        reset_for_tests()
 
 
 def test_post_ask_agent_tool_http_error_is_200(

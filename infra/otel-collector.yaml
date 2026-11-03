@@ -1,0 +1,17 @@
+# Local OTLP HTTP receiver. Started only with `docker compose --profile otel`.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  file:
+    path: /var/lib/otel/traces.json
+    append: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [file]

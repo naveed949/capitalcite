@@ -103,6 +103,20 @@ def test_writeup_ratio_from_linked_json(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout
 
 
+def test_writeup_overhead_ms_from_linked_json(tmp_path: Path) -> None:
+    name = "abcabcabcabc-otel-overhead.json"
+    link = f"[overhead](evals/results/{name})"
+    _write_tree(
+        tmp_path,
+        readme=f"Tracing overhead is measured in {link}.\n",
+        writeup=f"OTLP adds 0.4 ms at p50 {link}.\n",
+        results={"cited": {"overhead_p50": "0.4 ms"}},
+        result_name=name,
+    )
+    proc = run_check(tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
 def test_writeup_ratio_without_link_fails(tmp_path: Path) -> None:
     name = "abcabcabcabc.json"
     _write_tree(

@@ -31,6 +31,8 @@ class Exporter(Protocol):
         kind: ObservationKind,
         span_id: str,
         attributes: Mapping[str, AttrValue],
+        trace_id: str | None = None,
+        parent_id: str | None = None,
     ) -> None: ...
 
     def export(self, record: SpanRecord) -> None: ...
@@ -87,6 +89,8 @@ class MemoryExporter:
         kind: ObservationKind,
         span_id: str,
         attributes: Mapping[str, AttrValue],
+        trace_id: str | None = None,
+        parent_id: str | None = None,
     ) -> None:
         return None
 
@@ -115,6 +119,8 @@ class FileExporter:
         kind: ObservationKind,
         span_id: str,
         attributes: Mapping[str, AttrValue],
+        trace_id: str | None = None,
+        parent_id: str | None = None,
     ) -> None:
         return None
 
@@ -138,10 +144,19 @@ class _MultiExporter:
         kind: ObservationKind,
         span_id: str,
         attributes: Mapping[str, AttrValue],
+        trace_id: str | None = None,
+        parent_id: str | None = None,
     ) -> None:
         for exporter in self._exporters:
             try:
-                exporter.begin(name=name, kind=kind, span_id=span_id, attributes=attributes)
+                exporter.begin(
+                    name=name,
+                    kind=kind,
+                    span_id=span_id,
+                    attributes=attributes,
+                    trace_id=trace_id,
+                    parent_id=parent_id,
+                )
             except Exception:
                 logger.warning("trace exporter begin failed", exc_info=True)
 
@@ -256,6 +271,8 @@ class _RecordingTracer:
                 kind=kind,
                 span_id=span._span_id,
                 attributes=span._attributes,
+                trace_id=trace_id,
+                parent_id=parent_id,
             )
         except Exception:
             logger.warning("trace begin failed", exc_info=True)
@@ -401,6 +418,20 @@ def _tracer_for(settings: Settings, exporter: Exporter | None) -> _RecordingTrac
         exporters.append(_TEST_EXPORTER)
     if settings.capitalcite_trace_file is not None:
         exporters.append(FileExporter(settings.capitalcite_trace_file))
+    otlp_endpoint = _otlp_traces_endpoint(settings)
+    if otlp_endpoint is not None:
+        try:
+            from capitalcite.trace.otlp import OtlpExporter
+
+            exporters.append(
+                OtlpExporter(
+                    endpoint=otlp_endpoint,
+                    timeout_s=settings.otel_exporter_otlp_timeout,
+                    service_name=settings.otel_service_name,
+                )
+            )
+        except Exception:
+            logger.warning("otlp tracer disabled", exc_info=True)
     if _langfuse_wanted(settings):
         try:
             from capitalcite.trace.langfuse_exporter import LangfuseExporter
@@ -420,6 +451,23 @@ def _tracer_for(settings: Settings, exporter: Exporter | None) -> _RecordingTrac
     if len(exporters) == 1:
         return _RecordingTracer(exporters[0], rate)
     return _RecordingTracer(_MultiExporter(exporters), rate)
+
+
+def _otlp_traces_endpoint(settings: Settings) -> str | None:
+    raw = settings.otel_exporter_otlp_endpoint
+    if raw is None or not raw.strip():
+        return None
+    protocol = settings.otel_exporter_otlp_protocol.strip().lower()
+    if protocol not in {"http/protobuf", "http"}:
+        logger.warning(
+            "OTLP protocol %s is not http/protobuf; OTLP export is off",
+            settings.otel_exporter_otlp_protocol,
+        )
+        return None
+    base = raw.strip().rstrip("/")
+    if base.endswith("/v1/traces"):
+        return base
+    return f"{base}/v1/traces"
 
 
 def _langfuse_wanted(settings: Settings) -> bool:

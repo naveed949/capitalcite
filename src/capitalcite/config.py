@@ -173,6 +173,27 @@ class Settings(BaseSettings):
             "JSONL of finished spans. verify.sh sets this. Does not require Langfuse keys."
         ),
     )
+    otel_exporter_otlp_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "OTLP HTTP base URL, for example http://127.0.0.1:4318. "
+            "Empty leaves the OTLP exporter off. The request path only enqueues."
+        ),
+    )
+    otel_exporter_otlp_protocol: str = Field(
+        default="http/protobuf",
+        description="http/protobuf and http export spans. Any other value skips OTLP.",
+    )
+    otel_exporter_otlp_timeout: float = Field(
+        default=0.2,
+        ge=0.0,
+        description="Seconds for one OTLP HTTP post. The export worker uses it, not the request.",
+    )
+    otel_service_name: str = Field(
+        default="capitalcite",
+        min_length=1,
+        description="service.name on exported OTLP spans.",
+    )
 
     audit_log_path: Path = Field(
         default=Path("data/audit.jsonl"),
@@ -244,6 +265,7 @@ class Settings(BaseSettings):
         "gate_policy",
         "warehouse_path",
         "capitalcite_trace_file",
+        "otel_exporter_otlp_endpoint",
         "neo4j_uri",
         "neo4j_password",
         "git_sha",
