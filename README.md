@@ -164,22 +164,22 @@ Generated from [`evals/results/4447164efb28-metrics.json`](evals/results/4447164
 
 | Arm | n | Recall@5 | Accuracy | p50 ms | p95 ms | cost/query |
 |---|---:|---:|---:|---:|---:|---:|
-| rag | 95 | not measured | 0.053 | 1.3 | 1.6 | 0.000000 |
-| graph | 95 | not measured | 0.232 | 6.6 | 38.8 | 0.000000 |
-| loop | 95 | not measured | 0.232 | 4.7 | 37.3 | 0.000000 |
+| rag | 95 | not measured | 0.053 | 1.2 | 1.6 | 0.000000 |
+| graph | 95 | not measured | 0.232 | 6.9 | 37.8 | 0.000000 |
+| loop | 95 | not measured | 0.232 | 4.8 | 36.1 | 0.000000 |
 
 graph-loop Recall@5 delta=not measured (fixture index has no gold spans)
 graph-loop accuracy delta=0.000 (95% CI 0.000 to 0.000).
 Bottleneck on the graph arm is **tool**.
-Generated from [`evals/results/44092d937e84-bench.json`](evals/results/44092d937e84-bench.json).
+Generated from [`evals/results/17f203a9bcf6-bench.json`](evals/results/17f203a9bcf6-bench.json).
 
 <!-- END BENCH EVAL -->
 
-Accuracy is 22/95 on graph and loop, 5/95 on rag. Cost per correct is 0 on the fake model. The measured bottleneck phase is **tool** (gate plus execute, exclusive of nested retrieve): graph mean tool 6.2 ms, retrieve 1.0 ms, model 0.1 ms, compile 0.0 ms.
+Accuracy is 22/95 on graph and loop, 5/95 on rag. Cost per correct is 0 on the fake model. The measured bottleneck phase is **tool** (gate plus execute, exclusive of nested retrieve): graph mean tool 6.2 ms, retrieve 0.9 ms, model 0.1 ms, compile 0.0 ms.
 
-The optimization in this change is compile-once. Before, `run_agent` compiled a LangGraph `StateGraph` on every question ([`44092d937e84-bench-before.json`](evals/results/44092d937e84-bench-before.json)): graph compile 2.5 ms, p50 8.9 ms. After ([`44092d937e84-bench.json`](evals/results/44092d937e84-bench.json)): compile 0.0 ms, p50 6.6 ms. Those compile-mean and p50 drops are the claim. The p95 change (50.5 ms to 38.8 ms) is noise unless repeated runs hold it. Answers did not change (`identity_digest` `211cd2caf15885e8ceeccb14e3258641a66991b63a9620a28936457f3d522f48` on both files). Tool remains the largest phase. Fake-model generate time is not live `gpt-4o-mini` latency. A paid run is UNVERIFIED; the pinned command is in [`evals/bench/pin.json`](evals/bench/pin.json). Estimated tokens per graph item from this fake run: 1374.968 in, 47.905 out.
+The optimization in this change is compile-once. Before, `run_agent` compiled a LangGraph `StateGraph` on every question ([`17f203a9bcf6-bench-before.json`](evals/results/17f203a9bcf6-bench-before.json)): graph compile 2.6 ms, p50 9.7 ms. After ([`17f203a9bcf6-bench.json`](evals/results/17f203a9bcf6-bench.json)): compile 0.0 ms, p50 6.9 ms. Those compile-mean and p50 drops are the claim. The p95 change (40.6 ms to 37.8 ms) is noise unless repeated runs hold it. Answers did not change (`identity_digest` `b4da1bafb70374e50eaf28c05e15a5e3c6cea66869b8c963174f4843e05533a1` on both files). Tool remains the largest phase. Fake-model generate time is not live `gpt-4o-mini` latency. A paid run is UNVERIFIED; the pinned command is in [`evals/bench/pin.json`](evals/bench/pin.json). Estimated tokens per graph item from this fake run: 1374.968 in, 47.905 out.
 
-Nightly gates the same-run graph p95 / rag p95 ratio and cost per query against [`evals/baselines/bench.json`](evals/baselines/bench.json) at a 2x band on that ratio and a 0 absolute cost budget. Absolute millisecond p95 is host-dependent.
+Nightly gates the same-run graph p95 / rag p95 ratio and cost per query against [`evals/baselines/bench.json`](evals/baselines/bench.json) at a 2x band on that ratio and a 0 absolute cost budget. When compile_once is true it also fails if mean graph compile_ms is 0.5 or higher. Absolute millisecond p95 is host-dependent.
 
 ### Latency and cost
 

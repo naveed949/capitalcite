@@ -136,16 +136,16 @@ That gap is smaller than the spread of the tracing-off samples.
 
 The agent vs RAG bench is 95 items: 77 v1 recall rows plus 18
 metrics rows, from
-[`evals/results/44092d937e84-bench.json`](../evals/results/44092d937e84-bench.json).
+[`evals/results/17f203a9bcf6-bench.json`](../evals/results/17f203a9bcf6-bench.json).
 Graph accuracy is 22/95 (0.232). RAG accuracy is 5/95 (0.053).
 Recall@5 is not measured on the fixture index: the gold spans are
 not in those fixture docs. graph-loop accuracy delta is 0.000,
 95% CI 0.000 to 0.000, B=10000, seed 20261103. Graph p50 is
-6.6 ms, p95 38.8 ms. The bottleneck phase is tool at 6.2 ms.
-Compile-once dropped graph compile from 2.5 ms to 0.0 ms and p50
-from 8.9 ms to 6.6 ms
-([`44092d937e84-bench-before.json`](../evals/results/44092d937e84-bench-before.json)).
-The p95 change (50.5 ms to 38.8 ms) is noise unless repeated runs
+6.9 ms, p95 37.8 ms. The bottleneck phase is tool at 6.2 ms.
+Compile-once dropped graph compile from 2.6 ms to 0.0 ms and p50
+from 9.7 ms to 6.9 ms
+([`17f203a9bcf6-bench-before.json`](../evals/results/17f203a9bcf6-bench-before.json)).
+The p95 change (40.6 ms to 37.8 ms) is noise unless repeated runs
 hold it. Fake generate time is not live model latency. A paid
 `gpt-4o-mini` run is UNVERIFIED.
 
