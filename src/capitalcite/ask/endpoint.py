@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from typing import Literal, Protocol
 from urllib.parse import SplitResult, urlsplit, urlunsplit
@@ -13,6 +14,7 @@ from capitalcite.trace import ObservationKind, chat_span_name, generation_attrs,
 
 HostClass = Literal["localhost", "openai", "other"]
 ProviderName = Literal["local", "hosted", "compatible"]
+CHAT_TIMEOUT_MAX_S = 600.0
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 _HOSTED_BASE = "https://api.openai.com/v1"
@@ -116,8 +118,8 @@ def parse_chat_endpoint(
     timeout_s: float = 30.0,
 ) -> ChatEndpoint:
     """Config boundary for a live openai model. None base_url is hosted OpenAI."""
-    if timeout_s <= 0:
-        raise ValueError("chat timeout must be greater than 0")
+    if not math.isfinite(timeout_s) or timeout_s <= 0 or timeout_s > CHAT_TIMEOUT_MAX_S:
+        raise ValueError("chat timeout must be greater than 0 and at most 600 seconds")
     parts = _parts(base_url)
     provider, host_class, billed = _classify(parts)
     key = (api_key or "").strip() or None
@@ -188,17 +190,17 @@ async def post_chat_completion(
                     ),
                 )
         except httpx.TimeoutException as exc:
-            raise _unavailable(endpoint, "chat endpoint unreachable (timed out)") from exc
+            raise _unavailable(endpoint, "unreachable (timed out)") from exc
         except httpx.ConnectError as exc:
-            raise _unavailable(endpoint, "chat endpoint unreachable (connection failed)") from exc
+            raise _unavailable(endpoint, "unreachable (connection failed)") from exc
         except httpx.HTTPError as exc:
-            raise _unavailable(endpoint, "chat completion request failed") from exc
+            raise _unavailable(endpoint, "request failed") from exc
         if response.status_code != 200:
-            raise _unavailable(endpoint, f"chat completion HTTP {response.status_code}")
+            raise _unavailable(endpoint, f"HTTP {response.status_code}")
         try:
             payload = response.json()
         except json.JSONDecodeError as exc:
-            raise _unavailable(endpoint, "chat completion response was not JSON") from exc
+            raise _unavailable(endpoint, "response was not JSON") from exc
         content = _message_content(endpoint, payload)
         input_tokens, output_tokens = _usage_tokens(payload)
         span.set(
@@ -214,7 +216,13 @@ async def post_chat_completion(
 
 def _unavailable(endpoint: ChatEndpoint, detail: str) -> ModelUnavailable:
     label = endpoint.label
-    return ModelUnavailable(f"{label.provider} {detail} (host class {label.host_class})")
+    if label.host_class == "localhost":
+        who = "local chat endpoint"
+    elif label.host_class == "openai":
+        who = "hosted OpenAI"
+    else:
+        who = "third-party chat endpoint"
+    return ModelUnavailable(f"{who} {detail} (host class {label.host_class})")
 
 
 def _parts(base_url: str | None) -> SplitResult:

@@ -269,10 +269,35 @@ async def test_closed_port_names_host_class_and_returns(monkeypatch: pytest.Monk
     message = str(caught.value)
     assert "connection failed" in message
     assert "host class localhost" in message
+    assert "local chat endpoint" in message
+    assert "third-party" not in message
     assert "://" not in message
     assert str(port) not in message
     assert "sk-secret" not in message
     assert time.monotonic() - started < 5
+
+
+async def test_third_party_unreachable_is_not_called_local() -> None:
+    def connect_fail(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("offline", request=request)
+
+    endpoint = parse_chat_endpoint("https://example.com/v1", None, "lfm3:latest")
+    assert endpoint.label.provider == "compatible"
+    with pytest.raises(ModelUnavailable) as caught:
+        await post_chat_completion(
+            endpoint,
+            [{"role": "user", "content": "hi"}],
+            seed=None,
+            temperature=None,
+            transport=httpx.MockTransport(connect_fail),
+        )
+    message = str(caught.value)
+    assert "third-party chat endpoint" in message
+    assert "host class other" in message
+    assert "connection failed" in message
+    assert "local chat endpoint" not in message
+    assert "://" not in message
+    assert "example.com" not in message
 
 
 class _Slow(BaseHTTPRequestHandler):
@@ -420,3 +445,17 @@ def test_settings_timeout_is_positive() -> None:
         _settings(ask_openai_timeout_s="0")
     with pytest.raises(ValueError, match="timeout"):
         parse_chat_endpoint(None, "sk-test", "gpt-4o-mini", timeout_s=0)
+
+
+def test_settings_timeout_rejects_inf_nan_and_above_cap() -> None:
+    capped = _settings(ask_openai_timeout_s="600")
+    assert capped.ask_openai_timeout_s == 600.0
+    for raw in ("inf", "+inf", "Infinity", "nan", "NaN", "601", "600.1"):
+        with pytest.raises(ValidationError):
+            _settings(ask_openai_timeout_s=raw)
+    with pytest.raises(ValueError, match="timeout"):
+        parse_chat_endpoint(None, "sk-test", "gpt-4o-mini", timeout_s=float("inf"))
+    with pytest.raises(ValueError, match="timeout"):
+        parse_chat_endpoint(None, "sk-test", "gpt-4o-mini", timeout_s=float("nan"))
+    with pytest.raises(ValueError, match="timeout"):
+        parse_chat_endpoint(None, "sk-test", "gpt-4o-mini", timeout_s=601)

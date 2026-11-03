@@ -5,16 +5,29 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tempfile
-from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_serializer,
+    model_validator,
+)
 
 from capitalcite.agent import run_agent_loop, set_compile_once
-from capitalcite.ask.endpoint import ChatEndpoint, chat_endpoint_for, host_class_for
+from capitalcite.ask.endpoint import (
+    ChatEndpoint,
+    chat_endpoint_for,
+    host_class_for,
+    normalize_chat_base_url,
+)
 from capitalcite.ask.types import AskModelName, ModelNotConfigured
 from capitalcite.atomic import atomic_write_text
 from capitalcite.config import Settings
@@ -68,7 +81,7 @@ class BenchSuiteError(Exception):
 
 
 class BenchPin(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
     suite: Literal["bench"] = "bench"
     n_items: int = Field(ge=1)
     sets: dict[str, int]
@@ -85,12 +98,20 @@ class BenchPin(BaseModel):
     paid_run: dict[str, object]
 
     @model_validator(mode="after")
-    def paid_run_has_no_url(self) -> BenchPin:
-        for key, item in self.paid_run.items():
-            if key == "command":
-                continue
-            _reject_url_stamp(key, where="paid_run")
-            _reject_url_stamp(item, where="paid_run")
+    def pin_urls_are_safe(self) -> BenchPin:
+        payload = self.model_dump()
+        _reject_userinfo(payload, where="pin")
+        paid = payload.get("paid_run")
+        command: object = None
+        if isinstance(paid, dict):
+            paid = dict(paid)
+            command = paid.pop("command", None)
+            payload["paid_run"] = paid
+        _reject_url_stamp(payload, where="pin")
+        if isinstance(command, str):
+            _allow_local_command(command, host_class=self.host_class)
+        elif command is not None:
+            _reject_url_stamp(command, where="paid_run")
         return self
 
 
@@ -277,6 +298,10 @@ class BenchReport(BaseModel):
             if {row.item_id for row in rows} != ids:
                 raise ValueError(f"{arm} is missing items")
         return self
+
+    @model_serializer(mode="wrap")
+    def dump_without_pin_command_urls(self, serializer: Callable[[Any], Any]) -> Any:
+        return _redact_results_pin(serializer(self))
 
 
 def load_pin(path: Path | None = None) -> BenchPin:
@@ -951,6 +976,10 @@ def provenance_sentence(provenance: BenchProvenance) -> str:
     return f"This run used {named}."
 
 
+_USERINFO_URL = re.compile(r"://[^/\s]*@")
+_HTTP_URL = re.compile(r"https?://[^\s]+", re.IGNORECASE)
+
+
 def _reject_url_stamp(value: object, *, where: str) -> None:
     if isinstance(value, str):
         if "://" in value:
@@ -964,3 +993,68 @@ def _reject_url_stamp(value: object, *, where: str) -> None:
     if isinstance(value, list):
         for item in value:
             _reject_url_stamp(item, where=where)
+
+
+def _reject_userinfo(value: object, *, where: str) -> None:
+    if isinstance(value, str):
+        if _USERINFO_URL.search(value):
+            raise ValueError(f"{where} must not contain a URL with userinfo")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _reject_userinfo(key, where=where)
+            _reject_userinfo(item, where=where)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _reject_userinfo(item, where=where)
+
+
+def _allow_local_command(command: str, *, host_class: str | None) -> None:
+    urls = _HTTP_URL.findall(command)
+    if not urls:
+        return
+    if host_class != "localhost":
+        raise ValueError("pin command may contain a URL only on a local pin")
+    for url in urls:
+        try:
+            normalized = normalize_chat_base_url(url)
+        except ValueError as exc:
+            raise ValueError("pin command URL must be a loopback chat prefix") from exc
+        if host_class_for(normalized) != "localhost":
+            raise ValueError("pin command URL must be loopback")
+
+
+def _redact_command_urls(command: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        url = match.group(0)
+        try:
+            return host_class_for(url)
+        except ValueError:
+            return "redacted"
+
+    return _HTTP_URL.sub(replace, command)
+
+
+def _redact_results_pin(data: object) -> object:
+    if not isinstance(data, dict):
+        return data
+    pin = data.get("pin")
+    if not isinstance(pin, dict):
+        return data
+    paid = pin.get("paid_run")
+    if not isinstance(paid, dict):
+        return data
+    command = paid.get("command")
+    if not isinstance(command, str):
+        return data
+    redacted = _redact_command_urls(command)
+    if redacted == command:
+        return data
+    paid = dict(paid)
+    paid["command"] = redacted
+    pin = dict(pin)
+    pin["paid_run"] = paid
+    out = dict(data)
+    out["pin"] = pin
+    return out

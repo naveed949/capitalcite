@@ -37,8 +37,8 @@ prefix. The API process environment is the only source.
 A non-OpenAI path must end in `/v1`, so a prefix such as
 `https://openrouter.ai/api/v1` is valid. `api.openai.com` still accepts
 only an empty path or `/v1`. `ASK_OPENAI_TIMEOUT_S` is the httpx timeout
-for that POST. Empty uses 30 seconds. A value of 0 or below fails at
-Settings load.
+for that POST. Empty uses 30 seconds. The value must be finite and at
+most 600. `inf`, `nan`, 0, and a number above 600 fail at Settings load.
 
 ## Hosted spans stay on the OpenAI name
 
@@ -75,9 +75,13 @@ can still call it. The bench refuses it: there is no honest price, and
 writing 0 would look like a local laptop run. An explicit priced pin for
 that host is a later change.
 
-The local pin's `paid_run.command` is the recipe, so it may contain
-`ASK_OPENAI_BASE_URL=http://localhost:11434/v1`. Other pin fields still
-reject a URL. Results JSON still rejects a URL.
+The local pin's `paid_run.command` is the recipe, so it may contain one
+loopback Chat Completions prefix such as
+`ASK_OPENAI_BASE_URL=http://localhost:11434/v1`. A URL with userinfo
+(`user:pass@`) is refused in every pin field, including `command`. A
+non-loopback URL in `command` is refused. Other pin fields still reject
+any URL. Results JSON copies that command with the URL replaced by
+`host_class`, so the file has no `://` and no port.
 
 `response_format` `json_object` stays on every chat call. Whether a
 given local model honors it is UNVERIFIED until someone runs that
