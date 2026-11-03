@@ -27,27 +27,19 @@ def fold_phases(
     started = dict(begins) if begins is not None else {}
     retrieve = [span for span in spans if span.kind is ObservationKind.RETRIEVE]
     generate = [span for span in spans if span.kind is ObservationKind.GENERATE]
-    toolish = [
-        span
-        for span in spans
-        if span.kind in {ObservationKind.TOOL, ObservationKind.GATE}
-    ]
+    toolish = [span for span in spans if span.kind in {ObservationKind.TOOL, ObservationKind.GATE}]
     compile_spans = [span for span in spans if span.name == "compile"]
     retrieval_ms = sum(span.duration_ms for span in retrieve)
     model_ms = sum(span.duration_ms for span in generate)
     compile_ms = sum(span.duration_ms for span in compile_spans)
     tool_ms = 0.0
     for span in toolish:
-        nested = sum(
-            child.duration_ms for child in retrieve if child.parent_id == span.span_id
-        )
+        nested = sum(child.duration_ms for child in retrieve if child.parent_id == span.span_id)
         tool_ms += max(0.0, span.duration_ms - nested)
     roots = [span for span in spans if span.kind is ObservationKind.ASK]
     if not roots:
         roots = [
-            span
-            for span in spans
-            if span.kind is ObservationKind.AGENT and span.name == "agent"
+            span for span in spans if span.kind is ObservationKind.AGENT and span.name == "agent"
         ]
     if not roots:
         roots = [span for span in spans if span.parent_id is None]

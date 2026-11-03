@@ -397,10 +397,7 @@ def _readme_table(report: BenchReport) -> str:
                 f"graph-loop Recall@5 delta={rec.point:.3f} "
                 f"(95% CI {rec.lo:.3f} to {rec.hi:.3f}, B={rec.B}, seed={rec.seed})."
             ),
-            (
-                f"graph-loop accuracy delta={acc.point:.3f} "
-                f"(95% CI {acc.lo:.3f} to {acc.hi:.3f})."
-            ),
+            (f"graph-loop accuracy delta={acc.point:.3f} (95% CI {acc.lo:.3f} to {acc.hi:.3f})."),
             f"Bottleneck on the graph arm is **{report.bottleneck_phase}**.",
             f"Generated from [`evals/results/{sha}-bench.json`](evals/results/{sha}-bench.json).",
             "",
@@ -498,9 +495,7 @@ async def _run_arm(
                     response = event.response
     phases = fold_phases(exporter.finished(), exporter.begins())
     if arm == "rag":
-        hits = tuple(
-            await retrieve(setup, question, mode=RetrievalMode.HYBRID, k=setup.search_k)
-        )
+        hits = tuple(await retrieve(setup, question, mode=RetrievalMode.HYBRID, k=setup.search_k))
     if response is None:
         raise BenchSuiteError("ask ended without a response")
     return response, hits, phases
