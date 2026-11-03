@@ -455,12 +455,12 @@ def test_post_ask_emits_nested_retrieve_and_generate_spans(tmp_path: Path) -> No
         names = [record.name for record in exporter.finished()]
         assert "ask" in names
         assert "retrieve" in names
-        assert "generate" in names
+        assert "chat fake" in names
         by_name = {record.name: record for record in exporter.finished()}
         assert by_name["ask"].kind is ObservationKind.ASK
         assert by_name["retrieve"].parent_id == by_name["ask"].span_id
-        assert by_name["generate"].parent_id == by_name["ask"].span_id
-        assert by_name["generate"].trace_id == by_name["ask"].trace_id
+        assert by_name["chat fake"].parent_id == by_name["ask"].span_id
+        assert by_name["chat fake"].trace_id == by_name["ask"].trace_id
         hit_count = by_name["retrieve"].attributes["capitalcite.hit_count"]
         assert isinstance(hit_count, int) and hit_count >= 1
         blob = " ".join(record.model_dump_json() for record in exporter.finished())

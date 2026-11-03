@@ -1,0 +1,270 @@
+{
+  "git_sha": "701e39b7489a458ebb624da5c738e9006f62a7a1",
+  "recorded_at": "2026-11-03T15:34:02Z",
+  "method": "TestClient POST /ask, model=fake, one in-memory chunk, FakeEmbedder, hybrid retrieve. Each round configures tracing off, runs 2 warmup requests and 20 timed requests, then configures OTLP HTTP to an in-process receiver and repeats the warmup and timed requests. Rounds: 2. The timer wraps only the POST. BatchSpanProcessor flush runs at shutdown, outside the timer. p50 is the median. p95 is the nearest rank, ceil(0.95*n)-1. Overhead is on minus off for those two percentiles. Samples from both rounds are pooled.",
+  "n": 40,
+  "warmup": 2,
+  "rounds": 2,
+  "hardware": {
+    "nproc": 4,
+    "cpu_count": 4,
+    "uname": "Linux 6.12.94+ x86_64",
+    "loadavg": "0.08 0.04 0.01 1/249 5057"
+  },
+  "errors": 0,
+  "answered": 80,
+  "otlp_posts": 3,
+  "off": {
+    "p50_ms": 2.222471000038695,
+    "p95_ms": 2.937753999958659,
+    "min_ms": 1.9093369999154675,
+    "max_ms": 3.2504639999615392,
+    "samples_ms": [
+      3.178006999974059,
+      2.745073000028242,
+      2.2559559999990597,
+      2.068003999966095,
+      2.2216580000531394,
+      2.2232840000242504,
+      2.8118430000176886,
+      2.1465300000045318,
+      2.2440939999341936,
+      2.186989999927391,
+      2.0415280000634084,
+      2.510022000024037,
+      2.2845639999786727,
+      3.2504639999615392,
+      2.937753999958659,
+      2.4585809999280173,
+      2.7589720000378293,
+      2.4561829999356632,
+      2.1016370000097595,
+      2.5107330000082584,
+      2.1915879999596655,
+      2.7027709999174476,
+      2.0272599999771046,
+      1.9416769999907046,
+      1.9093369999154675,
+      1.946566000015082,
+      2.1559229999184026,
+      2.3653409999724317,
+      2.187849000051756,
+      2.2359380000125384,
+      2.283444999989115,
+      2.0791270000017903,
+      2.093400000035217,
+      1.976535000039803,
+      2.234378000025572,
+      2.3431799999116265,
+      2.0251459999371946,
+      2.1958769999628203,
+      1.9829029999982595,
+      2.0318830000860544
+    ]
+  },
+  "on": {
+    "p50_ms": 2.6043400000048678,
+    "p95_ms": 3.5362769999665034,
+    "min_ms": 2.310125999997581,
+    "max_ms": 4.638249000095129,
+    "samples_ms": [
+      2.6779300000043804,
+      2.310125999997581,
+      2.4664430000029824,
+      3.134452999915993,
+      2.388208999946073,
+      2.5056189999759226,
+      2.5415169999405407,
+      2.570214999991549,
+      2.4366540000073655,
+      2.8724960000090505,
+      2.495929999895452,
+      2.3426690000860617,
+      2.754737999907775,
+      2.6827789999970264,
+      2.4309230000199022,
+      4.638249000095129,
+      3.0712929999481275,
+      2.741979999996147,
+      2.5153670000008788,
+      2.5248950000786863,
+      2.467389000003095,
+      2.6505779999297374,
+      3.150395000034223,
+      2.6384650000181864,
+      2.4292340000329204,
+      3.328593999981422,
+      3.120452000075602,
+      4.029353999953855,
+      3.1779790000427965,
+      2.7302270000291173,
+      2.3888619999752336,
+      2.8072520000250734,
+      3.5362769999665034,
+      2.781874999982392,
+      2.3725739999918005,
+      2.6880829999527123,
+      2.338592000000972,
+      2.562604999980067,
+      2.3801460000640873,
+      2.520376000006763
+    ]
+  },
+  "overhead": {
+    "p50_ms": 0.38186899996617285,
+    "p95_ms": 0.5985230000078445
+  },
+  "round_p50_ms": {
+    "off": [
+      2.370373499957168,
+      2.12466149997681
+    ],
+    "on": [
+      2.5332060000096135,
+      2.669330499941225
+    ]
+  },
+  "off_spread_ms": 1.3411270000460718,
+  "profile_top_off": [
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<method 'acquire' of '_thread.lock' objects>",
+      "calls": 5,
+      "tottime_s": 0.0017819130000000002,
+      "cumtime_s": 2.1563e-05
+    },
+    {
+      "file": "/usr/lib/python3.12/copy.py",
+      "line": 118,
+      "name": "deepcopy",
+      "calls": 40,
+      "tottime_s": 0.000579415,
+      "cumtime_s": 0.001502924
+    },
+    {
+      "file": "/agent/repos/capitalcite/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py",
+      "line": 2755,
+      "name": "run_sync_from_thread",
+      "calls": 10,
+      "tottime_s": 0.000553132,
+      "cumtime_s": 0.00611044
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<method 'validate_python' of 'pydantic_core._pydantic_core.SchemaValidator' objects>",
+      "calls": 135,
+      "tottime_s": 0.000501591,
+      "cumtime_s": 0.000586696
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<built-in method builtins.isinstance>",
+      "calls": 2300,
+      "tottime_s": 0.00045742900000000003,
+      "cumtime_s": 0.000613094
+    },
+    {
+      "file": "/agent/repos/capitalcite/.venv/lib/python3.12/site-packages/anyio/from_thread.py",
+      "line": 325,
+      "name": "call",
+      "calls": 10,
+      "tottime_s": 0.000401965,
+      "cumtime_s": 0.019991991
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<built-in method builtins.id>",
+      "calls": 1005,
+      "tottime_s": 0.00036686900000000003,
+      "cumtime_s": 0.00036686900000000003
+    },
+    {
+      "file": "/agent/repos/capitalcite/.venv/lib/python3.12/site-packages/fastapi/dependencies/utils.py",
+      "line": 586,
+      "name": "solve_dependencies",
+      "calls": 35,
+      "tottime_s": 0.000351423,
+      "cumtime_s": 0.00330909
+    }
+  ],
+  "profile_top_on": [
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<method 'acquire' of '_thread.lock' objects>",
+      "calls": 94,
+      "tottime_s": 0.001372703,
+      "cumtime_s": 0.0013670590000000001
+    },
+    {
+      "file": "/usr/lib/python3.12/copy.py",
+      "line": 118,
+      "name": "deepcopy",
+      "calls": 40,
+      "tottime_s": 0.000602627,
+      "cumtime_s": 0.0015049850000000001
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<method 'validate_python' of 'pydantic_core._pydantic_core.SchemaValidator' objects>",
+      "calls": 150,
+      "tottime_s": 0.000594084,
+      "cumtime_s": 0.000674669
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<built-in method builtins.isinstance>",
+      "calls": 2990,
+      "tottime_s": 0.000568062,
+      "cumtime_s": 0.0008045830000000001
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<method 'poll' of 'select.epoll' objects>",
+      "calls": 69,
+      "tottime_s": 0.00053662,
+      "cumtime_s": 0.00053662
+    },
+    {
+      "file": "~",
+      "line": 0,
+      "name": "<method 'sub' of 're.Pattern' objects>",
+      "calls": 455,
+      "tottime_s": 0.00045152600000000005,
+      "cumtime_s": 0.00045152600000000005
+    },
+    {
+      "file": "/agent/repos/capitalcite/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py",
+      "line": 2755,
+      "name": "run_sync_from_thread",
+      "calls": 10,
+      "tottime_s": 0.00042812300000000003,
+      "cumtime_s": 0.004853879
+    },
+    {
+      "file": "/agent/repos/capitalcite/.venv/lib/python3.12/site-packages/anyio/from_thread.py",
+      "line": 325,
+      "name": "call",
+      "calls": 10,
+      "tottime_s": 0.000389561,
+      "cumtime_s": 0.023882706
+    }
+  ],
+  "limiter": "Hottest self time outside builtins was deepcopy (/usr/lib/python3.12/copy.py) with tracing off and deepcopy (/usr/lib/python3.12/copy.py) with OTLP on. Five profiled requests sit under the TestClient bridge. One indexed chunk makes retrieve a small share of the POST. p50 overhead is inside the off-sample spread (0.382 ms vs off spread 1.341 ms). The POST timer does not include the collector round trip.",
+  "cited": {
+    "off_p50": "2.2 ms",
+    "off_p95": "2.9 ms",
+    "on_p50": "2.6 ms",
+    "on_p95": "3.5 ms",
+    "overhead_p50": "0.4 ms",
+    "overhead_p95": "0.6 ms",
+    "round_p50_overhead": "0.16 ms and 0.54 ms"
+  }
+}

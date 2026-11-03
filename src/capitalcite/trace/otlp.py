@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.id_generator import IdGenerator
 from opentelemetry.trace import Span as OtelSpan
 from opentelemetry.trace import Status, StatusCode, set_span_in_context
 
-from capitalcite.trace.types import AttrValue, SpanRecord
+from capitalcite.trace.types import AttrValue, ObservationKind, SpanRecord
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class OtlpExporter:
         self,
         *,
         name: str,
-        kind: object,
+        kind: ObservationKind,
         span_id: str,
         attributes: Mapping[str, AttrValue],
         trace_id: str | None = None,

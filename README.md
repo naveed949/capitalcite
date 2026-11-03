@@ -191,7 +191,11 @@ Nightly gates the same-run graph p95 / rag p95 ratio and cost per query against 
 
 RAG and agent are 10 timed `POST /ask` calls after one warmup on the 12-point fixture index, `ASK_MODEL=fake`, this 4-core VM. Median / 95th percentile. One RAG sample was 75 ms (max, not p95). The limiter is retrieve plus JSON on one process, not the gate. Live OpenAI latency and cost stay UNVERIFIED. Gate numbers are `capitalcite gate bench --n 2000`.
 
-OTLP on the same fake model, measured separately, is [2.0 ms](evals/results/b352bd8cd49c-otel-overhead.json) p50 and [2.3 ms](evals/results/b352bd8cd49c-otel-overhead.json) p95 with tracing off, and [2.2 ms](evals/results/b352bd8cd49c-otel-overhead.json) p50 and [2.6 ms](evals/results/b352bd8cd49c-otel-overhead.json) p95 with an in-process OTLP receiver. The difference is [0.2 ms](evals/results/b352bd8cd49c-otel-overhead.json) at p50 and [0.3 ms](evals/results/b352bd8cd49c-otel-overhead.json) at p95. That gap is smaller than the spread of the tracing-off samples. 40 timed `POST /ask` calls per side after two warmup calls, two alternating rounds, one in-memory chunk, `FakeEmbedder`, `TestClient`, this 4-core VM. The timer wraps the POST. Collector flush is outside it. `scripts/measure_ask_trace_overhead.py` wrote the file. Hottest self time sat in the TestClient bridge and `deepcopy`, not in retrieve.
+<!-- BEGIN OTEL OVERHEAD -->
+OTLP on the same fake model, measured separately, is [2.2 ms](evals/results/701e39b7489a-otel-overhead.json) p50 and [2.9 ms](evals/results/701e39b7489a-otel-overhead.json) p95 with tracing off, and [2.6 ms](evals/results/701e39b7489a-otel-overhead.json) p50 and [3.5 ms](evals/results/701e39b7489a-otel-overhead.json) p95 with an in-process OTLP receiver. The difference is [0.4 ms](evals/results/701e39b7489a-otel-overhead.json) at p50 and [0.6 ms](evals/results/701e39b7489a-otel-overhead.json) at p95. Per-round p50 differences were [0.16 ms](evals/results/701e39b7489a-otel-overhead.json) and [0.54 ms](evals/results/701e39b7489a-otel-overhead.json). Tracing was slower in both rounds.
+<!-- END OTEL OVERHEAD -->
+
+40 timed `POST /ask` calls per side after two warmup calls, two alternating rounds, one in-memory chunk, `FakeEmbedder`, `TestClient`, this 4-core VM. The timer wraps the POST. Collector flush is outside it. `scripts/measure_ask_trace_overhead.py` wrote the file. Hottest self time sat in `deepcopy`, not in retrieve.
 
 Rewrite the retrieval and agent-vs-RAG blocks from the twelve-filing JSON:
 

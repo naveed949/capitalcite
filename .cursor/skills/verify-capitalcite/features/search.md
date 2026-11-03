@@ -43,6 +43,6 @@ Preconditions:
 - `QDRANT_URL=:memory:` cannot be shared between `capitalcite index` and uvicorn. Use a directory. Embedded Qdrant locks that directory. `scripts/verify.sh` stops uvicorn before `capitalcite index` and starts it after.
 - An empty index is a successful HTTP response and a failed proof. `point_count` 0 must not be reported as passed.
 - Hits that come back without citation fields, or that miss the gold span, are a product failure, not an unverified environment.
-- Quote-index sanity can run with no Qdrant process because it uses an in-memory client and `FakeEmbedder`. A high or low `recall_at_5` there does not fill the README eval table. The 12-filing matrix stays TBD until #6.
+- Quote-index sanity can run with no Qdrant process because it uses an in-memory client and `FakeEmbedder`. A high or low `recall_at_5` there does not fill the README eval table. The 12-filing matrix stays TBD until `capitalcite eval --suite golden` on the ingested corpus.
 - `EMBEDDER=openai-small` without `OPENAI_API_KEY` makes `POST /search` return 503. The local default does not need that key. The first real `capitalcite index` with `bge-small` downloads the FastEmbed model.
 - `CliRunner().invoke(...)` and `TestClient` in pytest are not this feature.

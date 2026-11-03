@@ -550,12 +550,11 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
         retrieves = [record for record in records if record.kind is ObservationKind.RETRIEVE]
         assert retrieves
         assert all(record.parent_id in tool_ids for record in retrieves)
-        plans = [record for record in records if record.name == "plan"]
-        completes = [record for record in records if record.name == "complete"]
+        generated = [record for record in records if record.kind is ObservationKind.GENERATE]
+        plans = [record for record in generated if record.parent_id in graph_plan_ids]
+        completes = [record for record in generated if record.parent_id in graph_synthesize_ids]
         assert plans and completes
-        assert all(record.parent_id in graph_plan_ids for record in plans)
-        assert all(record.parent_id in graph_synthesize_ids for record in completes)
-        generated = plans + completes
+        assert {record.name for record in generated} == {"chat fake"}
         assert all(record.attributes["gen_ai.request.model"] == "fake" for record in generated)
         assert all(record.attributes["gen_ai.operation.name"] == "chat" for record in generated)
         assert all(record.attributes["gen_ai.provider.name"] == "fake" for record in generated)
@@ -624,8 +623,7 @@ def test_post_ask_stream_agent_span_tree(tmp_path: Path) -> None:
         assert parents["graph.plan"] == {"agent"}
         assert parents["graph.act"] == {"agent"}
         assert parents["graph.synthesize"] == {"agent"}
-        assert parents["plan"] == {"graph.plan"}
-        assert parents["complete"] == {"graph.synthesize"}
+        assert parents["chat fake"] == {"graph.plan", "graph.synthesize"}
         assert parents["tool"] == {"graph.act"}
         assert parents["gate"] == {"graph.act"}
         assert parents["retrieve"] == {"tool"}
@@ -640,8 +638,7 @@ def test_post_ask_stream_agent_span_tree(tmp_path: Path) -> None:
             "graph.act",
             "graph.synthesize",
             "graph.stop",
-            "plan",
-            "complete",
+            "chat fake",
             "tool",
             "gate",
             "retrieve",

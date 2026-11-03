@@ -11,6 +11,7 @@ SCRIPT = ROOT / "scripts" / "check_ask_trace_diff.py"
 
 def test_golden_ask_answers_match_with_tracing_on() -> None:
     env = os.environ.copy()
+    env.pop("SEC_USER_AGENT", None)
     env["ASK_MODEL"] = "fake"
     completed = subprocess.run(
         [sys.executable, str(SCRIPT)],
@@ -23,6 +24,9 @@ def test_golden_ask_answers_match_with_tracing_on() -> None:
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "items=112" in completed.stdout
     assert "mismatches=0" in completed.stdout
+    assert "answered=" in completed.stdout
+    answered = int(completed.stdout.strip().split("answered=")[-1].split()[0])
+    assert answered >= 8
 
 
 def test_trace_diff_refuses_a_live_model() -> None:

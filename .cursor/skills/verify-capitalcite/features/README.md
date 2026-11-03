@@ -62,7 +62,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Web app](./web.md) covers the page on port 3001 against that same API.
 - [Plan-then-act agent](./agent.md) covers `POST /ask` with `path` `agent`.
 - [Fail-closed tool gate](./gate.md) covers `capitalcite gate validate`, `decide`, `redteam`, and `bench`.
-- [Langfuse tracing](./tracing.md) covers `CAPITALCITE_TRACE_FILE` span JSONL after `POST /ask` and `capitalcite eval --small`, plus OTLP HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Unset is a no-op. `verify.sh` proves an in-process receiver when the endpoint is unset.
+- [Langfuse tracing](./tracing.md) covers `CAPITALCITE_TRACE_FILE` span JSONL after `POST /ask` and `capitalcite eval --small`, plus OTLP HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Unset is a no-op. `verify.sh` always proves an in-process receiver for `ask` and `chat fake`.
 - [Audit log](./audit.md) covers `capitalcite audit verify`.
 - [Behavioral regression check](./check.md) covers `capitalcite check` against `evals/baselines/ci.json`.
 - [MCP server](./mcp.md) covers `capitalcite mcp` over stdio with the official MCP client.

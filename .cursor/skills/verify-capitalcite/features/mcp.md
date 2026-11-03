@@ -1,14 +1,15 @@
 # MCP server
 
 `capitalcite mcp` speaks the Model Context Protocol on stdio. An MCP
-client lists `search_filings` and `ask`. Both calls go through the
-fail-closed gate, the append-only audit log, and `ask()` / `ground()`
-for answers. stdout is the protocol wire. Logs go to stderr.
+client lists `search_filings`, `ask`, and `metric_query`. Each call goes
+through the fail-closed gate and the append-only audit log. `ask` is RAG
+retrieve then `ask()` / `ground()`, not the agent loop. stdout is the
+protocol wire. Logs go to stderr.
 
 ## Sub-features
 
 - `mcp-help` lists the `mcp` command and says stdio is the wire.
-- `mcp-list` advertises only `search_filings` and `ask`.
+- `mcp-list` advertises `search_filings`, `ask`, and `metric_query`.
 - `mcp-search` returns citation fields from indexed chunks.
 - `mcp-invalid-args` denies extra keys on `search_filings` with `invalid_args`. The runner is not called.
 - `mcp-unknown` denies `calculator` with `unknown_tool`.
@@ -33,7 +34,7 @@ Preconditions:
 - This path does not need uvicorn, Docker, live EDGAR, or `OPENAI_API_KEY`.
 
 - **Show help.** Run `uv run capitalcite mcp --help`. Exit code is `0`. Stdout mentions stdio.
-- **List tools.** Launch `uv run capitalcite mcp` with `Client(StdioServerParameters)`. `list_tools` returns `ask` and `search_filings` only.
+- **List tools.** Launch `uv run capitalcite mcp` with `Client(StdioServerParameters)`. `list_tools` returns `ask`, `metric_query`, and `search_filings`.
 - **Search.** Call `search_filings` with `{"query":"CET1 ratio","ticker":"JPM"}`. Structured content `ok` is true. Hits include `chunk.doc_id` and `chunk.source_url`.
 - **Deny extra keys.** Call `search_filings` with `{"query":"CET1 ratio","cmd":"ls"}`. `ok` is false and `reason` is `invalid_args`.
 - **Deny an agent-only tool.** Call `calculator` with `{"expression":"1+1"}`. `reason` is `unknown_tool`.

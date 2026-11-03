@@ -87,7 +87,7 @@ def test_otlp_http_exports_names_ids_and_gen_ai_attributes(tmp_path: Path) -> No
         with observation("ask", ObservationKind.ASK, **ask_attrs(path="rag", question="cet1")):
             trace_id = current_trace_id()
             with observation(
-                "generate",
+                "chat fake",
                 ObservationKind.GENERATE,
                 **generation_attrs(model="fake"),
             ):
@@ -96,13 +96,13 @@ def test_otlp_http_exports_names_ids_and_gen_ai_attributes(tmp_path: Path) -> No
         shutdown()
         exported = _decode(server.bodies)
         by_name = {span["name"]: span for span in exported}
-        assert set(by_name) == {"ask", "generate"}
-        assert by_name["generate"]["parent"] == by_name["ask"]["span_id"]
+        assert set(by_name) == {"ask", "chat fake"}
+        assert by_name["chat fake"]["parent"] == by_name["ask"]["span_id"]
         assert by_name["ask"]["trace_id"] == trace_id
-        assert by_name["generate"]["trace_id"] == trace_id
-        assert by_name["generate"]["attributes"]["gen_ai.request.model"] == "fake"
-        assert by_name["generate"]["attributes"]["gen_ai.operation.name"] == "chat"
-        assert by_name["generate"]["attributes"]["gen_ai.provider.name"] == "fake"
+        assert by_name["chat fake"]["trace_id"] == trace_id
+        assert by_name["chat fake"]["attributes"]["gen_ai.request.model"] == "fake"
+        assert by_name["chat fake"]["attributes"]["gen_ai.operation.name"] == "chat"
+        assert by_name["chat fake"]["attributes"]["gen_ai.provider.name"] == "fake"
         assert by_name["ask"]["service_name"] == "capitalcite-test"
         file_records = [
             SpanRecord.model_validate_json(line)
@@ -111,7 +111,7 @@ def test_otlp_http_exports_names_ids_and_gen_ai_attributes(tmp_path: Path) -> No
         ]
         file_by_name = {record.name: record for record in file_records}
         assert file_by_name["ask"].span_id == by_name["ask"]["span_id"]
-        assert file_by_name["generate"].span_id == by_name["generate"]["span_id"]
+        assert file_by_name["chat fake"].span_id == by_name["chat fake"]["span_id"]
         assert file_by_name["ask"].trace_id == by_name["ask"]["trace_id"]
         assert all(posted == "/v1/traces" for posted, _body in server.bodies)
     finally:
@@ -178,8 +178,7 @@ def test_streamed_agent_tree_reaches_otlp(tmp_path: Path) -> None:
         assert parents["graph.plan"] == {"agent"}
         assert parents["graph.act"] == {"agent"}
         assert parents["graph.synthesize"] == {"agent"}
-        assert parents["plan"] == {"graph.plan"}
-        assert parents["complete"] == {"graph.synthesize"}
+        assert parents["chat fake"] == {"graph.plan", "graph.synthesize"}
         assert parents["tool"] == {"graph.act"}
         assert parents["gate"] == {"graph.act"}
         assert parents["retrieve"] == {"tool"}
@@ -187,7 +186,7 @@ def test_streamed_agent_tree_reaches_otlp(tmp_path: Path) -> None:
             assert parents["graph.stop"] == {"agent"}
         if "compile" in parents:
             assert parents["compile"] == {"agent"}
-        generate = next(item for item in exported if item["name"] == "plan")
+        generate = next(item for item in exported if item["name"] == "chat fake")
         assert generate["attributes"]["gen_ai.operation.name"] == "chat"
         assert generate["attributes"]["gen_ai.provider.name"] == "fake"
         tool = next(item for item in exported if item["name"] == "tool")

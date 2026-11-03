@@ -17,7 +17,7 @@ from capitalcite.ask.types import (
     ModelUnavailable,
 )
 from capitalcite.retrieval.types import Hit
-from capitalcite.trace import ObservationKind, generation_attrs, observation
+from capitalcite.trace import ObservationKind, chat_span_name, generation_attrs, observation
 
 _CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -39,7 +39,11 @@ class FakeStructuredModel:
 
     async def complete(self, question: str, hits: Sequence[Hit]) -> ModelDraft:
         self.calls += 1
-        with observation("generate", ObservationKind.GENERATE, **generation_attrs(model="fake")):
+        with observation(
+            chat_span_name("fake"),
+            ObservationKind.GENERATE,
+            **generation_attrs(model="fake"),
+        ):
             if self._script is not None:
                 return self._script
             if not hits:
@@ -105,7 +109,7 @@ class OpenAIStructuredModel:
 
     async def _post(self, messages: list[dict[str, str]]) -> str:
         with observation(
-            "generate",
+            chat_span_name(self._model),
             ObservationKind.GENERATE,
             **generation_attrs(model=self._model),
         ) as span:

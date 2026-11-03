@@ -17,6 +17,7 @@ from capitalcite.trace import (
     MemoryExporter,
     ObservationKind,
     ask_attrs,
+    chat_span_name,
     configure,
     configure_for_tests,
     current_trace_id,
@@ -282,6 +283,74 @@ def test_langfuse_adapter_maps_ask_and_generation(monkeypatch: pytest.MonkeyPatc
     exporter.shutdown()
     assert started["flush"] is True
     assert started["shutdown"] is True
+
+
+def test_invalid_kind_does_not_reach_exporters() -> None:
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    ran = False
+    with observation("ask", object()):  # type: ignore[arg-type]
+        ran = True
+        assert current_trace_id() is None
+    assert ran is True
+    assert exporter.begins() == {}
+    assert exporter.finished() == ()
+
+
+def test_langfuse_invalid_kind_does_not_leak_live_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started: dict[str, object] = {}
+
+    class Manager:
+        def __enter__(self) -> object:
+            started["entered"] = True
+            raise ValueError("invalid as_type")
+
+        def __exit__(self, *_args: object) -> None:
+            started["exited"] = True
+
+    class FakeLangfuse:
+        def __init__(self, **kwargs: object) -> None:
+            started["init"] = kwargs
+
+        def start_as_current_observation(self, **kwargs: object) -> Manager:
+            started["as_type"] = kwargs.get("as_type")
+            return Manager()
+
+        def flush(self) -> None:
+            started["flush"] = True
+
+        def shutdown(self) -> None:
+            started["shutdown"] = True
+
+    module = types.ModuleType("langfuse")
+    module.Langfuse = FakeLangfuse  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "langfuse", module)
+    exporter = LangfuseExporter(
+        public_key="pk-lf-test",
+        secret_key="sk-lf-testsecret",
+        host="http://127.0.0.1:9",
+    )
+    kind = types.SimpleNamespace(value="nope")
+    exporter.begin(
+        name="ask",
+        kind=kind,  # type: ignore[arg-type]
+        span_id="a" * 16,
+        attributes={},
+    )
+    assert started["as_type"] == "nope"
+    assert started["entered"] is True
+    assert started["exited"] is True
+    assert exporter._live == {}
+    exporter.shutdown()
+    assert started["flush"] is True
+    assert started["shutdown"] is True
+
+
+def test_chat_span_name_follows_genai_semconv() -> None:
+    assert chat_span_name("fake") == "chat fake"
+    assert chat_span_name("gpt-4o-mini") == "chat gpt-4o-mini"
 
 
 def test_importing_trace_does_not_import_langfuse() -> None:
