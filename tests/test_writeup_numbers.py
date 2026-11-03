@@ -217,7 +217,7 @@ def test_writeup_overhead_ms_from_linked_json(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-def test_readme_overhead_block_accepts_measured_band(tmp_path: Path) -> None:
+def test_readme_overhead_block_accepts_round_p50_diffs(tmp_path: Path) -> None:
     name = "abcabcabcabc-otel-overhead.json"
     link = f"[overhead](evals/results/{name})"
     _write_tree(
@@ -225,13 +225,14 @@ def test_readme_overhead_block_accepts_measured_band(tmp_path: Path) -> None:
         readme=(
             f"Source {link}.\n"
             "<!-- BEGIN OTEL OVERHEAD -->\n"
-            "OTLP adds 0.2 to 0.5 ms.\n"
+            "Per-round p50 differences were 0.16 ms and 0.54 ms.\n"
             "<!-- END OTEL OVERHEAD -->\n"
         ),
-        writeup=f"OTLP adds 0.2 to 0.5 ms {link}.\n",
+        writeup=f"Per-round p50 differences were 0.16 ms and 0.54 ms {link}.\n",
         results={
-            "off": {"samples_ms": [2.0] * 20},
-            "on": {"samples_ms": [2.2] * 20},
+            "off": {"samples_ms": [2.0] * 20 + [2.2] * 20},
+            "on": {"samples_ms": [2.16] * 20 + [2.74] * 20},
+            "round_p50_ms": {"off": [2.0, 2.2], "on": [2.16, 2.74]},
         },
         result_name=name,
     )

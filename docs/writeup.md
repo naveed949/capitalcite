@@ -130,7 +130,7 @@ p95 is 0.020 ms on 2000 samples. A fake-model clone timed at
 A cold `bge-small` download was 67 MB. OTLP on versus off, on one
 in-memory chunk, is 2.2 ms p50 and 2.9 ms p95 off, and 2.6 ms p50
 and 3.5 ms p95 on. The difference is 0.4 ms at p50 and 0.6 ms at
-p95, a measured band of about 0.3 to 0.6 ms
+p95. Per-round p50 differences were 0.16 ms and 0.54 ms
 ([`701e39b7489a-otel-overhead.json`](../evals/results/701e39b7489a-otel-overhead.json)).
 That difference is smaller than the spread of the tracing-off samples.
 

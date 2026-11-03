@@ -98,7 +98,9 @@ def main() -> int:
     on_stats = _stats(on)
     overhead_p50 = on_stats["p50_ms"] - off_stats["p50_ms"]
     overhead_p95 = on_stats["p95_ms"] - off_stats["p95_ms"]
-    lo_r, hi_r = _overhead_band_ends(overhead_p50, overhead_p95)
+    round_off = [statistics.median(block) for block in off_rounds]
+    round_on = [statistics.median(block) for block in on_rounds]
+    round_diffs = [on_ms - off_ms for off_ms, on_ms in zip(round_off, round_on, strict=True)]
     cited = {
         "off_p50": _cite_ms(off_stats["p50_ms"]),
         "off_p95": _cite_ms(off_stats["p95_ms"]),
@@ -106,7 +108,7 @@ def main() -> int:
         "on_p95": _cite_ms(on_stats["p95_ms"]),
         "overhead_p50": _cite_ms(overhead_p50),
         "overhead_p95": _cite_ms(overhead_p95),
-        "overhead_band": f"{lo_r:.1f} to {hi_r:.1f} ms",
+        "round_p50_overhead": " and ".join(_cite_hundredths_ms(value) for value in round_diffs),
     }
     spread = off_stats["max_ms"] - off_stats["min_ms"]
     limiter = _limiter(profile_off, profile_on, spread, overhead_p50)
@@ -140,9 +142,10 @@ def main() -> int:
         "on": on_stats,
         "overhead": {"p50_ms": overhead_p50, "p95_ms": overhead_p95},
         "round_p50_ms": {
-            "off": [statistics.median(block) for block in off_rounds],
-            "on": [statistics.median(block) for block in on_rounds],
+            "off": round_off,
+            "on": round_on,
         },
+        "round_p50_overhead_ms": round_diffs,
         "off_spread_ms": spread,
         "profile_top_off": profile_off,
         "profile_top_on": profile_on,
@@ -231,14 +234,8 @@ def _cite_ms(value: float) -> str:
     return f"{value:.1f} ms"
 
 
-def _overhead_band_ends(p50_ms: float, p95_ms: float) -> tuple[float, float]:
-    lo = min(p50_ms, p95_ms)
-    hi = max(p50_ms, p95_ms)
-    lo_r = math.floor(lo * 10) / 10
-    hi_r = math.ceil(hi * 10) / 10
-    if hi_r < 0.5:
-        hi_r = 0.5
-    return lo_r, hi_r
+def _cite_hundredths_ms(value: float) -> str:
+    return f"{value:.2f} ms"
 
 
 def _limiter(

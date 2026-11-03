@@ -368,12 +368,29 @@ def _project_overhead(data: Mapping[str, object], readme: frozenset[str]) -> fro
     emitted: set[str] = set()
     for value in (off_p50, off_p95, on_p50, on_p95, overhead_p50, overhead_p95):
         _emit_ms(emitted, readme, value)
-    lo_r, hi_r = _overhead_band_ends(overhead_p50, overhead_p95)
-    for part in (f"{lo_r:.1f}", f"{hi_r:.1f}"):
-        for token in (part, f"{part} ms"):
-            if token in readme:
-                emitted.add(token)
+    for value in _round_p50_diffs(data):
+        _emit_hundredths_ms(emitted, readme, value)
     return frozenset(emitted)
+
+
+def _round_p50_diffs(data: Mapping[str, object]) -> tuple[float, ...]:
+    blob = data.get("round_p50_ms")
+    if not isinstance(blob, dict):
+        return ()
+    off_rounds = blob.get("off")
+    on_rounds = blob.get("on")
+    if not isinstance(off_rounds, list) or not isinstance(on_rounds, list):
+        return ()
+    if len(off_rounds) != len(on_rounds) or not off_rounds:
+        return ()
+    diffs: list[float] = []
+    for off_raw, on_raw in zip(off_rounds, on_rounds, strict=True):
+        if isinstance(off_raw, bool) or isinstance(on_raw, bool):
+            return ()
+        if not isinstance(off_raw, int | float) or not isinstance(on_raw, int | float):
+            return ()
+        diffs.append(float(on_raw) - float(off_raw))
+    return tuple(diffs)
 
 
 def _ms_samples(side: Mapping[str, object]) -> list[float]:
@@ -403,14 +420,10 @@ def _nearest_rank(values: list[float], quantile: float) -> float:
     return ordered[index]
 
 
-def _overhead_band_ends(p50_ms: float, p95_ms: float) -> tuple[float, float]:
-    lo = min(p50_ms, p95_ms)
-    hi = max(p50_ms, p95_ms)
-    lo_r = math.floor(lo * 10) / 10
-    hi_r = math.ceil(hi * 10) / 10
-    if hi_r < 0.5:
-        hi_r = 0.5
-    return lo_r, hi_r
+def _emit_hundredths_ms(emitted: set[str], readme: frozenset[str], value: float) -> None:
+    for token in (f"{value:.2f}", f"{value:.2f} ms"):
+        if token in readme:
+            emitted.add(token)
 
 
 def _stem_hex(path: Path) -> str | None:

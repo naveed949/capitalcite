@@ -265,6 +265,6 @@
     "on_p95": "3.5 ms",
     "overhead_p50": "0.4 ms",
     "overhead_p95": "0.6 ms",
-    "overhead_band": "0.3 to 0.6 ms"
+    "round_p50_overhead": "0.16 ms and 0.54 ms"
   }
 }
