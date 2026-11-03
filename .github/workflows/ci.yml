@@ -49,6 +49,11 @@ jobs:
           ASK_MODEL: fake
         run: uv run pytest -m "not mf"
 
+      - name: Ask trace diff
+        env:
+          ASK_MODEL: fake
+        run: uv run python scripts/check_ask_trace_diff.py
+
       - name: Write-up number check
         run: uv run python scripts/check_writeup_numbers.py
 
