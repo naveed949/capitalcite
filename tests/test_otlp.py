@@ -185,6 +185,8 @@ def test_streamed_agent_tree_reaches_otlp(tmp_path: Path) -> None:
         assert parents["retrieve"] == {"tool"}
         if "graph.stop" in parents:
             assert parents["graph.stop"] == {"agent"}
+        if "compile" in parents:
+            assert parents["compile"] == {"agent"}
         generate = next(item for item in exported if item["name"] == "plan")
         assert generate["attributes"]["gen_ai.operation.name"] == "chat"
         assert generate["attributes"]["gen_ai.provider.name"] == "fake"

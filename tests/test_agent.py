@@ -18,7 +18,10 @@ from capitalcite.agent import (
     ToolCall,
     TraceStep,
     default_registry,
+    reset_compiled_graph,
     run_agent,
+    run_agent_loop,
+    set_compile_once,
 )
 from capitalcite.agent.calculator import calculate
 from capitalcite.agent.tools import SearchFn, ToolRegistry
@@ -363,6 +366,47 @@ async def test_agent_searches_each_named_bank_then_grounds() -> None:
     assert "11.9" in result.answer.answer
 
 
+async def test_plain_loop_matches_graph_answer() -> None:
+    jpm = _hit(ticker="JPM", text="the Standardized CET1 ratios were 15.7% and 15.8%")
+    bac = _hit(
+        ticker="BAC",
+        text="CET1 capital ratio of 11.9 percent under the Standardized approach",
+        url=_BAC_URL,
+        doc_id="doc-bac",
+    )
+    tools = default_registry(
+        search=_search_of([jpm, bac]),
+        xbrl=_missing_xbrl,
+        fdic=_missing_fdic,
+    )
+    question = (
+        "Which bank had the higher Standardized CET1 at year-end 2024, JPMorgan or Bank of America?"
+    )
+    graph = await run_agent(question, FakeAgentModel(), tools, Budgets())
+    loop = await run_agent_loop(question, FakeAgentModel(), tools, Budgets())
+    assert graph.answer == loop.answer
+    assert graph.plan == loop.plan
+    assert graph.traces == loop.traces
+
+
+async def test_compile_once_does_not_change_answer() -> None:
+    tools = default_registry(
+        search=_search_of([_hit(text="the CET1 ratios were 15.7% under Standardized")]),
+        xbrl=_missing_xbrl,
+        fdic=_missing_fdic,
+    )
+    question = "What CET1 did JPMorgan report?"
+    set_compile_once(False)
+    reset_compiled_graph()
+    first = await run_agent(question, FakeAgentModel(), tools, Budgets())
+    set_compile_once(True)
+    reset_compiled_graph()
+    second = await run_agent(question, FakeAgentModel(), tools, Budgets())
+    third = await run_agent(question, FakeAgentModel(), tools, Budgets())
+    set_compile_once(True)
+    assert first.answer == second.answer == third.answer
+
+
 async def test_agent_refuses_when_step_budget_is_exceeded() -> None:
     tools = default_registry(
         search=_search_of([_hit()]),
@@ -467,9 +511,16 @@ def test_post_ask_agent_path_exposes_the_plan(tmp_path: Path) -> None:
         by_id = {record.span_id: record for record in records}
         ask_span = next(record for record in records if record.name == "ask")
         ask_trace_id = ask_span.trace_id
-        agent_span = next(record for record in records if record.name == "agent")
+        agent_span = next(
+            record
+            for record in records
+            if record.kind is ObservationKind.AGENT and record.name == "agent"
+        )
         assert agent_span.parent_id == ask_span.span_id
         assert agent_span.trace_id == ask_span.trace_id
+        compile_spans = [record for record in records if record.name == "compile"]
+        assert compile_spans
+        assert all(record.parent_id == agent_span.span_id for record in compile_spans)
         graph_nodes = [record for record in records if record.name.startswith("graph.")]
         assert {record.name for record in graph_nodes} >= {
             "graph.plan",
@@ -580,9 +631,11 @@ def test_post_ask_stream_agent_span_tree(tmp_path: Path) -> None:
         assert parents["retrieve"] == {"tool"}
         if "graph.stop" in parents:
             assert parents["graph.stop"] == {"agent"}
+        assert parents["compile"] == {"agent"}
         allowed = {
             "ask",
             "agent",
+            "compile",
             "graph.plan",
             "graph.act",
             "graph.synthesize",
@@ -656,6 +709,35 @@ def test_post_ask_agent_tool_http_error_is_200(
     assert body.path == "agent"
     assert body.traces
     assert body.traces[0].ok is False
+    assert body.kind in {"answered", "refused"}
+
+
+def test_post_ask_agent_answer_bytes_are_stable(tmp_path: Path) -> None:
+    jpm = _chunk(ticker="JPM", text="the Standardized CET1 ratios were 15.7% and 15.8%")
+    bac = _chunk(
+        ticker="BAC",
+        text="CET1 capital ratio of 11.9 percent under the Standardized approach",
+        doc_id="doc-bac",
+        url=_BAC_URL,
+        period="2024-12-31",
+    )
+    application, _setup = _indexed_app(tmp_path, [jpm, bac])
+    payload = {
+        "question": (
+            "Which bank had the higher Standardized CET1 ratio at year-end 2024, "
+            "JPMorgan or Bank of America?"
+        ),
+        "path": "agent",
+        "model": "fake",
+        "k": 8,
+    }
+    with TestClient(application) as http:
+        first = http.post("/ask", json=payload)
+        second = http.post("/ask", json=payload)
+    assert first.status_code == 200
+    assert first.content == second.content
+    body = AskResponse.model_validate(first.json())
+    assert body.path == "agent"
     assert body.kind in {"answered", "refused"}
 
 

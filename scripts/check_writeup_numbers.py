@@ -30,6 +30,8 @@ QUANTITY = re.compile(
 
 CHECKED_DOCS: tuple[str, ...] = ("docs/writeup.md",)
 README_REL = "README.md"
+BENCH_BEGIN_MARK = "<!-- BEGIN BENCH EVAL -->"
+BENCH_END_MARK = "<!-- END BENCH EVAL -->"
 ZERO_LEXEMES = frozenset({"0", "0.0", "0.00", "0.000"})
 COST_LINE = re.compile(r"\bcost\b", re.IGNORECASE)
 HEX_STEM = re.compile(r"^[0-9a-f]+", re.IGNORECASE)
@@ -46,6 +48,8 @@ ISSUE_ID = re.compile(r"#\d+")
 LONG_HEX = re.compile(r"\b[0-9a-f]*[a-f][0-9a-f]{11,}\b", re.IGNORECASE)
 DOTTED_VERSION = re.compile(r"\b\d+(?:\.\d+){2,}\b")
 LEADING_ZERO = re.compile(r"\b0\d+\b")
+AT_K = re.compile(r"@[0-9]+")
+PERCENT_CI = re.compile(r"95%[ \t]*CI")
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,8 @@ def mask(text: str) -> str:
     out = _blank_matches(out, LONG_HEX)
     out = _blank_matches(out, DOTTED_VERSION)
     out = _blank_matches(out, LEADING_ZERO)
+    out = _blank_matches(out, AT_K)
+    out = _blank_matches(out, PERCENT_CI)
     return out
 
 
@@ -172,6 +178,8 @@ def linked_results(text: str) -> frozenset[str]:
 def project_file(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
     if data.get("suite") == "metrics":
         return _project_metrics(data, readme)
+    if data.get("suite") == "bench":
+        return _project_bench(data, readme)
     emitted: set[str] = set(_project_overhead(data))
     if data.get("small") is True:
         return frozenset(emitted)
@@ -233,11 +241,109 @@ def _project_metrics(data: Mapping[str, object], readme: frozenset[str]) -> froz
     return frozenset(emitted)
 
 
+def _project_bench(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
+    """Recount rates and percentiles. Stored floats are not a source."""
+    queries = data.get("queries")
+    if not isinstance(queries, list):
+        return frozenset()
+    emitted: set[str] = set()
+    n_items = data.get("n_items")
+    if type(n_items) is int:
+        emitted.add(str(n_items))
+    for arm in ("rag", "graph", "loop"):
+        rows = [row for row in queries if isinstance(row, dict) and row.get("arm") == arm]
+        recall_rows = [row for row in rows if isinstance(row.get("recall_at_5"), bool)]
+        recall_hits = sum(1 for row in recall_rows if row.get("recall_at_5") is True)
+        accurate = sum(1 for row in rows if row.get("accurate") is True)
+        _emit_rate(emitted, readme, recall_hits, len(recall_rows))
+        _emit_rate(emitted, readme, accurate, len(rows))
+        totals = []
+        compile_ms = []
+        costs = []
+        for row in rows:
+            phases = row.get("phases")
+            if isinstance(phases, dict):
+                total = phases.get("total_ms")
+                if isinstance(total, int | float):
+                    totals.append(float(total))
+                compile = phases.get("compile_ms")
+                if isinstance(compile, int | float):
+                    compile_ms.append(float(compile))
+            cost = row.get("cost_usd")
+            if isinstance(cost, int | float):
+                costs.append(float(cost))
+        if totals:
+            _emit_ms(emitted, readme, _percentile(totals, 0.50))
+            _emit_ms(emitted, readme, _percentile(totals, 0.95))
+            _emit_ms(emitted, readme, sum(totals) / len(totals))
+        if compile_ms:
+            _emit_ms(emitted, readme, sum(compile_ms) / len(compile_ms))
+        if costs:
+            _emit_cost(emitted, readme, sum(costs) / len(costs))
+    for key in (
+        "recall_delta_graph_minus_loop",
+        "accuracy_delta_graph_minus_loop",
+        "accuracy_delta_graph_minus_rag",
+    ):
+        _emit_ci(emitted, readme, data.get(key))
+    recall = data.get("recall")
+    if isinstance(recall, dict):
+        _emit_ci(emitted, readme, recall.get("graph_minus_loop"))
+        _emit_ci(emitted, readme, recall.get("graph_minus_rag"))
+    return frozenset(emitted)
+
+
+def _percentile(values: list[float], p: float) -> float:
+    xs = sorted(values)
+    if len(xs) == 1:
+        return xs[0]
+    rank = (len(xs) - 1) * p
+    lo = int(rank)
+    hi = min(lo + 1, len(xs) - 1)
+    return xs[lo] + (xs[hi] - xs[lo]) * (rank - lo)
+
+
+def _emit_ms(emitted: set[str], readme: frozenset[str], value: float) -> None:
+    candidates = (
+        f"{value:.1f}",
+        f"{value:.1f} ms",
+        f"{round(value)}",
+        f"{round(value)} ms",
+    )
+    for lexeme in candidates:
+        if lexeme in readme:
+            emitted.add(lexeme)
+
+
+def _emit_cost(emitted: set[str], readme: frozenset[str], value: float) -> None:
+    candidates = (f"{value:.6f}", f"{value:.3f}", f"{value:.1f}", "0")
+    for lexeme in candidates:
+        if lexeme in readme:
+            emitted.add(lexeme)
+
+
+def _emit_ci(emitted: set[str], readme: frozenset[str], blob: object) -> None:
+    if not isinstance(blob, Mapping):
+        return
+    for key in ("point", "lo", "hi"):
+        value = blob.get(key)
+        if isinstance(value, int | float):
+            lexeme = f"{value:.3f}"
+            if lexeme in readme:
+                emitted.add(lexeme)
+    for key in ("B", "seed", "n"):
+        value = blob.get(key)
+        if type(value) is int:
+            emitted.add(str(value))
+
+
 def _emit_rate(emitted: set[str], readme: frozenset[str], hits: int, items: int) -> None:
     if items <= 0:
         return
-    if f"{hits / items:.3f}" in readme:
+    rate = f"{hits / items:.3f}"
+    if rate in readme:
         emitted.add(f"{hits}/{items}")
+        emitted.add(rate)
 
 
 def _project_overhead(data: Mapping[str, object]) -> frozenset[str]:
@@ -286,6 +392,43 @@ def build_ledger(root: Path, writeup: str, readme: str) -> tuple[Ledger, tuple[F
     return Ledger(readme=readme_set, projected=frozenset(projected)), tuple(failures)
 
 
+def _readme_bench_block(text: str) -> str | None:
+    if BENCH_BEGIN_MARK not in text or BENCH_END_MARK not in text:
+        return None
+    _, rest = text.split(BENCH_BEGIN_MARK, 1)
+    block, _ = rest.split(BENCH_END_MARK, 1)
+    return block
+
+
+def _check_readme_bench_block(readme: str, projected: frozenset[str]) -> tuple[Failure, ...]:
+    """README bench table numbers must come from committed results, not the rest of the README."""
+    block = _readme_bench_block(readme)
+    if block is None:
+        return ()
+    prefix, _ = readme.split(BENCH_BEGIN_MARK, 1)
+    line_offset = prefix.count("\n")
+    failures: list[Failure] = []
+    for cited in extract(block, README_REL):
+        span = Span(cited.span.path, cited.span.line + line_offset, cited.span.column)
+        if cited.lexeme in ZERO_LEXEMES and COST_LINE.search(cited.line_text):
+            failures.append(
+                Failure(
+                    span,
+                    f"'{cited.lexeme}' is on a cost line, and cost is UNVERIFIED",
+                )
+            )
+            continue
+        if cited.lexeme in projected:
+            continue
+        failures.append(
+            Failure(
+                span,
+                f"'{cited.lexeme}' in the README bench block is not in linked evals/results JSON",
+            )
+        )
+    return tuple(failures)
+
+
 def judge(cited: CitedNumber, ledger: Ledger) -> Failure | None:
     if cited.lexeme in ZERO_LEXEMES and COST_LINE.search(cited.line_text):
         return Failure(
@@ -331,8 +474,10 @@ def check(root: Path) -> tuple[Failure, ...]:
     if README_REL in texts and "docs/writeup.md" in texts:
         ledger, link_failures = build_ledger(root, writeup_text, readme_text)
         failures.extend(link_failures)
+        failures.extend(_check_readme_bench_block(readme_text, ledger.projected))
     elif README_REL in texts:
         ledger = Ledger(readme=readme_lexemes(readme_text), projected=frozenset())
+        failures.extend(_check_readme_bench_block(readme_text, ledger.projected))
     else:
         ledger = Ledger(readme=frozenset(), projected=frozenset())
     for rel in CHECKED_DOCS:

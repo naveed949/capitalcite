@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "n_items": 95,
+  "model": "fake",
+  "compile_once": true,
+  "graph_over_rag_p95": 24.439189388773787,
+  "graph_p95_total_ms": 38.83798750005098,
+  "rag_p95_total_ms": 1.5891684000735034,
+  "mean_cost_usd": 0.0,
+  "mean_compile_ms": 0.031879568433922895,
+  "thresholds": {
+    "graph_over_rag_p95_max_ratio": 2.0,
+    "cost_per_query_abs": 0.0,
+    "compile_ms_max": 0.5,
+    "rationale": "Absolute graph p95 is wall-clock on the host. A loaded runner measured 96-100 ms against a 38.8 ms laptop snapshot and failed a 2x ms band. The gate compares graph p95 to rag p95 in the same run. Both arms see the same scheduler. A 2x band on that ratio absorbs first-query warmup. It does not catch a compile-cache miss: a --no-compile-once run still sits inside the band. When compile_once is true, mean graph compile_ms must stay under 0.5. Cost is exactly 0 on ASK_MODEL=fake; any positive mean fails."
+  }
+}

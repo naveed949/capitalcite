@@ -177,6 +177,8 @@ def test_policy_defaults_are_closed() -> None:
     assert settings.trusted_proxy_hops == 0
     assert settings.embed_threads == 0
     assert settings.git_sha is None
+    assert settings.ask_seed is None
+    assert settings.ask_temperature is None
     assert settings.otel_exporter_otlp_endpoint is None
     assert settings.otel_exporter_otlp_protocol == "http/protobuf"
     assert settings.otel_exporter_otlp_timeout == 0.2

@@ -8,6 +8,10 @@ on:
     paths:
       - ".github/workflows/eval-nightly.yml"
       - "evals/baselines/nightly.json"
+      - "evals/baselines/bench.json"
+      - "evals/bench/**"
+      - "src/capitalcite/eval/**"
+      - "src/capitalcite/agent/**"
       - "src/capitalcite/eval/baseline.py"
       - "src/capitalcite/eval/cache_key.py"
       - "src/capitalcite/eval/runner.py"
@@ -42,6 +46,35 @@ jobs:
 
       - name: capitalcite check
         run: uv run capitalcite check --out "${RUNNER_TEMP}/check"
+
+  bench:
+    name: agent vs RAG bench gate
+    runs-on: ubuntu-latest
+    env:
+      SEC_USER_AGENT: capitalcite-ci ci@example.com
+      APP_ENV: test
+      ASK_MODEL: fake
+      METRIC_QUERY_BACKEND: catalog
+      WAREHOUSE_PATH: ${{ github.workspace }}/dbt/target/ci.duckdb
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install package and tools
+        run: uv sync --frozen --all-groups
+
+      - name: Build ci warehouse
+        run: uv run --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci
+
+      - name: Bench vs committed p95 and cost
+        run: |
+          uv run capitalcite eval --suite bench \
+            --baseline evals/baselines/bench.json \
+            --out "${RUNNER_TEMP}/eval-bench"
 
   live:
     name: live LLM eval

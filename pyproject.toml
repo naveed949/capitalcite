@@ -42,7 +42,11 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
+    "tiktoken>=0.14.0",
     "types-beautifulsoup4>=4.12.0.20250516",
+]
+eval = [
+    "tiktoken>=0.14.0",
 ]
 metrics = [
     "dbt-core==1.12.6",
