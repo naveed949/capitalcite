@@ -297,14 +297,13 @@ def test_openai_requires_paid(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("ASK_MODEL", "openai")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    with pytest.raises(Unverified, match="ASK_MODEL=openai requires --paid"):
+    with pytest.raises(Unverified, match="hosted OpenAI requires --paid"):
         _bench_settings(_pin(), paid=False)
 
 
 async def test_paid_sends_pin_model_seed_and_temperature(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from capitalcite.ask.endpoint import chat_endpoint_for
     from capitalcite.ask.models import build_structured_model
     from capitalcite.chunking.models import Chunk, ChunkerName
     from capitalcite.eval.bench import _bench_settings
@@ -319,8 +318,10 @@ async def test_paid_sends_pin_model_seed_and_temperature(
     monkeypatch.setenv("WAREHOUSE_PATH", str(warehouse))
     pin = load_pin(DEFAULT_PIN)
     seen: list[dict[str, object]] = []
+    seen_url: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        seen_url.append(str(request.url))
         seen.append(json.loads(request.content))
         content = json.dumps(
             {
@@ -331,10 +332,11 @@ async def test_paid_sends_pin_model_seed_and_temperature(
         )
         return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
 
-    settings = _bench_settings(pin, paid=True)
+    ready = _bench_settings(pin, paid=True)
+    settings = ready.settings
     model = build_structured_model(
         "openai",
-        endpoint=chat_endpoint_for(settings, "openai"),
+        endpoint=ready.endpoint,
         seed=settings.ask_seed,
         temperature=settings.ask_temperature,
         transport=httpx.MockTransport(handler),
@@ -364,9 +366,153 @@ async def test_paid_sends_pin_model_seed_and_temperature(
     assert body["seed"] == pin.seed
     assert body["temperature"] == pin.temperature
     assert body["model"] != "gpt-not-from-pin"
+    assert seen_url[0] == "https://api.openai.com/v1/chat/completions"
+    assert ready.endpoint is not None
+    assert ready.endpoint.label.billed is True
 
 
 async def test_full_corpus_missing_filings(tmp_path: Path) -> None:
     with pytest.raises(EvalUnverified, match=r"need 12 filings|missing raw/edgar"):
         async with indexed_corpus(tmp_path):
             pass
+
+
+def test_shipped_pins_keep_prompt_hash_and_host_class() -> None:
+    hosted = load_pin(DEFAULT_PIN)
+    local = load_pin(Path("evals/bench/pin-lfm3-local.json"))
+    assert hosted.host_class is None
+    assert hosted.prompt_hash == local.prompt_hash
+    assert local.host_class == "localhost"
+    assert local.openai_model == "lfm3:latest"
+    assert local.model == "openai"
+    assert "://" not in json.dumps(local.paid_run)
+
+
+def test_local_cost_is_zero_and_not_comparable() -> None:
+    from capitalcite.ask.endpoint import parse_chat_endpoint
+    from capitalcite.eval.bench import bench_provenance, bench_stem_suffix, provenance_sentence
+    from capitalcite.eval.prices import ModelPrice, bench_cost_usd, require_local_zero
+
+    pin = load_pin(Path("evals/bench/pin-lfm3-local.json"))
+    endpoint = parse_chat_endpoint(
+        "http://127.0.0.1:11434/v1",
+        "sk-hosted-secret",
+        pin.openai_model,
+    )
+    assert endpoint.label.billed is False
+    assert endpoint.headers() == {}
+    provenance = bench_provenance(endpoint, pin, Path("evals/bench/pin-lfm3-local.json"))
+    prices = load_prices(Path(pin.prices))
+    require_local_zero(prices, pin.openai_model)
+    cost = bench_cost_usd(
+        prices,
+        provenance,
+        model_id=pin.openai_model,
+        tokens_in=1_000_000,
+        tokens_out=1_000_000,
+    )
+    assert cost == 0.0
+    assert f"{cost:.6f}" == "0.000000"
+    assert provenance.provider == "local"
+    assert provenance.host_class == "localhost"
+    assert provenance.model_id == "lfm3:latest"
+    assert provenance.comparable_to_hosted is False
+    assert provenance.latency_scope == "host_hardware"
+    assert bench_stem_suffix(compile_once=True, provenance=provenance) == "-bench-localhost"
+    other = provenance.model_copy(update={"host_class": "other"})
+    assert bench_stem_suffix(compile_once=False, provenance=other) == "-bench-before-other"
+    sentence = provenance_sentence(provenance)
+    assert "://" not in sentence
+    assert "cost" not in sentence.lower()
+    assert "not comparable" in sentence
+    bumped = prices.model_copy(
+        update={"models": {"lfm3:latest": ModelPrice(input_usd_per_1m=0.15, output_usd_per_1m=0.0)}}
+    )
+    with pytest.raises(ValueError, match="must be 0"):
+        require_local_zero(bumped, "lfm3:latest")
+    hosted_prices = load_prices()
+    with pytest.raises(ValueError, match="billing local"):
+        bench_cost_usd(
+            hosted_prices,
+            provenance,
+            model_id=pin.openai_model,
+            tokens_in=1,
+            tokens_out=1,
+        )
+
+
+def test_local_pin_refuses_paid_and_a_hosted_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    from capitalcite.eval.bench import _bench_settings
+
+    monkeypatch.setenv("SEC_USER_AGENT", "capitalcite-tests tests@example.com")
+    monkeypatch.setenv("ASK_MODEL", "openai")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("ASK_OPENAI_BASE_URL", "http://127.0.0.1:11434/v1")
+    pin = load_pin(Path("evals/bench/pin-lfm3-local.json"))
+    with pytest.raises(EvalUnverified, match="does not apply to a local"):
+        _bench_settings(pin, paid=True)
+    monkeypatch.delenv("ASK_OPENAI_BASE_URL")
+    with pytest.raises(EvalUnverified, match="does not match chat host class openai"):
+        _bench_settings(pin, paid=False)
+
+
+def test_local_report_json_has_no_url(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from capitalcite.ask.endpoint import parse_chat_endpoint
+    from capitalcite.cli import app
+    from capitalcite.eval.bench import bench_provenance
+
+    pin = _pin().model_copy(
+        update={
+            "model": "openai",
+            "host_class": "localhost",
+            "openai_model": "lfm3:latest",
+            "prices": "evals/bench/prices/lfm3-local.json",
+        }
+    )
+    endpoint = parse_chat_endpoint("http://127.0.0.1:11434/v1", None, "lfm3:latest")
+    provenance = bench_provenance(endpoint, pin, Path("evals/bench/pin-lfm3-local.json"))
+    report = BenchReport(
+        git_sha="abc123",
+        compile_once=True,
+        pin=pin,
+        prices=load_prices(Path("evals/bench/prices/lfm3-local.json")),
+        provenance=provenance,
+        n_items=1,
+        queries=(_row("rag", 10, True), _row("graph", 30, True), _row("loop", 20, True)),
+        identity_digest="b" * 64,
+        recall=RecallReport(status="not_measured", reason=RECALL_NOT_MEASURED),
+        accuracy_delta_graph_minus_loop=_ci(),
+        accuracy_delta_graph_minus_rag=_ci(),
+        bottleneck_phase="retrieval",
+        estimated_paid_tokens_per_item={"tokens_in": 10.0, "tokens_out": 1.0},
+    )
+    text = report.model_dump_json()
+    assert "://" not in text
+    assert "11434" not in text
+    body = json.loads(text)
+    assert body["provenance"]["provider"] == "local"
+    assert body["provenance"]["comparable_to_hosted"] is False
+    assert body["queries"][0]["cost_usd"] == 0.0
+    payload = json.loads(text)
+    del payload["provenance"]
+    legacy = BenchReport.model_validate(payload)
+    assert legacy.provenance.provider == "fake"
+    assert legacy.provenance.model_id == "fake"
+    path = tmp_path / "local.json"
+    path.write_text(text + "\n", encoding="utf-8")
+    result = CliRunner().invoke(
+        app,
+        [
+            "eval",
+            "--suite",
+            "bench",
+            "--from-results",
+            str(path),
+            "--baseline",
+            "evals/baselines/bench.json",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "fake-model" in result.output

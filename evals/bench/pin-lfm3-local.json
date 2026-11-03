@@ -1,0 +1,35 @@
+{
+  "suite": "bench",
+  "n_items": 95,
+  "sets": {
+    "v1_recall": 77,
+    "metrics": 18
+  },
+  "model": "openai",
+  "host_class": "localhost",
+  "openai_model": "lfm3:latest",
+  "seed": 20261103,
+  "temperature": 0.0,
+  "tokenizer": "o200k_base",
+  "prompt_hash": "5d0ae638231240c9b774ec7d7a5f2f81e7f9ae4230ca9cca713f0e35973d1b52",
+  "prices": "evals/bench/prices/lfm3-local.json",
+  "bootstrap_B": 10000,
+  "bootstrap_seed": 20261103,
+  "paid_run": {
+    "status": "UNVERIFIED",
+    "reason": "A live local model run was not executed. Real Ollama hardware numbers are UNVERIFIED.",
+    "model_id": "lfm3:latest",
+    "seed": 20261103,
+    "temperature": 0.0,
+    "prompt_hash": "5d0ae638231240c9b774ec7d7a5f2f81e7f9ae4230ca9cca713f0e35973d1b52",
+    "tokenizer": "o200k_base",
+    "prices": "evals/bench/prices/lfm3-local.json",
+    "host_class": "localhost",
+    "command": "ASK_MODEL=openai ASK_OPENAI_MODEL=lfm3:latest uv run capitalcite eval --suite bench --pin evals/bench/pin-lfm3-local.json --out evals/results",
+    "estimated_tokens_per_item": {
+      "tokens_in": 1374.9684210526316,
+      "tokens_out": 47.90526315789474,
+      "source": "evals/results/17f203a9bcf6-bench.json graph arm, o200k_base counts of the prompts the adapters would send"
+    }
+  }
+}
