@@ -190,8 +190,8 @@ write summary.txt "timestamp ${TS}"
 write small "${SMALL}"
 log "verify: small=${SMALL}"
 
-log "verify: uv sync --frozen"
-uv sync --frozen
+log "verify: uv sync --frozen --group eval"
+uv sync --frozen --group eval
 
 log "verify: write-up numbers"
 set +e

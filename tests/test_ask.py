@@ -180,6 +180,27 @@ def test_openai_repr_hides_the_key() -> None:
     assert "test-key" not in repr(model)
 
 
+def test_chat_body_includes_seed_and_temperature() -> None:
+    from capitalcite.ask.models import _chat_body
+
+    body = _chat_body(
+        "gpt-4o-mini",
+        [{"role": "user", "content": "hi"}],
+        seed=20261103,
+        temperature=0.0,
+    )
+    assert body["seed"] == 20261103
+    assert body["temperature"] == 0.0
+    omitted = _chat_body(
+        "gpt-4o-mini",
+        [{"role": "user", "content": "hi"}],
+        seed=None,
+        temperature=0.0,
+    )
+    assert "seed" not in omitted
+    assert omitted["temperature"] == 0.0
+
+
 async def test_openai_retries_invalid_json_once() -> None:
     seen: list[httpx.Request] = []
 

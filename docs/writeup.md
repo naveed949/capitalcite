@@ -138,14 +138,16 @@ The agent vs RAG bench is 95 items: 77 v1 recall rows plus 18
 metrics rows, from
 [`evals/results/44092d937e84-bench.json`](../evals/results/44092d937e84-bench.json).
 Graph accuracy is 22/95 (0.232). RAG accuracy is 5/95 (0.053).
-Recall@5 on the fixture index is 0/77 (0.000). graph-loop Recall@5
-and accuracy deltas are 0.000, 95% CI 0.000 to 0.000, B=10000,
-seed 20261103. Graph p50 is 6.6 ms, p95 38.8 ms. The bottleneck
-phase is tool at 6.2 ms. Compile-once dropped graph compile from
-2.5 ms to 0.0 ms and p95 from 50.5 ms to 38.8 ms
+Recall@5 is not measured on the fixture index: the gold spans are
+not in those fixture docs. graph-loop accuracy delta is 0.000,
+95% CI 0.000 to 0.000, B=10000, seed 20261103. Graph p50 is
+6.6 ms, p95 38.8 ms. The bottleneck phase is tool at 6.2 ms.
+Compile-once dropped graph compile from 2.5 ms to 0.0 ms and p50
+from 8.9 ms to 6.6 ms
 ([`44092d937e84-bench-before.json`](../evals/results/44092d937e84-bench-before.json)).
-Fake generate time is not live model latency. A paid `gpt-4o-mini`
-run is UNVERIFIED.
+The p95 change (50.5 ms to 38.8 ms) is noise unless repeated runs
+hold it. Fake generate time is not live model latency. A paid
+`gpt-4o-mini` run is UNVERIFIED.
 
 ## Why section/hybrid Recall@5 is 0.169
 

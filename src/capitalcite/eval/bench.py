@@ -508,6 +508,7 @@ async def _score_v1(
         pin,
         recall,
         accurate,
+        exporter,
     )
 
 
@@ -537,6 +538,7 @@ async def _score_metric(
         pin,
         None,
         accurate,
+        exporter,
     )
 
 
@@ -591,6 +593,7 @@ def _record(
     pin: BenchPin,
     recall_at_5: bool | None,
     accurate: bool,
+    exporter: MemoryExporter,
 ) -> QueryRecord:
     traces = tuple(response.traces)
     synthesized = response.kind == "answered" or bool(hits)

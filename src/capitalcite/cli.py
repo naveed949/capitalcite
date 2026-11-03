@@ -946,7 +946,7 @@ def eval_cmd(
             pin_path=pin,
             paid=paid,
             compile_once=not no_compile_once,
-            corpus=corpus,  # type: ignore[arg-type]
+            corpus=corpus,
             input_dir=input_dir,
         )
         return

@@ -175,14 +175,10 @@ async def act_step(state: GraphState) -> dict[str, object]:
             ok=result.ok,
             detail=result.detail,
         )
-        runtime.observe.tool_finished(
-            trace, None if result.reason is None else str(result.reason)
-        )
+        runtime.observe.tool_finished(trace, None if result.reason is None else str(result.reason))
         traces.append(trace)
         plan = list(state["plan"])
-        plan[state["cursor"]] = step.model_copy(
-            update={"status": "done" if result.ok else "error"}
-        )
+        plan[state["cursor"]] = step.model_copy(update={"status": "done" if result.ok else "error"})
         hits = list(state["hits"])
         hits.extend(result.hits)
         update: dict[str, object] = {

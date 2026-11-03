@@ -158,17 +158,17 @@ Generated from [`evals/results/4447164efb28-metrics.json`](evals/results/4447164
 
 ### Agent vs RAG bench (phases and cost)
 
-95 items: 77 handwritten v1 recall rows from `evals/golden/v1.jsonl` plus 18 pointer-gold rows from `evals/golden/metrics.jsonl`. `ASK_MODEL=fake`, seed `20261103`, temperature `0`, prompt hash `5d0ae638231240c9b774ec7d7a5f2f81e7f9ae4230ca9cca713f0e35973d1b52`, tokenizer `o200k_base`. Fixture index, not the twelve-filing corpus. Recall@5 on that index is 0/77, the same empty-span condition as `--small`.
+95 items: 77 handwritten v1 recall rows from `evals/golden/v1.jsonl` plus 18 pointer-gold rows from `evals/golden/metrics.jsonl`. `ASK_MODEL=fake`, seed `20261103`, temperature `0`, prompt hash `5d0ae638231240c9b774ec7d7a5f2f81e7f9ae4230ca9cca713f0e35973d1b52`, tokenizer `o200k_base`. Fixture index, not the twelve-filing corpus. Recall@5 is not measured on that index (gold spans sit at offsets the fixture HTML does not contain). `--corpus full` is the twelve-filing path; it was not run here.
 
 <!-- BEGIN BENCH EVAL -->
 
 | Arm | n | Recall@5 | Accuracy | p50 ms | p95 ms | cost/query |
 |---|---:|---:|---:|---:|---:|---:|
-| rag | 95 | 0.000 | 0.053 | 1.3 | 1.6 | 0.000000 |
-| graph | 95 | 0.000 | 0.232 | 6.6 | 38.8 | 0.000000 |
-| loop | 95 | 0.000 | 0.232 | 4.7 | 37.3 | 0.000000 |
+| rag | 95 | not measured | 0.053 | 1.3 | 1.6 | 0.000000 |
+| graph | 95 | not measured | 0.232 | 6.6 | 38.8 | 0.000000 |
+| loop | 95 | not measured | 0.232 | 4.7 | 37.3 | 0.000000 |
 
-graph-loop Recall@5 delta=0.000 (95% CI 0.000 to 0.000, B=10000, seed=20261103).
+graph-loop Recall@5 delta=not measured (fixture index has no gold spans)
 graph-loop accuracy delta=0.000 (95% CI 0.000 to 0.000).
 Bottleneck on the graph arm is **tool**.
 Generated from [`evals/results/44092d937e84-bench.json`](evals/results/44092d937e84-bench.json).
@@ -177,9 +177,9 @@ Generated from [`evals/results/44092d937e84-bench.json`](evals/results/44092d937
 
 Accuracy is 22/95 on graph and loop, 5/95 on rag. Cost per correct is 0 on the fake model. The measured bottleneck phase is **tool** (gate plus execute, exclusive of nested retrieve): graph mean tool 6.2 ms, retrieve 1.0 ms, model 0.1 ms, compile 0.0 ms.
 
-The optimization in this change is compile-once. Before, `run_agent` compiled a LangGraph `StateGraph` on every question ([`44092d937e84-bench-before.json`](evals/results/44092d937e84-bench-before.json)): graph compile 2.5 ms, p50 8.9 ms, p95 50.5 ms. After ([`44092d937e84-bench.json`](evals/results/44092d937e84-bench.json)): compile 0.0 ms, p50 6.6 ms, p95 38.8 ms. Answers did not change (`identity_digest` `211cd2caf15885e8ceeccb14e3258641a66991b63a9620a28936457f3d522f48` on both files). Tool remains the largest phase. Fake-model generate time is not live `gpt-4o-mini` latency. A paid run is UNVERIFIED; the pinned command is in [`evals/bench/pin.json`](evals/bench/pin.json). Estimated tokens per graph item from this fake run: 1374.968 in, 47.905 out.
+The optimization in this change is compile-once. Before, `run_agent` compiled a LangGraph `StateGraph` on every question ([`44092d937e84-bench-before.json`](evals/results/44092d937e84-bench-before.json)): graph compile 2.5 ms, p50 8.9 ms. After ([`44092d937e84-bench.json`](evals/results/44092d937e84-bench.json)): compile 0.0 ms, p50 6.6 ms. Those compile-mean and p50 drops are the claim. The p95 change (50.5 ms to 38.8 ms) is noise unless repeated runs hold it. Answers did not change (`identity_digest` `211cd2caf15885e8ceeccb14e3258641a66991b63a9620a28936457f3d522f48` on both files). Tool remains the largest phase. Fake-model generate time is not live `gpt-4o-mini` latency. A paid run is UNVERIFIED; the pinned command is in [`evals/bench/pin.json`](evals/bench/pin.json). Estimated tokens per graph item from this fake run: 1374.968 in, 47.905 out.
 
-Nightly gates graph p95 and cost per query against [`evals/baselines/bench.json`](evals/baselines/bench.json) at a 2x p95 band and a 0 absolute cost budget.
+Nightly gates the same-run graph p95 / rag p95 ratio and cost per query against [`evals/baselines/bench.json`](evals/baselines/bench.json) at a 2x band on that ratio and a 0 absolute cost budget. Absolute millisecond p95 is host-dependent.
 
 ### Latency and cost
 

@@ -189,7 +189,6 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pypdf" },
     { name = "qdrant-client", extra = ["fastembed"] },
-    { name = "tiktoken" },
     { name = "typer" },
 ]
 
@@ -199,7 +198,11 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "tiktoken" },
     { name = "types-beautifulsoup4" },
+]
+eval = [
+    { name = "tiktoken" },
 ]
 metrics = [
     { name = "dbt-core" },
@@ -223,7 +226,6 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.6,<3" },
     { name = "pypdf", specifier = ">=6.20.1" },
     { name = "qdrant-client", extras = ["fastembed"], specifier = ">=1.14,<2" },
-    { name = "tiktoken", specifier = ">=0.14.0" },
     { name = "typer", specifier = ">=0.15,<1" },
 ]
 
@@ -233,8 +235,10 @@ dev = [
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "ruff", specifier = ">=0.8" },
+    { name = "tiktoken", specifier = ">=0.14.0" },
     { name = "types-beautifulsoup4", specifier = ">=4.12.0.20250516" },
 ]
+eval = [{ name = "tiktoken", specifier = ">=0.14.0" }]
 metrics = [
     { name = "dbt-core", specifier = "==1.12.6" },
     { name = "dbt-duckdb", specifier = "==1.11.0" },

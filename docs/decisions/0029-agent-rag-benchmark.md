@@ -28,9 +28,12 @@ ask begin. There is no second clock.
 With n=95, p50 and p95 are interpolated between adjacent order statistics
 (Hyndman-Fan type 7). p95 is not a single sample. At this n the 95th
 percentile sits near the 90th order statistic. A one-item tail still moves
-it. The nightly gate therefore uses a 2x band on p95, not a 1 ms budget.
-That band absorbs scheduler noise on a shared CPU runner. It still fails
-when retrieve or compile doubles.
+it. Absolute graph p95 is wall-clock on the host. A loaded runner
+measured 96-100 ms against a 38.8 ms laptop snapshot and failed a 2x
+millisecond band. The nightly gate therefore compares graph p95 to rag
+p95 in the same run and applies a 2x band to that ratio. Both arms see
+the same scheduler. The band still fails when retrieve or compile
+doubles relative to rag.
 
 ## Paired bootstrap, not an unpaired one
 
@@ -43,10 +46,12 @@ interval. A paired bootstrap resamples the 95 differences. The shared
 item effect cancels. The interval shrinks when the arms agree, which is
 the usual case for the same tools and the same fake planner.
 
-B=10000 and seed=20261103 are pinned. The unit test feeds a constant
-delta of 0.25. The interval is [0.25, 0.25]. A second test feeds
-perfectly correlated 0/1 pairs. The paired interval is narrower than the
-unpaired interval on the same draws.
+B=10000 and seed=20261103 are pinned. The unit test feeds 50 zeros and
+50 ones. The mean is 0.5 and the 95% interval is about [0.40, 0.60].
+A second test feeds correlated pairs where the left arm is not equal
+to the right. The paired interval is narrower than the unpaired
+interval on the same draws. A constant-delta draw is only a
+deterministic smoke check.
 
 ## Cost per correct answer, not only cost per query
 
@@ -69,10 +74,15 @@ branch. HTTP streaming observes the same nodes.
 
 A plain while-loop calls the same `plan_step` / `act_step` /
 `synthesize_step` functions. It has no checkpoint, no graph-shaped
-branch table, and no compile. On the fake planner the answers match. The
-Recall@5 delta and the accuracy delta are 0.000 with a 95% CI of
+branch table, and no compile. On the fake planner the answers match.
+Recall@5 is not measured on the fixture index (gold spans sit outside
+those documents). The accuracy delta is 0.000 with a 95% CI of
 [0.000, 0.000]. The graph pays compile and dispatcher overhead. That is
-the cost of the runtime, not a quality gain, on this model.
+the cost of the runtime, not a quality gain, on this model. Graph nodes
+still open `graph.plan`, `graph.act`, `graph.synthesize`, and
+`graph.stop`. A `compile` child of `agent` is the StateGraph compile.
+Phase fold ignores those overlapping parents and still sums exclusive
+tool, retrieve, model, and compile under the ask total.
 
 ## The fake model cannot measure model latency
 
@@ -89,5 +99,7 @@ The measured bottleneck on the graph arm is **tool** (gate plus execute,
 exclusive of nested retrieve). `run_agent` previously compiled a
 `StateGraph` on every question. Nodes now read model, tools, and observe
 from a contextvar, so one compiled graph serves every call. Compile mean
-drops. Tool remains the largest phase. The fake model still leaves
-generator latency unproven.
+and p50 drop. A p95 movement on one host is noise unless repeated runs
+hold it. Tool remains the largest phase. The fake model still leaves
+generator latency unproven. `--no-compile-once` rebuilds the graph on
+every question so the two conditions can be compared.

@@ -712,6 +712,35 @@ def test_post_ask_agent_tool_http_error_is_200(
     assert body.kind in {"answered", "refused"}
 
 
+def test_post_ask_agent_answer_bytes_are_stable(tmp_path: Path) -> None:
+    jpm = _chunk(ticker="JPM", text="the Standardized CET1 ratios were 15.7% and 15.8%")
+    bac = _chunk(
+        ticker="BAC",
+        text="CET1 capital ratio of 11.9 percent under the Standardized approach",
+        doc_id="doc-bac",
+        url=_BAC_URL,
+        period="2024-12-31",
+    )
+    application, _setup = _indexed_app(tmp_path, [jpm, bac])
+    payload = {
+        "question": (
+            "Which bank had the higher Standardized CET1 ratio at year-end 2024, "
+            "JPMorgan or Bank of America?"
+        ),
+        "path": "agent",
+        "model": "fake",
+        "k": 8,
+    }
+    with TestClient(application) as http:
+        first = http.post("/ask", json=payload)
+        second = http.post("/ask", json=payload)
+    assert first.status_code == 200
+    assert first.content == second.content
+    body = AskResponse.model_validate(first.json())
+    assert body.path == "agent"
+    assert body.kind in {"answered", "refused"}
+
+
 def test_post_ask_default_path_is_still_rag(tmp_path: Path) -> None:
     application, _setup = _indexed_app(tmp_path, [_chunk()])
     with TestClient(application) as http:
