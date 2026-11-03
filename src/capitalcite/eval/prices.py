@@ -57,7 +57,6 @@ def cost_usd(
 
 
 def require_local_zero(table: PriceTable, model_id: str) -> None:
-    """A local price row must exist and both rates must be exactly 0."""
     if table.billing != "local":
         raise ValueError(f"local run requires billing local in {table.id}")
     price = table.models.get(model_id)
@@ -75,7 +74,6 @@ def bench_cost_usd(
     tokens_in: int,
     tokens_out: int,
 ) -> float:
-    """Fake is 0. Local requires a zero row. Hosted uses the list price."""
     if provenance.provider == "fake":
         return 0.0
     if provenance.provider == "local":

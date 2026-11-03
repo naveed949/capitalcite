@@ -1,5 +1,3 @@
-"""Loopback Chat Completions stub for scripts/verify.sh."""
-
 from __future__ import annotations
 
 import json

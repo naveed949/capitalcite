@@ -1,5 +1,3 @@
-"""Chat endpoint parsing and the one Chat Completions POST."""
-
 from __future__ import annotations
 
 import json
@@ -7,6 +5,7 @@ import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import create_autospec
 
 import httpx
 import pytest
@@ -22,6 +21,7 @@ from capitalcite.ask.endpoint import (
 from capitalcite.ask.types import ModelNotConfigured, ModelUnavailable
 from capitalcite.config import Settings
 from capitalcite.retrieval.embedders import OpenAIEmbedder, spec_for
+from capitalcite.retrieval.service import RetrievalSetup
 from capitalcite.retrieval.types import EmbedderName
 from capitalcite.trace import MemoryExporter, configure_for_tests
 
@@ -35,8 +35,8 @@ def _settings(**env: str) -> Settings:
 
 
 def test_blank_base_url_is_hosted_default() -> None:
-    assert normalize_chat_base_url(None) is None
-    assert normalize_chat_base_url("  ") is None
+    assert normalize_chat_base_url(None) == "https://api.openai.com/v1"
+    assert normalize_chat_base_url("  ") == "https://api.openai.com/v1"
     endpoint = parse_chat_endpoint(None, "sk-test", "gpt-4o-mini")
     assert endpoint.label.provider == "hosted"
     assert endpoint.label.host_class == "openai"
@@ -366,6 +366,7 @@ async def test_check_live_ignores_ask_base_url(monkeypatch: pytest.MonkeyPatch) 
         source=ItemSource.HANDWRITTEN,
         evidence=[Evidence(doc_id="doc", section="Item 1", quote="15.7%")],
     )
-    await _live(True, object(), (item,))  # type: ignore[arg-type]
+    setup = create_autospec(RetrievalSetup, instance=True)
+    await _live(True, setup, (item,))
     assert seen["host"] == "openai"
     assert seen["auth"] == "Bearer sk-live"

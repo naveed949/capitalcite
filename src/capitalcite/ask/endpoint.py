@@ -1,5 +1,3 @@
-"""One Chat Completions target. Callers pass a ChatEndpoint, not a base URL string."""
-
 from __future__ import annotations
 
 import json
@@ -42,8 +40,6 @@ class RunLabel(BaseModel):
 
 @dataclass(frozen=True, slots=True, repr=False)
 class ChatEndpoint:
-    """Parsed chat target. Not a pydantic model, so it cannot be dumped into JSON."""
-
     _completions_url: str
     _api_key: str | None
     label: RunLabel
@@ -64,20 +60,17 @@ class ChatEndpoint:
 
 
 class ChatConfig(Protocol):
-    """Structural stand-in so this module does not import Settings."""
-
     ask_openai_base_url: str | None
     openai_api_key: str | None
     ask_openai_model: str
 
 
-def normalize_chat_base_url(value: str | None) -> str | None:
-    """None and blank mean the hosted default, applied later by parse_chat_endpoint."""
+def normalize_chat_base_url(value: str | None) -> str:
     if value is None:
-        return None
+        return _HOSTED_BASE
     raw = value.strip()
     if not raw:
-        return None
+        return _HOSTED_BASE
     parts = urlsplit(raw)
     scheme = parts.scheme.casefold()
     if scheme not in {"http", "https"}:
@@ -109,7 +102,6 @@ def normalize_chat_base_url(value: str | None) -> str | None:
 
 
 def host_class_for(base_url: str | None) -> HostClass:
-    """Classify a base URL. No socket and no key check."""
     _provider, host_class, _billed = _classify(_parts(base_url))
     return host_class
 
@@ -152,7 +144,6 @@ def parse_chat_endpoint(
 
 
 def chat_endpoint_for(settings: ChatConfig, selected: AskModelName) -> ChatEndpoint | None:
-    """None when selected is fake. The fake model does not read the key or the URL."""
     if selected == "fake":
         return None
     return parse_chat_endpoint(
@@ -170,7 +161,6 @@ async def post_chat_completion(
     temperature: float | None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> str:
-    """The only Chat Completions POST. Planner and synthesizer both call it."""
     label = endpoint.label
     with observation(
         chat_span_name(label.model_id),
@@ -223,10 +213,7 @@ def _unavailable(endpoint: ChatEndpoint, detail: str) -> ModelUnavailable:
 
 
 def _parts(base_url: str | None) -> SplitResult:
-    normalized = normalize_chat_base_url(base_url)
-    if normalized is None:
-        normalized = _HOSTED_BASE
-    return urlsplit(normalized)
+    return urlsplit(normalize_chat_base_url(base_url))
 
 
 def _classify(parts: SplitResult) -> tuple[ProviderName, HostClass, bool]:

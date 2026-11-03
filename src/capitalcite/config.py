@@ -34,7 +34,6 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
-        # A base URL can carry a password. Startup errors must not print the input.
         hide_input_in_errors=True,
     )
 
@@ -289,6 +288,8 @@ class Settings(BaseSettings):
     def normalize_ask_base_url(cls, value: object) -> object:
         if value is None or not isinstance(value, str):
             return value
+        if not value.strip():
+            return None
         from capitalcite.ask.endpoint import normalize_chat_base_url
 
         return normalize_chat_base_url(value)

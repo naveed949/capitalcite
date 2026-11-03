@@ -118,7 +118,6 @@ def build_structured_model(
     temperature: float | None = None,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> StructuredModel:
-    """fake ignores endpoint. openai without an endpoint raises ModelNotConfigured."""
     if name == "fake":
         return FakeStructuredModel()
     if endpoint is None:

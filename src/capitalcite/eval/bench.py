@@ -186,8 +186,6 @@ class RecallReport(BaseModel):
 
 
 class BenchProvenance(BaseModel):
-    """What actually ran. The only generator identity on BenchReport."""
-
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     provider: Literal["fake", "local", "hosted"]
