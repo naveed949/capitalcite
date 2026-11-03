@@ -405,12 +405,15 @@ def _check_readme_bench_block(readme: str, projected: frozenset[str]) -> tuple[F
     block = _readme_bench_block(readme)
     if block is None:
         return ()
+    prefix, _ = readme.split(BENCH_BEGIN_MARK, 1)
+    line_offset = prefix.count("\n")
     failures: list[Failure] = []
     for cited in extract(block, README_REL):
+        span = Span(cited.span.path, cited.span.line + line_offset, cited.span.column)
         if cited.lexeme in ZERO_LEXEMES and COST_LINE.search(cited.line_text):
             failures.append(
                 Failure(
-                    cited.span,
+                    span,
                     f"'{cited.lexeme}' is on a cost line, and cost is UNVERIFIED",
                 )
             )
@@ -419,7 +422,7 @@ def _check_readme_bench_block(readme: str, projected: frozenset[str]) -> tuple[F
             continue
         failures.append(
             Failure(
-                cited.span,
+                span,
                 f"'{cited.lexeme}' in the README bench block is not in linked evals/results JSON",
             )
         )

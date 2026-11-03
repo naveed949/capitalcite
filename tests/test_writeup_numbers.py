@@ -184,6 +184,7 @@ def test_readme_bench_block_rejects_invented_rate(tmp_path: Path) -> None:
     assert proc.returncode == 1
     assert "0.999" in proc.stdout
     assert "README bench block" in proc.stdout
+    assert "README.md:3:" in proc.stdout
 
 
 def test_writeup_ratio_from_linked_json(tmp_path: Path) -> None:
