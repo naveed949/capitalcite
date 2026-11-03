@@ -1280,6 +1280,7 @@ def _run_bench_eval(
                 out_dir=out,
                 compile_once=compile_once,
                 pin_path=pin_path,
+                stem_suffix="-bench" if compile_once else "-bench-before",
                 corpus=corpus,  # type: ignore[arg-type]
                 paid=paid,
                 input_dir=input_dir,
