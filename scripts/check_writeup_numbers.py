@@ -74,9 +74,17 @@ class CitedNumber:
 class Ledger:
     readme: frozenset[str]
     projected: frozenset[str]
+    by_rel: tuple[tuple[str, frozenset[str]], ...] = ()
 
     def permits(self, cited: CitedNumber) -> bool:
         return cited.lexeme in self.readme or cited.lexeme in self.projected
+
+    def projected_for(self, kind: str) -> frozenset[str]:
+        out: set[str] = set()
+        for rel, tokens in self.by_rel:
+            if _results_kind(rel) == kind:
+                out.update(tokens)
+        return frozenset(out)
 
 
 @dataclass(frozen=True)
@@ -434,10 +442,20 @@ def _stem_hex(path: Path) -> str | None:
     return match.group(0).lower()
 
 
+def _results_kind(rel: str) -> str | None:
+    name = Path(rel).name.lower()
+    if name.endswith("-otel-overhead.json"):
+        return "overhead"
+    if "-bench" in name and name.endswith(".json"):
+        return "bench"
+    return None
+
+
 def build_ledger(root: Path, writeup: str, readme: str) -> tuple[Ledger, tuple[Failure, ...]]:
     readme_set = readme_lexemes(readme)
     paths = linked_results(writeup) & linked_results(readme)
     projected: set[str] = set()
+    per_file: list[tuple[str, frozenset[str]]] = []
     failures: list[Failure] = []
     for rel in sorted(paths):
         if "unverified" in Path(rel).name.lower():
@@ -462,8 +480,17 @@ def build_ledger(root: Path, writeup: str, readme: str) -> tuple[Ledger, tuple[F
             and not git_sha.lower().startswith(expected)
         ):
             continue
-        projected.update(project_file(payload, readme_set))
-    return Ledger(readme=readme_set, projected=frozenset(projected)), tuple(failures)
+        tokens = project_file(payload, readme_set)
+        per_file.append((rel, tokens))
+        projected.update(tokens)
+    return (
+        Ledger(
+            readme=readme_set,
+            projected=frozenset(projected),
+            by_rel=tuple(per_file),
+        ),
+        tuple(failures),
+    )
 
 
 def _readme_marked_block(text: str, begin: str, end: str) -> str | None:
@@ -584,12 +611,12 @@ def check(root: Path) -> tuple[Failure, ...]:
     if README_REL in texts and "docs/writeup.md" in texts:
         ledger, link_failures = build_ledger(root, writeup_text, readme_text)
         failures.extend(link_failures)
-        failures.extend(_check_readme_bench_block(readme_text, ledger.projected))
-        failures.extend(_check_readme_overhead_block(readme_text, ledger.projected))
+        failures.extend(_check_readme_bench_block(readme_text, ledger.projected_for("bench")))
+        failures.extend(_check_readme_overhead_block(readme_text, ledger.projected_for("overhead")))
     elif README_REL in texts:
         ledger = Ledger(readme=readme_lexemes(readme_text), projected=frozenset())
-        failures.extend(_check_readme_bench_block(readme_text, ledger.projected))
-        failures.extend(_check_readme_overhead_block(readme_text, ledger.projected))
+        failures.extend(_check_readme_bench_block(readme_text, ledger.projected_for("bench")))
+        failures.extend(_check_readme_overhead_block(readme_text, ledger.projected_for("overhead")))
     else:
         ledger = Ledger(readme=frozenset(), projected=frozenset())
     adr_path = root / OVERHEAD_ADR_REL
@@ -598,7 +625,7 @@ def check(root: Path) -> tuple[Failure, ...]:
             _check_overhead_block(
                 adr_path.read_text(encoding="utf-8"),
                 OVERHEAD_ADR_REL,
-                ledger.projected,
+                ledger.projected_for("overhead"),
             )
         )
     for rel in CHECKED_DOCS:

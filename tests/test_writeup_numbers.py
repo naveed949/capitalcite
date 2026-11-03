@@ -361,6 +361,14 @@ def test_adr_overhead_block_rejects_bench_p50_6_9(tmp_path: Path) -> None:
     assert "0028-otel-tracing.md" in proc.stdout
 
 
+def test_readme_overhead_block_keeps_true_on_p50_when_bench_differs(
+    tmp_path: Path,
+) -> None:
+    _overhead_plus_bench_tree(tmp_path, readme_block_ms="2.6 ms")
+    proc = run_check(tmp_path)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
 def test_readme_bench_block_rejects_overhead_on_p50(tmp_path: Path) -> None:
     _overhead_plus_bench_tree(tmp_path, readme_block_ms="2.6 ms")
     readme = tmp_path / "README.md"
