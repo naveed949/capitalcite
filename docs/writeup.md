@@ -113,6 +113,10 @@ stays UNVERIFIED.
 The graph suite is n=6. Fixture-corpus substring hit rate is 0.000.
 `graph_query` on the memory snapshot is 1.000.
 
+The metrics suite is n=18. Fake-agent exact match is 15/15 and
+refusal is 3/3. Fake RAG exact match is 0/15 and refusal is 1/3.
+Mart coverage of handwritten numeric v1 items is 0/56.
+
 Red-team on the gate is 5/5. Audit verify is 3 cases at pass rate
 1.00. `capitalcite check` gates quote-index sanity at 36/77 and
 fixture span-overlap at 3/3. Quote-index sanity is not corpus

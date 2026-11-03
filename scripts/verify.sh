@@ -51,6 +51,31 @@ write() {
   printf '%s\n' "$*" >"${ART}/${file}"
 }
 
+# capitalcite check and eval --suite metrics need the fixture warehouse.
+# Build once; later warehouse steps reuse the same dbt.out.
+build_ci_warehouse() {
+  export DBT_PROJECT_DIR="${ROOT}/dbt"
+  if [[ -f "${ART}/dbt.exit" && -f "${ROOT}/dbt/target/ci.duckdb" ]]; then
+    log "verify: dbt build --target ci already ran"
+    return 0
+  fi
+  log "verify: dbt build --target ci"
+  set +e
+  uv run --frozen --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci \
+    >"${ART}/dbt.out" 2>"${ART}/dbt.err"
+  dbt_rc=$?
+  set -e
+  write dbt.exit "${dbt_rc}"
+  if [[ "${dbt_rc}" -ne 0 ]] || ! grep -q "Completed successfully" "${ART}/dbt.out"; then
+    log "verify: dbt build --target ci failed"
+    cat "${ART}/dbt.out" >&2 || true
+    cat "${ART}/dbt.err" >&2 || true
+    exit 1
+  fi
+  log "verify: dbt build --target ci ok"
+  cat "${ART}/dbt.out"
+}
+
 # Typer/Rich may insert SGR codes between the dashes in "--against-raw".
 plain() {
   sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' "$1"
@@ -2293,8 +2318,9 @@ if [[ "${eval_help_rc}" -ne 0 ]]; then
   exit 1
 fi
 if ! plain "${ART}/eval.help.out" | grep -q -- "--suite" \
-  || ! plain "${ART}/eval.help.out" | grep -q -- "--small"; then
-  log "verify: eval --help missing --suite or --small"
+  || ! plain "${ART}/eval.help.out" | grep -q -- "--small" \
+  || ! plain "${ART}/eval.help.out" | grep -q -- "metrics"; then
+  log "verify: eval --help missing --suite, --small, or metrics"
   cat "${ART}/eval.help.out" >&2 || true
   exit 1
 fi
@@ -2341,9 +2367,14 @@ fi
 log "verify: capitalcite eval --small ok"
 cat "${ART}/eval-small.out"
 
+build_ci_warehouse
+export WAREHOUSE_PATH="${ROOT}/dbt/target/ci.duckdb"
+write warehouse.path "${WAREHOUSE_PATH}"
+
 log "verify: capitalcite check"
 set +e
-uv run capitalcite check --out "${ART}/check" \
+WAREHOUSE_PATH="${WAREHOUSE_PATH}" METRIC_QUERY_BACKEND=catalog ASK_MODEL=fake \
+  uv run capitalcite check --out "${ART}/check" \
   >"${ART}/check.out" 2>"${ART}/check.err"
 check_rc=$?
 set -e
@@ -2355,8 +2386,10 @@ if [[ "${check_rc}" -ne 0 ]]; then
   exit 1
 fi
 if ! grep -q "ok=true" "${ART}/check.out" \
-  || ! grep -q "redteam_failed=0" "${ART}/check.out"; then
-  log "verify: check stdout missing ok=true or redteam_failed=0"
+  || ! grep -q "redteam_failed=0" "${ART}/check.out" \
+  || ! grep -q "agent_exact=" "${ART}/check.out" \
+  || ! grep -q "v1_mart=" "${ART}/check.out"; then
+  log "verify: check stdout missing ok=true, redteam_failed=0, or metrics rates"
   cat "${ART}/check.out" >&2 || true
   exit 1
 fi
@@ -2369,7 +2402,8 @@ cat "${ART}/check.out"
 
 log "verify: capitalcite check --live"
 set +e
-uv run capitalcite check --live --out "${ART}/check-live" \
+WAREHOUSE_PATH="${WAREHOUSE_PATH}" METRIC_QUERY_BACKEND=catalog ASK_MODEL=fake \
+  uv run capitalcite check --live --out "${ART}/check-live" \
   >"${ART}/check.live.out" 2>"${ART}/check.live.err"
 check_live_rc=$?
 set -e
@@ -2401,6 +2435,29 @@ else
   log "verify: capitalcite check --live ok"
   cat "${ART}/check.live.out"
 fi
+
+log "verify: capitalcite eval --suite metrics"
+set +e
+WAREHOUSE_PATH="${WAREHOUSE_PATH}" METRIC_QUERY_BACKEND=catalog ASK_MODEL=fake \
+  uv run capitalcite eval --suite metrics --out "${ART}/eval-metrics" \
+  >"${ART}/eval-metrics.out" 2>"${ART}/eval-metrics.err"
+eval_metrics_rc=$?
+set -e
+write eval-metrics.exit "${eval_metrics_rc}"
+if [[ "${eval_metrics_rc}" -ne 0 ]] \
+  || ! grep -q "suite=metrics" "${ART}/eval-metrics.out" \
+  || ! grep -q "agent_exact=" "${ART}/eval-metrics.out" \
+  || ! grep -q "agent_refusal=" "${ART}/eval-metrics.out" \
+  || ! grep -q "rag_exact=" "${ART}/eval-metrics.out" \
+  || ! grep -q "rag_refusal=" "${ART}/eval-metrics.out" \
+  || ! grep -q "v1_mart=" "${ART}/eval-metrics.out"; then
+  log "verify: eval --suite metrics failed"
+  cat "${ART}/eval-metrics.out" >&2 || true
+  cat "${ART}/eval-metrics.err" >&2 || true
+  exit 1
+fi
+log "verify: capitalcite eval --suite metrics ok"
+cat "${ART}/eval-metrics.out"
 
 log "verify: capitalcite graph --help"
 set +e
@@ -2543,21 +2600,7 @@ cat "${ART}/metrics.out"
 
 export DBT_PROJECT_DIR="${ROOT}/dbt"
 
-log "verify: dbt build --target ci"
-set +e
-uv run --frozen --group metrics dbt build --project-dir dbt --profiles-dir dbt --target ci \
-  >"${ART}/dbt.out" 2>"${ART}/dbt.err"
-dbt_rc=$?
-set -e
-write dbt.exit "${dbt_rc}"
-if [[ "${dbt_rc}" -ne 0 ]] || ! grep -q "Completed successfully" "${ART}/dbt.out"; then
-  log "verify: dbt build --target ci failed"
-  cat "${ART}/dbt.out" >&2 || true
-  cat "${ART}/dbt.err" >&2 || true
-  exit 1
-fi
-log "verify: dbt build --target ci ok"
-cat "${ART}/dbt.out"
+build_ci_warehouse
 
 log "verify: dbt docs generate --target ci"
 set +e
@@ -2878,8 +2921,10 @@ else
   )
   printf '%s\n' "${EVAL_CMD[*]}" >"${ART}/eval.cmd"
   log "verify: ${EVAL_CMD[*]}"
+  EVAL_QDRANT="${ART}/eval-qdrant"
+  mkdir -p "${EVAL_QDRANT}"
   set +e
-  "${EVAL_CMD[@]}" >"${ART}/eval.out" 2>"${ART}/eval.err"
+  QDRANT_PATH="${EVAL_QDRANT}" "${EVAL_CMD[@]}" >"${ART}/eval.out" 2>"${ART}/eval.err"
   eval_rc=$?
   set -e
   write eval.exit "${eval_rc}"

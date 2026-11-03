@@ -55,6 +55,7 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Golden Q&A set](./golden.md) covers `capitalcite golden validate`.
 - [Hybrid search](./search.md) covers `POST /search`, `capitalcite index --help`, and the quote-index recall sanity.
 - [Retrieval eval](./eval.md) covers `capitalcite eval --suite golden` and the `--small` CI path.
+- [Metrics exact-match eval](./metrics-eval.md) covers `capitalcite eval --suite metrics` on the fake agent and fake RAG.
 - [Structured answers](./ask.md) covers `POST /ask`.
 - [Streaming answers](./stream.md) covers `POST /ask/stream`.
 - [Web app](./web.md) covers the page on port 3001 against that same API.

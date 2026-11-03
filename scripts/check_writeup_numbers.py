@@ -170,6 +170,8 @@ def linked_results(text: str) -> frozenset[str]:
 
 
 def project_file(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
+    if data.get("suite") == "metrics":
+        return _project_metrics(data, readme)
     if data.get("small") is True:
         return frozenset()
     arms = data.get("arms")
@@ -204,6 +206,38 @@ def project_file(data: Mapping[str, object], readme: frozenset[str]) -> frozense
             emitted.add(str(empty))
             emitted.add(str(late))
     return frozenset(emitted)
+
+
+def _project_metrics(data: Mapping[str, object], readme: frozenset[str]) -> frozenset[str]:
+    """Recount booleans. A stored rate float is not a source."""
+    scores = data.get("scores")
+    if not isinstance(scores, list):
+        return frozenset()
+    emitted: set[str] = set()
+    for path in ("agent", "rag"):
+        rows = [row for row in scores if isinstance(row, dict) and row.get("path") == path]
+        values = [row for row in rows if row.get("cell") == "value"]
+        nulls = [row for row in rows if row.get("cell") == "null"]
+        exact_hits = sum(1 for row in values if row.get("exact") is True)
+        refusal_hits = sum(1 for row in nulls if row.get("refusal") is True)
+        _emit_rate(emitted, readme, exact_hits, len(values))
+        _emit_rate(emitted, readme, refusal_hits, len(nulls))
+    coverage = data.get("coverage")
+    if isinstance(coverage, dict):
+        covered = coverage.get("rows")
+        if isinstance(covered, list):
+            hits = sum(
+                1 for row in covered if isinstance(row, dict) and row.get("disposition") == "CELL"
+            )
+            _emit_rate(emitted, readme, hits, len(covered))
+    return frozenset(emitted)
+
+
+def _emit_rate(emitted: set[str], readme: frozenset[str], hits: int, items: int) -> None:
+    if items <= 0:
+        return
+    if f"{hits / items:.3f}" in readme:
+        emitted.add(f"{hits}/{items}")
 
 
 def _stem_hex(path: Path) -> str | None:

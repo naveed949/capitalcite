@@ -43,15 +43,21 @@ class Thresholds(BaseModel):
     model_config = ConfigDict(frozen=True)
     quote_sanity_max_drop_items: int = Field(ge=0, default=0)
     fixture_max_drop_items: int = Field(ge=0, default=0)
+    metrics_max_drop_items: int = Field(ge=0, default=0)
 
 
 class Baseline(BaseModel):
     """evals/baselines/ci.json. Rates only. Red-team and contracts are absolute."""
 
     model_config = ConfigDict(frozen=True)
-    schema_version: int = 1
+    schema_version: int = 2
     quote_sanity: TrackedRate
     fixture: TrackedRate
+    metrics_agent_exact: TrackedRate
+    metrics_agent_refusal: TrackedRate
+    metrics_rag_exact: TrackedRate
+    metrics_rag_refusal: TrackedRate
+    metrics_v1_mart: TrackedRate
     small_n_items: int = Field(ge=0)
     small_arms: int = Field(ge=0)
     small_embedder_id: str = Field(min_length=1)
@@ -100,6 +106,16 @@ def compare(current: Baseline, committed: Baseline) -> CompareReport:
             committed.thresholds.fixture_max_drop_items,
         )
     )
+    budget = committed.thresholds.metrics_max_drop_items
+    metrics_rates = (
+        ("metrics_agent_exact", current.metrics_agent_exact, committed.metrics_agent_exact),
+        ("metrics_agent_refusal", current.metrics_agent_refusal, committed.metrics_agent_refusal),
+        ("metrics_rag_exact", current.metrics_rag_exact, committed.metrics_rag_exact),
+        ("metrics_rag_refusal", current.metrics_rag_refusal, committed.metrics_rag_refusal),
+        ("metrics_v1_mart", current.metrics_v1_mart, committed.metrics_v1_mart),
+    )
+    for name, current_rate, committed_rate in metrics_rates:
+        failures.extend(_rate(name, current_rate, committed_rate, budget))
     return CompareReport(ok=not failures, failures=tuple(failures))
 
 
