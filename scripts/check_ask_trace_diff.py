@@ -6,6 +6,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+os.environ.setdefault("SEC_USER_AGENT", "capitalcite-trace-diff trace@example.com")
+os.environ.setdefault("ASK_MODEL", "fake")
+
 from qdrant_client import AsyncQdrantClient
 
 from capitalcite.agent.types import AskPath

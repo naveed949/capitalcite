@@ -211,7 +211,8 @@ cat "${ART}/writeup-numbers.out"
 
 log "verify: ask-trace-diff"
 set +e
-ASK_MODEL=fake uv run python "${ROOT}/scripts/check_ask_trace_diff.py" \
+SEC_USER_AGENT="${SEC_USER_AGENT:-capitalcite-verify you@example.com}" \
+  ASK_MODEL=fake uv run python "${ROOT}/scripts/check_ask_trace_diff.py" \
   >"${ART}/ask-trace-diff.out" 2>"${ART}/ask-trace-diff.err"
 ask_trace_diff_rc=$?
 set -e

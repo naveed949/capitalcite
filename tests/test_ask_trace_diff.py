@@ -11,6 +11,7 @@ SCRIPT = ROOT / "scripts" / "check_ask_trace_diff.py"
 
 def test_golden_ask_answers_match_with_tracing_on() -> None:
     env = os.environ.copy()
+    env.pop("SEC_USER_AGENT", None)
     env["ASK_MODEL"] = "fake"
     completed = subprocess.run(
         [sys.executable, str(SCRIPT)],
