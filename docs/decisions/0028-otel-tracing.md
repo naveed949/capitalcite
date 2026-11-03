@@ -50,4 +50,4 @@ Keeping span names `plan`, `complete`, and `generate` would have preserved our i
 
 ## Decision
 
-`observation()` stays the only caller API. `OtlpExporter` is installed only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. An empty endpoint, a non-HTTP protocol, or a constructor failure leaves that exporter out. The file exporter and the Langfuse exporter stay. Answers do not read span records. Tracing on versus off is checked on rag `ask()`, streamed rag, and agent. The non-refusal subset includes answered items.
+`observation()` stays the only caller API. `OtlpExporter` is installed only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. An empty endpoint, a non-HTTP protocol, or a constructor failure leaves that exporter out. The file exporter and the Langfuse exporter stay. An invalid observation kind is dropped in `_RecordingTracer.start`, so exporters never see it. A Langfuse `__enter__` failure still `__exit__`s the manager so `_live` stays empty. Answers do not read span records. Tracing on versus off is checked on rag `ask()`, streamed rag, and agent. The non-refusal subset includes answered items.

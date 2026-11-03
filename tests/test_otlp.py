@@ -30,7 +30,6 @@ from capitalcite.trace import (
     observation,
     shutdown,
 )
-from capitalcite.trace.otlp import OtlpExporter
 from capitalcite.trace.types import SpanRecord
 
 _QUESTION = "What was the Standardized CET1 ratio?"
@@ -195,34 +194,6 @@ def test_streamed_agent_tree_reaches_otlp(tmp_path: Path) -> None:
         assert tool["attributes"]["gen_ai.tool.name"] == "search_filings"
         assert len({item["trace_id"] for item in exported}) == 1
         assert all(posted == "/v1/traces" for posted, _body in server.bodies)
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-def test_otlp_invalid_kind_does_not_enter_live_map() -> None:
-    server = _Server(_Capture)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        port = server.server_address[1]
-        exporter = OtlpExporter(
-            endpoint=f"http://127.0.0.1:{port}/v1/traces",
-            timeout_s=0.2,
-            service_name="capitalcite-test",
-        )
-        try:
-            exporter.begin(
-                name="ask",
-                kind=object(),
-                span_id="a" * 16,
-                attributes={},
-                trace_id="b" * 32,
-            )
-            assert exporter._live == {}
-        finally:
-            exporter.shutdown()
-        assert server.bodies == []
     finally:
         server.shutdown()
         server.server_close()

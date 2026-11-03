@@ -71,15 +71,13 @@ class OtlpExporter:
         self,
         *,
         name: str,
-        kind: object,
+        kind: ObservationKind,
         span_id: str,
         attributes: Mapping[str, AttrValue],
         trace_id: str | None = None,
         parent_id: str | None = None,
     ) -> None:
-        if not isinstance(kind, ObservationKind):
-            logger.warning("otlp span kind rejected")
-            return
+        _ = kind
         if trace_id is None:
             return
         try:
@@ -105,14 +103,7 @@ class OtlpExporter:
             return
         finally:
             self._ids.unpin(token)
-        try:
-            self._live[span_id] = otel_span
-        except Exception:
-            logger.warning("otlp span map failed", exc_info=True)
-            try:
-                otel_span.end()
-            except Exception:
-                logger.warning("otlp span end failed", exc_info=True)
+        self._live[span_id] = otel_span
 
     def export(self, record: SpanRecord) -> None:
         otel_span = self._live.pop(record.span_id, None)

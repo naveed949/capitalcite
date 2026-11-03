@@ -285,6 +285,18 @@ def test_langfuse_adapter_maps_ask_and_generation(monkeypatch: pytest.MonkeyPatc
     assert started["shutdown"] is True
 
 
+def test_invalid_kind_does_not_reach_exporters() -> None:
+    exporter = MemoryExporter()
+    configure_for_tests(exporter)
+    ran = False
+    with observation("ask", object()):  # type: ignore[arg-type]
+        ran = True
+        assert current_trace_id() is None
+    assert ran is True
+    assert exporter.begins() == {}
+    assert exporter.finished() == ()
+
+
 def test_langfuse_invalid_kind_does_not_leak_live_span(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -256,6 +256,9 @@ class _RecordingTracer:
         parent: Span | None,
         attrs: dict[str, AttrValue],
     ) -> Span:
+        if not isinstance(kind, ObservationKind):
+            logger.warning("trace span kind rejected")
+            return _NOOP
         if parent is not None and not parent.sampled:
             return _NOOP
         if parent is None and not _root_sampled(self._sample_rate):
