@@ -130,7 +130,6 @@ def parse_chat_endpoint(
             raise ModelNotConfigured("ASK_MODEL=openai requires OPENAI_API_KEY")
         stored_key: str | None = key
     else:
-        # Never send a hosted key to a server that is not api.openai.com.
         stored_key = None
     model = model_id.strip()
     if not model:
