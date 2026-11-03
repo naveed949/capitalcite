@@ -34,6 +34,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        # A base URL can carry a password. Startup errors must not print the input.
+        hide_input_in_errors=True,
     )
 
     app_name: str = "capitalcite"
@@ -62,7 +64,8 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(
         default=None,
         description=(
-            "Secret for EMBEDDER=openai-small and ASK_MODEL=openai. "
+            "Secret for EMBEDDER=openai-small and for hosted OpenAI chat. "
+            "A local chat base URL does not send it. "
             "bge-small, minilm, and ASK_MODEL=fake do not read it."
         ),
     )
@@ -75,14 +78,23 @@ class Settings(BaseSettings):
     ask_model: Literal["openai", "fake"] = Field(
         default="fake",
         description=(
-            "Chat model for POST /ask. fake quotes a retrieved chunk and does not read "
-            "OPENAI_API_KEY. openai requires OPENAI_API_KEY and is never rewritten to fake."
+            "Chat model for POST /ask. fake quotes a retrieved chunk and does not "
+            "read OPENAI_API_KEY. openai speaks Chat Completions. Hosted OpenAI "
+            "requires OPENAI_API_KEY. A local base URL does not. Never rewritten to fake."
+        ),
+    )
+    ask_openai_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Chat Completions prefix. Empty uses https://api.openai.com/v1. "
+            "A local server uses a /v1 prefix, for example http://localhost:11434/v1. "
+            "Embeddings ignore this field."
         ),
     )
     ask_openai_model: str = Field(
         default="gpt-4o-mini",
         min_length=1,
-        description="OpenAI chat model used when ASK_MODEL=openai.",
+        description="Chat model id sent when ASK_MODEL=openai. Hosted or local.",
     )
     ask_seed: int | None = Field(
         default=None,
@@ -271,6 +283,15 @@ class Settings(BaseSettings):
     @classmethod
     def qdrant_url_stripped(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("ask_openai_base_url", mode="before")
+    @classmethod
+    def normalize_ask_base_url(cls, value: object) -> object:
+        if value is None or not isinstance(value, str):
+            return value
+        from capitalcite.ask.endpoint import normalize_chat_base_url
+
+        return normalize_chat_base_url(value)
 
     @field_validator(
         "qdrant_path",
