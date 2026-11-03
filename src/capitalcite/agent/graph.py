@@ -99,100 +99,105 @@ async def run_agent(
 
 def _compile(model: AgentModel, tools: ToolExecutor, min_score: float, observe: Observe) -> Any:
     async def plan_node(state: GraphState) -> dict[str, object]:
-        reason = _over_budget(state)
-        if reason is not None:
+        with observation("graph.plan", ObservationKind.AGENT):
+            reason = _over_budget(state)
+            if reason is not None:
+                return {
+                    "stop_reason": reason,
+                    "answer": Refused(refusal_reason=reason),
+                }
+            decision = await model.plan(state["question"], state["traces"], state["hits"])
+            tokens = _charge(state, 100 + len(state["question"]) // 4)
+            steps = state["steps_used"] + 1
+            if decision.kind == "synthesize":
+                update: dict[str, object] = {
+                    "synthesize_now": True,
+                    "steps_used": steps,
+                    "tokens_used": tokens,
+                }
+                if decision.refusal_reason:
+                    update["answer"] = Refused(refusal_reason=decision.refusal_reason)
+                    update["stop_reason"] = decision.refusal_reason
+                return update
+            plan = [
+                PlanStep(tool=call.name, args=dict(call.args), status="pending")
+                for call in decision.calls
+            ]
+            observe.plan(plan)
             return {
-                "stop_reason": reason,
-                "answer": Refused(refusal_reason=reason),
-            }
-        decision = await model.plan(state["question"], state["traces"], state["hits"])
-        tokens = _charge(state, 100 + len(state["question"]) // 4)
-        steps = state["steps_used"] + 1
-        if decision.kind == "synthesize":
-            update: dict[str, object] = {
-                "synthesize_now": True,
+                "plan": plan,
+                "cursor": 0,
+                "synthesize_now": False,
                 "steps_used": steps,
                 "tokens_used": tokens,
             }
-            if decision.refusal_reason:
-                update["answer"] = Refused(refusal_reason=decision.refusal_reason)
-                update["stop_reason"] = decision.refusal_reason
-            return update
-        plan = [
-            PlanStep(tool=call.name, args=dict(call.args), status="pending")
-            for call in decision.calls
-        ]
-        observe.plan(plan)
-        return {
-            "plan": plan,
-            "cursor": 0,
-            "synthesize_now": False,
-            "steps_used": steps,
-            "tokens_used": tokens,
-        }
 
     async def act_node(state: GraphState) -> dict[str, object]:
-        reason = _over_budget(state)
-        if reason is not None:
-            skipped = list(state["plan"])
-            cursor = state["cursor"]
-            for index in range(cursor, len(skipped)):
-                step = skipped[index]
-                skipped[index] = step.model_copy(update={"status": "skipped"})
-            return {
-                "plan": skipped,
-                "stop_reason": reason,
-                "answer": Refused(refusal_reason=reason),
+        with observation("graph.act", ObservationKind.AGENT):
+            reason = _over_budget(state)
+            if reason is not None:
+                skipped = list(state["plan"])
+                cursor = state["cursor"]
+                for index in range(cursor, len(skipped)):
+                    step = skipped[index]
+                    skipped[index] = step.model_copy(update={"status": "skipped"})
+                return {
+                    "plan": skipped,
+                    "stop_reason": reason,
+                    "answer": Refused(refusal_reason=reason),
+                }
+            step = state["plan"][state["cursor"]]
+            observe.tool_call(step)
+            result = await tools.execute(step.tool, step.args)
+            traces = list(state["traces"])
+            trace = TraceStep(
+                tool=result.tool,
+                args=result.args,
+                ok=result.ok,
+                detail=result.detail,
+            )
+            observe.tool_finished(trace, None if result.reason is None else str(result.reason))
+            traces.append(trace)
+            plan = list(state["plan"])
+            plan[state["cursor"]] = step.model_copy(
+                update={"status": "done" if result.ok else "error"}
+            )
+            hits = list(state["hits"])
+            hits.extend(result.hits)
+            update: dict[str, object] = {
+                "plan": plan,
+                "traces": traces,
+                "hits": hits,
+                "cursor": state["cursor"] + 1,
+                "steps_used": state["steps_used"] + 1,
+                "tokens_used": _charge(state, 8 + len(result.detail) // 4),
             }
-        step = state["plan"][state["cursor"]]
-        observe.tool_call(step)
-        result = await tools.execute(step.tool, step.args)
-        traces = list(state["traces"])
-        trace = TraceStep(
-            tool=result.tool,
-            args=result.args,
-            ok=result.ok,
-            detail=result.detail,
-        )
-        observe.tool_finished(trace, None if result.reason is None else str(result.reason))
-        traces.append(trace)
-        plan = list(state["plan"])
-        plan[state["cursor"]] = step.model_copy(update={"status": "done" if result.ok else "error"})
-        hits = list(state["hits"])
-        hits.extend(result.hits)
-        update: dict[str, object] = {
-            "plan": plan,
-            "traces": traces,
-            "hits": hits,
-            "cursor": state["cursor"] + 1,
-            "steps_used": state["steps_used"] + 1,
-            "tokens_used": _charge(state, 8 + len(result.detail) // 4),
-        }
-        if result.reason == AUDIT_UNAVAILABLE:
-            update["stop_reason"] = AUDIT_UNAVAILABLE_DETAIL
-            update["answer"] = Refused(refusal_reason=AUDIT_UNAVAILABLE_DETAIL)
-        return update
+            if result.reason == AUDIT_UNAVAILABLE:
+                update["stop_reason"] = AUDIT_UNAVAILABLE_DETAIL
+                update["answer"] = Refused(refusal_reason=AUDIT_UNAVAILABLE_DETAIL)
+            return update
 
     async def synthesize_node(state: GraphState) -> dict[str, object]:
-        reason = _over_budget(state)
-        if reason is not None:
+        with observation("graph.synthesize", ObservationKind.AGENT):
+            reason = _over_budget(state)
+            if reason is not None:
+                return {
+                    "stop_reason": reason,
+                    "answer": Refused(refusal_reason=reason),
+                }
+            answer = await ask(
+                list(state["hits"]),
+                state["question"],
+                _Synthesizer(model),
+                min_score=min_score,
+            )
             return {
-                "stop_reason": reason,
-                "answer": Refused(refusal_reason=reason),
+                "answer": answer,
+                "steps_used": state["steps_used"] + 1,
+                "tokens_used": _charge(
+                    state, 100 + sum(len(hit.chunk.text) for hit in state["hits"]) // 4
+                ),
             }
-        answer = await ask(
-            list(state["hits"]),
-            state["question"],
-            _Synthesizer(model),
-            min_score=min_score,
-        )
-        return {
-            "answer": answer,
-            "steps_used": state["steps_used"] + 1,
-            "tokens_used": _charge(
-                state, 100 + sum(len(hit.chunk.text) for hit in state["hits"]) // 4
-            ),
-        }
 
     def after_plan(state: GraphState) -> Literal["stop", "synthesize", "act"]:
         if state.get("answer") is not None or state.get("stop_reason"):
@@ -214,7 +219,13 @@ def _compile(model: AgentModel, tools: ToolExecutor, min_score: float, observe: 
     builder.add_node("plan", plan_node)
     builder.add_node("act", act_node)
     builder.add_node("synthesize", synthesize_node)
-    builder.add_node("stop", lambda state: {})
+
+    def stop_node(state: GraphState) -> dict[str, object]:
+        _ = state
+        with observation("graph.stop", ObservationKind.AGENT):
+            return {}
+
+    builder.add_node("stop", stop_node)
     builder.add_edge(START, "plan")
     builder.add_conditional_edges(
         "plan",
