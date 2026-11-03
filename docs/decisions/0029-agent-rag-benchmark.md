@@ -32,8 +32,10 @@ it. Absolute graph p95 is wall-clock on the host. A loaded runner
 measured 96-100 ms against a 38.8 ms laptop snapshot and failed a 2x
 millisecond band. The nightly gate therefore compares graph p95 to rag
 p95 in the same run and applies a 2x band to that ratio. Both arms see
-the same scheduler. The band still fails when retrieve or compile
-doubles relative to rag.
+the same scheduler. That band absorbs first-query warmup. It does
+not catch a compile-cache miss: a `--no-compile-once` run still
+sits inside the 2x ratio. When `compile_once` is true, the gate
+fails if mean graph `compile_ms` is 0.5 or higher.
 
 ## Paired bootstrap, not an unpaired one
 
@@ -102,4 +104,5 @@ from a contextvar, so one compiled graph serves every call. Compile mean
 and p50 drop. A p95 movement on one host is noise unless repeated runs
 hold it. Tool remains the largest phase. The fake model still leaves
 generator latency unproven. `--no-compile-once` rebuilds the graph on
-every question so the two conditions can be compared.
+every question so the two conditions can be compared. The ratio
+band is not that comparison. Mean compile time under 0.5 ms is.

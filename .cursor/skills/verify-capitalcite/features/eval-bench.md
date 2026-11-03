@@ -9,7 +9,7 @@ paired bootstrap of graph minus loop.
 
 - `eval-bench-help` lists `bench` on `capitalcite eval --help`.
 - `eval-bench-run` writes `<sha12>-bench.json` (or `<sha12>-dirty-bench.json`) with n, identity, and bottleneck. It does not write a sibling identity file.
-- `eval-bench-gate` compares the same-run graph/rag p95 ratio and cost per query to `evals/baselines/bench.json`.
+- `eval-bench-gate` compares the same-run graph/rag p95 ratio and cost per query to `evals/baselines/bench.json`. When `compile_once` is true it also fails if mean graph `compile_ms` is 0.5 or higher.
 
 ## How to get to it (user POV)
 
@@ -35,6 +35,6 @@ Preconditions:
 
 ## Gotchas
 
-- `--suite bench` rejects `--small`, `--chunker`, `--mode`, `--embedder`, `--k` other than 5, and `--print-cache-key`. `--baseline` and `--write-baseline` are the graph/rag p95-ratio and cost gate. `--paid` is required for `ASK_MODEL=openai` and is never used in CI. tiktoken is in the eval/dev groups; first `o200k_base` use may download the encoding.
+- `--suite bench` rejects `--small`, `--chunker`, `--mode`, `--embedder`, `--k` other than 5, and `--print-cache-key`. `--baseline` and `--write-baseline` are the graph/rag p95-ratio, cost, and compile_ms gate. `--paid` is required for `ASK_MODEL=openai` and is never used in CI. tiktoken is in the eval/dev groups; first `o200k_base` use may download the encoding.
 - Fake-model generate time is not live model latency. The paid command in `evals/bench/pin.json` is UNVERIFIED.
 - `CliRunner().invoke(...)` in pytest is not this feature.

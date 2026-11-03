@@ -14,13 +14,16 @@ DEFAULT_BENCH_BASELINE = Path("evals/baselines/bench.json")
 
 GRAPH_OVER_RAG_MAX_RATIO = 2.0
 COST_PER_QUERY_ABS = 0.0
+COMPILE_MS_MAX = 0.5
 TOLERANCE_RATIONALE = (
     "Absolute graph p95 is wall-clock on the host. A loaded runner measured "
     "96-100 ms against a 38.8 ms laptop snapshot and failed a 2x ms band. "
     "The gate compares graph p95 to rag p95 in the same run. Both arms see "
-    "the same scheduler. A 2x band on that ratio absorbs first-query warmup "
-    "without hiding a doubled retrieve or a compile-cache miss. Cost is "
-    "exactly 0 on ASK_MODEL=fake; any positive mean fails."
+    "the same scheduler. A 2x band on that ratio absorbs first-query warmup. "
+    "It does not catch a compile-cache miss: a --no-compile-once run still "
+    "sits inside the band. When compile_once is true, mean graph compile_ms "
+    "must stay under 0.5. Cost is exactly 0 on ASK_MODEL=fake; any positive "
+    "mean fails."
 )
 
 
@@ -28,6 +31,7 @@ class BenchThresholds(BaseModel):
     model_config = ConfigDict(frozen=True)
     graph_over_rag_p95_max_ratio: float = Field(gt=0.0, default=GRAPH_OVER_RAG_MAX_RATIO)
     cost_per_query_abs: float = Field(ge=0.0, default=COST_PER_QUERY_ABS)
+    compile_ms_max: float = Field(gt=0.0, default=COMPILE_MS_MAX)
     rationale: str = TOLERANCE_RATIONALE
 
 
@@ -41,6 +45,7 @@ class BenchBaseline(BaseModel):
     graph_p95_total_ms: float = Field(ge=0.0)
     rag_p95_total_ms: float = Field(ge=0.0)
     mean_cost_usd: float = Field(ge=0.0)
+    mean_compile_ms: float = Field(ge=0.0)
     thresholds: BenchThresholds = Field(default_factory=BenchThresholds)
 
 
@@ -60,6 +65,7 @@ def snapshot_bench(report: BenchReport) -> BenchBaseline:
         graph_p95_total_ms=graph.p95_total_ms,
         rag_p95_total_ms=rag.p95_total_ms,
         mean_cost_usd=graph.mean_cost_usd,
+        mean_compile_ms=graph.mean_compile_ms,
     )
 
 
@@ -117,6 +123,14 @@ def compare_bench(current: BenchBaseline, committed: BenchBaseline) -> CompareRe
                     f"{current.mean_cost_usd:.6f} > {cost_limit:.6f} "
                     f"(abs {committed.thresholds.cost_per_query_abs})"
                 ),
+            )
+        )
+    compile_limit = committed.thresholds.compile_ms_max
+    if current.compile_once and current.mean_compile_ms >= compile_limit:
+        failures.append(
+            CompareFailure(
+                metric="mean_compile_ms",
+                detail=(f"{current.mean_compile_ms:.3f} >= {compile_limit} (compile_once=true)"),
             )
         )
     return CompareReport(ok=not failures, failures=tuple(failures))

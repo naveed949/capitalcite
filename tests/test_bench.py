@@ -163,6 +163,7 @@ def _baseline(**updates: object) -> BenchBaseline:
         "graph_p95_total_ms": 40.0,
         "rag_p95_total_ms": 20.0,
         "mean_cost_usd": 0.0,
+        "mean_compile_ms": 0.0,
     }
     payload.update(updates)
     return BenchBaseline.model_validate(payload)
@@ -183,6 +184,22 @@ def test_gate_fails_on_positive_fake_cost() -> None:
     report = compare_bench(current, committed)
     assert report.ok is False
     assert any(row.metric == "mean_cost_usd" for row in report.failures)
+
+
+def test_gate_fails_compile_once_when_mean_compile_ms_is_half_or_more() -> None:
+    committed = _baseline()
+    current = committed.model_copy(update={"mean_compile_ms": 0.5})
+    report = compare_bench(current, committed)
+    assert report.ok is False
+    assert any(row.metric == "mean_compile_ms" for row in report.failures)
+
+
+def test_gate_skips_compile_ms_when_compile_once_is_false() -> None:
+    committed = _baseline(compile_once=False, mean_compile_ms=10.0)
+    current = committed.model_copy(update={"mean_compile_ms": 10.0})
+    report = compare_bench(current, committed)
+    assert report.ok is True
+    assert not any(row.metric == "mean_compile_ms" for row in report.failures)
 
 
 def _ci() -> MeanCI:
@@ -250,6 +267,7 @@ def test_snapshot_bench_uses_same_run_graph_over_rag() -> None:
     assert snap.rag_p95_total_ms == 10.0
     assert snap.graph_over_rag_p95 == 3.0
     assert snap.mean_cost_usd == 0.0
+    assert snap.mean_compile_ms == 0.0
     assert snap.n_items == 1
     assert snap.schema_version == 2
     assert report.arms["graph"].recall_at_5 is None
