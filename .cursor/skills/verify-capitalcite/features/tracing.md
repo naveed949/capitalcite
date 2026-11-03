@@ -4,9 +4,9 @@
 configured. Spans cover retrieval, each model call, each tool call, gate
 decisions, and, on the agent path, the graph nodes `graph.plan`,
 `graph.act`, `graph.synthesize`, and `graph.stop`. Cost and latency sit
-on those spans. If Langfuse keys are missing and
-`OTEL_EXPORTER_OTLP_ENDPOINT` is unset, tracing is a no-op and the
-request still returns.
+on those spans. If Langfuse keys are missing, `OTEL_EXPORTER_OTLP_ENDPOINT` is unset,
+and `CAPITALCITE_TRACE_FILE` is unset, tracing is a no-op and the
+request still returns. A set trace file still writes JSONL.
 
 ## Sub-features
 
