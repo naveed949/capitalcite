@@ -23,7 +23,10 @@ _ALLOWED = frozenset(
         "capitalcite.git_sha",
         "capitalcite.suite",
         "capitalcite.small",
+        "gen_ai.operation.name",
+        "gen_ai.provider.name",
         "gen_ai.request.model",
+        "gen_ai.tool.name",
         "gen_ai.usage.input_tokens",
         "gen_ai.usage.output_tokens",
         "capitalcite.cost_usd",
@@ -125,8 +128,15 @@ def generation_attrs(
     model: str,
     input_tokens: int | None = None,
     output_tokens: int | None = None,
+    provider: str | None = None,
+    operation: str = "chat",
 ) -> dict[str, AttrValue]:
-    attrs: dict[str, object] = {"gen_ai.request.model": model}
+    resolved = provider if provider is not None else ("fake" if model == "fake" else "openai")
+    attrs: dict[str, object] = {
+        "gen_ai.request.model": model,
+        "gen_ai.operation.name": operation,
+        "gen_ai.provider.name": resolved,
+    }
     if input_tokens is not None:
         attrs["gen_ai.usage.input_tokens"] = input_tokens
     if output_tokens is not None:
@@ -138,7 +148,14 @@ def generation_attrs(
 
 
 def tool_attrs(*, tool: str, ok: bool) -> dict[str, AttrValue]:
-    return sanitize({"capitalcite.tool": tool, "capitalcite.ok": ok})
+    return sanitize(
+        {
+            "capitalcite.tool": tool,
+            "capitalcite.ok": ok,
+            "gen_ai.tool.name": tool,
+            "gen_ai.operation.name": "execute_tool",
+        }
+    )
 
 
 def gate_attrs(
@@ -152,6 +169,7 @@ def gate_attrs(
             "capitalcite.tool": tool,
             "capitalcite.gate.decision": decision,
             "capitalcite.gate.reason": reason,
+            "gen_ai.tool.name": tool,
         }
     )
 

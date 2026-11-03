@@ -177,6 +177,10 @@ def test_policy_defaults_are_closed() -> None:
     assert settings.trusted_proxy_hops == 0
     assert settings.embed_threads == 0
     assert settings.git_sha is None
+    assert settings.otel_exporter_otlp_endpoint is None
+    assert settings.otel_exporter_otlp_protocol == "http/protobuf"
+    assert settings.otel_exporter_otlp_timeout == 0.2
+    assert settings.otel_service_name == "capitalcite"
 
 
 def test_env_example_defaults_ask_model_to_fake() -> None:
@@ -192,3 +196,5 @@ def test_env_example_defaults_ask_model_to_fake() -> None:
     assert "\nTRUSTED_PROXY_HOPS=0\n" in text
     assert "\nEMBED_THREADS=0\n" in text
     assert "\nGIT_SHA=\n" in text
+    assert "\n# OTEL_EXPORTER_OTLP_ENDPOINT=" in text
+    assert "\nOTEL_EXPORTER_OTLP_ENDPOINT=" not in text
