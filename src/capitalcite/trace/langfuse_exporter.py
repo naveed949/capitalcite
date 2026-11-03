@@ -68,6 +68,7 @@ class LangfuseExporter:
         parent_id: str | None = None,
     ) -> None:
         _ = trace_id, parent_id
+        manager: Any | None = None
         try:
             manager = self._client.start_as_current_observation(
                 name=name,
@@ -76,9 +77,15 @@ class LangfuseExporter:
                 metadata=dict(attributes),
             )
             observation = manager.__enter__()
-            self._live[span_id] = (observation, manager)
         except Exception:
             logger.warning("langfuse observation start failed", exc_info=True)
+            if manager is not None:
+                try:
+                    manager.__exit__(None, None, None)
+                except Exception:
+                    logger.warning("langfuse observation end failed", exc_info=True)
+            return
+        self._live[span_id] = (observation, manager)
 
     def export(self, record: SpanRecord) -> None:
         pair = self._live.pop(record.span_id, None)

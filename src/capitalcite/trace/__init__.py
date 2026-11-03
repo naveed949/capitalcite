@@ -2,6 +2,7 @@
 
 from capitalcite.trace.attrs import (
     ask_attrs,
+    chat_span_name,
     eval_attrs,
     gate_attrs,
     generation_attrs,
@@ -31,6 +32,7 @@ __all__ = [
     "Span",
     "SpanRecord",
     "ask_attrs",
+    "chat_span_name",
     "configure",
     "configure_for_tests",
     "configure_settings",

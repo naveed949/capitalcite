@@ -123,6 +123,11 @@ def retrieval_attrs(
     return sanitize(attrs)
 
 
+def chat_span_name(model: str) -> str:
+    """OpenTelemetry GenAI span name: `chat` plus the request model."""
+    return f"chat {model}"
+
+
 def generation_attrs(
     *,
     model: str,

@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.id_generator import IdGenerator
 from opentelemetry.trace import Span as OtelSpan
 from opentelemetry.trace import Status, StatusCode, set_span_in_context
 
-from capitalcite.trace.types import AttrValue, SpanRecord
+from capitalcite.trace.types import AttrValue, ObservationKind, SpanRecord
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,9 @@ class OtlpExporter:
         trace_id: str | None = None,
         parent_id: str | None = None,
     ) -> None:
-        _ = kind
+        if not isinstance(kind, ObservationKind):
+            logger.warning("otlp span kind rejected")
+            return
         if trace_id is None:
             return
         try:
@@ -103,7 +105,14 @@ class OtlpExporter:
             return
         finally:
             self._ids.unpin(token)
-        self._live[span_id] = otel_span
+        try:
+            self._live[span_id] = otel_span
+        except Exception:
+            logger.warning("otlp span map failed", exc_info=True)
+            try:
+                otel_span.end()
+            except Exception:
+                logger.warning("otlp span end failed", exc_info=True)
 
     def export(self, record: SpanRecord) -> None:
         otel_span = self._live.pop(record.span_id, None)

@@ -59,7 +59,7 @@ def test_fold_phases_excludes_nested_retrieve_from_tool() -> None:
             duration_ms=12,
         ),
         _span(
-            name="generate",
+            name="chat fake",
             kind=ObservationKind.GENERATE,
             span_id="g",
             parent_id="a",
@@ -107,7 +107,11 @@ def test_fold_phases_ignores_overlapping_graph_nodes() -> None:
             duration_ms=6,
         ),
         _span(
-            name="plan", kind=ObservationKind.GENERATE, span_id="g1", parent_id="gp", duration_ms=4
+            name="chat fake",
+            kind=ObservationKind.GENERATE,
+            span_id="g1",
+            parent_id="gp",
+            duration_ms=4,
         ),
         _span(
             name="graph.act",
@@ -132,7 +136,7 @@ def test_fold_phases_ignores_overlapping_graph_nodes() -> None:
             duration_ms=8,
         ),
         _span(
-            name="complete",
+            name="chat fake",
             kind=ObservationKind.GENERATE,
             span_id="g2",
             parent_id="gs",

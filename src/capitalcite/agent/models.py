@@ -28,7 +28,7 @@ from capitalcite.ask.types import (
 )
 from capitalcite.metric_query.query import GroupBy, MetricName
 from capitalcite.retrieval.types import Hit
-from capitalcite.trace import ObservationKind, generation_attrs, observation
+from capitalcite.trace import ObservationKind, chat_span_name, generation_attrs, observation
 
 _CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -69,7 +69,11 @@ class FakeAgentModel:
         hits: Sequence[Hit],
     ) -> PlannerDecision:
         self.plan_calls += 1
-        with observation("plan", ObservationKind.GENERATE, **generation_attrs(model="fake")):
+        with observation(
+            chat_span_name("fake"),
+            ObservationKind.GENERATE,
+            **generation_attrs(model="fake"),
+        ):
             return self._plan(question, traces, hits)
 
     def _plan(
@@ -127,7 +131,11 @@ class FakeAgentModel:
         self.complete_calls += 1
         if self._synthesizer is not None:
             return await self._synthesizer.complete(question, hits)
-        with observation("complete", ObservationKind.GENERATE, **generation_attrs(model="fake")):
+        with observation(
+            chat_span_name("fake"),
+            ObservationKind.GENERATE,
+            **generation_attrs(model="fake"),
+        ):
             if self._draft is not None:
                 return self._draft
             chosen = _hits_for_question(question, hits)
@@ -195,7 +203,7 @@ class OpenAIAgentModel:
 
     async def _post(self, messages: list[dict[str, str]]) -> str:
         with observation(
-            "plan",
+            chat_span_name(self._model),
             ObservationKind.GENERATE,
             **generation_attrs(model=self._model),
         ) as span:
