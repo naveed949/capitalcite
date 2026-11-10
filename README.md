@@ -177,7 +177,29 @@ Generated from [`evals/results/17f203a9bcf6-bench.json`](evals/results/17f203a9b
 
 Accuracy is 22/95 on graph and loop, 5/95 on rag. Cost per correct is 0 on the fake model. The measured bottleneck phase is **tool** (gate plus execute, exclusive of nested retrieve): graph mean tool 6.2 ms, retrieve 0.9 ms, model 0.1 ms, compile 0.0 ms.
 
-The optimization in this change is compile-once. Before, `run_agent` compiled a LangGraph `StateGraph` on every question ([`17f203a9bcf6-bench-before.json`](evals/results/17f203a9bcf6-bench-before.json)): graph compile 2.6 ms, p50 9.7 ms. After ([`17f203a9bcf6-bench.json`](evals/results/17f203a9bcf6-bench.json)): compile 0.0 ms, p50 6.9 ms. Those compile-mean and p50 drops are the claim. The p95 change (40.6 ms to 37.8 ms) is noise unless repeated runs hold it. Answers did not change (`identity_digest` `b4da1bafb70374e50eaf28c05e15a5e3c6cea66869b8c963174f4843e05533a1` on both files). Tool remains the largest phase. Fake-model generate time is not live `gpt-4o-mini` latency. A paid run is UNVERIFIED; the pinned command is in [`evals/bench/pin.json`](evals/bench/pin.json). Estimated tokens per graph item from this fake run: 1374.968 in, 47.905 out.
+The optimization in this change is compile-once. Before, `run_agent` compiled a LangGraph `StateGraph` on every question ([`17f203a9bcf6-bench-before.json`](evals/results/17f203a9bcf6-bench-before.json)): graph compile 2.6 ms, p50 9.7 ms. After ([`17f203a9bcf6-bench.json`](evals/results/17f203a9bcf6-bench.json)): compile 0.0 ms, p50 6.9 ms. Those compile-mean and p50 drops are the claim. The p95 change (40.6 ms to 37.8 ms) is noise unless repeated runs hold it. Answers did not change (`identity_digest` `b4da1bafb70374e50eaf28c05e15a5e3c6cea66869b8c963174f4843e05533a1` on both files). Tool remains the largest phase. Fake-model generate time is not live `gpt-4o-mini` latency. Estimated tokens per graph item from this fake run: 1374.968 in, 47.905 out. The one recorded paid run is in Real-model bench (fixture corpus, one run) below. The pin is [`evals/bench/pin.json`](evals/bench/pin.json).
+
+#### Real-model bench (fixture corpus, one run)
+
+One hosted `gpt-4o-mini` run on 2026-11-10 used the fixture corpus and the 12-chunk fixture index. Results are in [`evals/results/aca24c13e81d-bench.json`](evals/results/aca24c13e81d-bench.json). The pin is [`evals/bench/pin.json`](evals/bench/pin.json). A twelve-filing corpus paid run is still UNVERIFIED.
+
+Accuracy is not a measure of model quality. The retrieval index has 12 fixture chunks, so most items refuse. 276 of 285 arm-queries refused. 174 were `no passages were retrieved`. 79 were `question names an entity that is not in the retrieved passages`. Each arm is 9/95 (0.095). Every accurate row is a refusal. Recall@5 is not measured. The graph-loop accuracy delta is 0.000, with a 95% CI of 0.000 to 0.000.
+
+OpenAI billed 206,221 input tokens and 10,725 output tokens across 222 chat-completion calls at $0.15 per 1M input tokens and $0.60 per 1M output tokens. That bill is $0.0374. The JSON `cost_usd` fields sum to $0.0690. They price reconstructed `o200k_base` prompt counts and the local answer or refusal string (`tokens_in`, `tokens_out`). They do not price billed usage (`tokens_in_api`, `tokens_out_api`). Those API fields in the file sum to the billed 206,221 and 10,725.
+
+The table is the eval CLI `--from-results` rendering. The `cost/query` column is the reconstructed-token list price per query. It is not billed spend divided by 95. On rag, p50 is 1.7 ms and p95 is 1307.8 ms. On graph, p50 is 1240.6 ms and p95 is 1974.5 ms. On loop, p50 is 1228.9 ms and p95 is 2359.3 ms. Reconstructed cost per query is 0.000486 on rag, 0.000120 on graph, and 0.000120 on loop.
+
+| Arm | n | Recall@5 | Accuracy | p50 ms | p95 ms | cost/query |
+|---|---:|---:|---:|---:|---:|---:|
+| rag | 95 | not measured | 0.095 | 1.7 | 1307.8 | 0.000486 |
+| graph | 95 | not measured | 0.095 | 1240.6 | 1974.5 | 0.000120 |
+| loop | 95 | not measured | 0.095 | 1228.9 | 2359.3 | 0.000120 |
+
+graph-loop Recall@5 delta=not measured (fixture index has no gold spans)
+graph-loop accuracy delta=0.000 (95% CI 0.000 to 0.000).
+Bottleneck on the graph arm is **model**.
+Generated from [`evals/results/aca24c13e81d-bench.json`](evals/results/aca24c13e81d-bench.json).
+This run used provider hosted, host class openai, model gpt-4o-mini, and pin pin.json.
 
 Nightly gates the same-run graph p95 / rag p95 ratio and cost per query against [`evals/baselines/bench.json`](evals/baselines/bench.json) at a 2x band on that ratio and a 0 absolute cost budget. When compile_once is true it also fails if mean graph compile_ms is 0.5 or higher. Absolute millisecond p95 is host-dependent.
 
