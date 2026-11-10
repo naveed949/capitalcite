@@ -146,8 +146,11 @@ Compile-once dropped graph compile from 2.6 ms to 0.0 ms and p50
 from 9.7 ms to 6.9 ms
 ([`17f203a9bcf6-bench-before.json`](../evals/results/17f203a9bcf6-bench-before.json)).
 The p95 change (40.6 ms to 37.8 ms) is noise unless repeated runs
-hold it. Fake generate time is not live model latency. A paid
-`gpt-4o-mini` run is UNVERIFIED.
+hold it. Fake generate time is not live model latency. One
+fixture-corpus paid `gpt-4o-mini` run is recorded in
+[`evals/results/aca24c13e81d-bench.json`](../evals/results/aca24c13e81d-bench.json).
+Accuracy there is 9/95 on each arm. That 9/95 is not model quality.
+A twelve-filing corpus paid run is still UNVERIFIED.
 
 ## Why section/hybrid Recall@5 is 0.169
 
